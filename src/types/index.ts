@@ -1,3 +1,10 @@
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: number;
+}
+
 export interface Track {
   id: string;
   title: string;
@@ -7,7 +14,7 @@ export interface Track {
   duration: number; // in seconds
   views?: string;
   genre?: string;
-  audioUrl?: string; // Direct audio stream url if resolved
+  audioUrl?: string;
   isOffline?: boolean;
   downloadedAt?: number;
   fileSize?: number;
@@ -42,6 +49,7 @@ export interface Album {
 
 export interface Playlist {
   id: string;
+  userId?: string;
   title: string;
   description?: string;
   thumbnail?: string;
@@ -58,7 +66,7 @@ export interface LyricData {
 }
 
 export interface SyncedLyricLine {
-  time: number; // seconds
+  time: number;
   text: string;
 }
 
@@ -109,4 +117,20 @@ export interface BackupData {
   likedTracks: Track[];
   history: Track[];
   settings: AppSettings;
+}
+
+export interface ListeningEvent {
+  id?: string;
+  trackId: string;
+  title: string;
+  artist: string;
+  album?: string;
+  thumbnail?: string;
+  eventType: 'PLAY_STARTED' | 'PLAY_25' | 'PLAY_50' | 'PLAY_75' | 'PLAY_COMPLETED' | 'SKIP' | 'LIKE' | 'UNLIKE' | 'DISLIKE' | 'ADD_TO_QUEUE' | 'ADD_TO_PLAYLIST' | 'SEARCH' | 'MOOD_SELECTED';
+  timestamp?: number;
+  duration?: number;
+  listenedSeconds?: number;
+  completionPercent?: number;
+  skipped?: boolean;
+  source?: string;
 }

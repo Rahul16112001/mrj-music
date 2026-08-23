@@ -14,21 +14,25 @@ import {
   Sparkles,
   ChevronRight,
   Music2,
-  Headphones
+  Headphones,
+  Sparkle
 } from 'lucide-react';
 import { Track, MoodStation } from '../types';
 import { api } from '../services/api';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
+import { useAuth } from '../context/AuthContext';
 import { TrackCard } from '../components/TrackCard';
 import { AdBanner } from '../components/AdBanner';
-import { recommendationEngine } from '../services/recommendationEngine';
+import { offlineStorage } from '../services/offlineStorage';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { playTrack, downloadedTrackIds, activeAd, isAdPlaying, dismissAd } = useMusicPlayer();
+  const { user, isAuthenticated } = useAuth();
 
   const [trending, setTrending] = useState<Track[]>([]);
   const [quickPicks, setQuickPicks] = useState<Track[]>([]);
+  const [dailyMixes, setDailyMixes] = useState<any[]>([]);
   const [moods, setMoods] = useState<MoodStation[]>([]);
   const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>([]);
   const [selectedPill, setSelectedPill] = useState<string>('All');
@@ -51,11 +55,14 @@ export const Home: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const data = await api.getCharts();
+        const data = await api.getPersonalizedHome();
         setTrending(data.trending || []);
         setQuickPicks(data.quickPicks || []);
+        setDailyMixes(data.dailyMixes || []);
         setMoods(data.moods || []);
-        setRecentlyPlayed(recommendationEngine.getRecentlyPlayed());
+
+        const history = await offlineStorage.getHistory();
+        setRecentlyPlayed(history);
       } catch (err) {
         console.error('Home load error:', err);
       } finally {
@@ -63,7 +70,7 @@ export const Home: React.FC = () => {
       }
     };
     loadData();
-  }, []);
+  }, [user]);
 
   const handlePillClick = (pill: string) => {
     setSelectedPill(pill);
@@ -111,7 +118,7 @@ export const Home: React.FC = () => {
           <div className="flex items-end justify-between">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#aaaaaa]">
-                Start Radio From A Song
+                {isAuthenticated ? `Recommended for ${user?.name}` : 'Start Radio From A Song'}
               </span>
               <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
                 <span>Quick Picks</span>
@@ -133,7 +140,42 @@ export const Home: React.FC = () => {
         </section>
       )}
 
-      {/* 3. Global Trending Ranked Hits */}
+      {/* 3. Personalized Daily Mixes */}
+      {dailyMixes.length > 0 && (
+        <section className="space-y-4">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#ff4e4e]">
+              Personalized Just For You
+            </span>
+            <h2 className="text-2xl font-black text-white tracking-tight">Your Daily Mixes</h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {dailyMixes.map((mix) => (
+              <div
+                key={mix.id}
+                onClick={() => playTrack(mix.tracks[0], mix.tracks)}
+                className="p-4 rounded-2xl bg-[#141414] hover:bg-[#202020] border border-[#262626] cursor-pointer transition-all hover:scale-105 group"
+              >
+                <div className="aspect-square rounded-xl overflow-hidden mb-3 bg-[#242424] shadow-md relative">
+                  <img src={mix.thumbnail} alt={mix.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <div className="w-12 h-12 rounded-full bg-[#ff0000] text-white flex items-center justify-center shadow-lg">
+                      <Play className="w-6 h-6 fill-white ml-0.5" />
+                    </div>
+                  </div>
+                </div>
+                <h4 className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate">
+                  {mix.title}
+                </h4>
+                <p className="text-xs text-[#aaaaaa] mt-1 line-clamp-2">{mix.description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 4. Global Trending Ranked Hits */}
       <section className="space-y-4">
         <div className="flex items-end justify-between">
           <div>
@@ -160,7 +202,7 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* 4. Top Global Artists */}
+      {/* 5. Top Global Artists */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -190,7 +232,7 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* 5. Moods & Activity Stations */}
+      {/* 6. Moods & Activity Stations */}
       {moods.length > 0 && (
         <section className="space-y-4">
           <div>
@@ -217,7 +259,7 @@ export const Home: React.FC = () => {
         </section>
       )}
 
-      {/* 6. Recently Played & History */}
+      {/* 7. Recently Played & History */}
       {recentlyPlayed.length > 0 && (
         <section className="space-y-4">
           <h2 className="text-2xl font-black text-white tracking-tight">Listen Again</h2>

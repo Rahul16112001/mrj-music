@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { authService } from './auth/authService.js';
+import { requireAuth, optionalAuth } from './auth/authMiddleware.js';
+import { db } from './db/schema.js';
+import { cloudRecommendationService } from './recommendations/cloudRecommendationService.js';
 
 dotenv.config();
 
@@ -127,31 +131,255 @@ const CURATED_CHARTS = {
       views: '3.1B',
       genre: 'Soul / Pop'
     }
-  ],
-  moods: [
-    { id: 'chill', name: 'Chill & Relax', color: 'from-blue-600 to-indigo-900', count: '50 Songs', icon: 'Coffee' },
-    { id: 'workout', name: 'Workout & Energy', color: 'from-red-600 to-orange-900', count: '40 Songs', icon: 'Flame' },
-    { id: 'focus', name: 'Focus & Study', color: 'from-emerald-600 to-teal-900', count: '65 Songs', icon: 'Brain' },
-    { id: 'party', name: 'Party & Club Hits', color: 'from-fuchsia-600 to-pink-900', count: '55 Songs', icon: 'Sparkles' },
-    { id: 'romance', name: 'Romance & Love', color: 'from-rose-600 to-red-900', count: '45 Songs', icon: 'Heart' },
-    { id: 'sleep', name: 'Deep Sleep & Ambient', color: 'from-purple-600 to-slate-900', count: '35 Songs', icon: 'Moon' },
   ]
 };
 
-// 1. Get Top Global Charts & Moods
+// ==========================================
+// 1. AUTHENTICATION ROUTES
+// ==========================================
+
+// Register (Email + Password only)
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    const result = await authService.register(name, email, password);
+    res.status(201).json({ status: 'success', ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Login (Email + Password only)
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const result = await authService.login(email, password);
+    res.json({ status: 'success', ...result });
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+  res.json({ status: 'success', message: 'Logged out successfully' });
+});
+
+// Get Current Logged-in User
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  const user = db.findUserById(req.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  res.json({
+    status: 'success',
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.created_at,
+    }
+  });
+});
+
+// Change Password
+app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Delete Account
+app.delete('/api/auth/account', requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const result = await authService.deleteAccount(req.user.id, password);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Forgot Password
+app.post('/api/auth/forgot-password', (req, res) => {
+  const { email } = req.body;
+  const result = authService.forgotPassword(email);
+  res.json(result);
+});
+
+// Reset Password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    const result = await authService.resetPassword(token, newPassword);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 2. USER PROFILE, LIKES & PLAYLISTS ROUTES
+// ==========================================
+
+// Get / Update User Settings
+app.get('/api/user/settings', requireAuth, (req, res) => {
+  const settings = db.getUserSettings(req.user.id);
+  res.json({ status: 'success', settings });
+});
+
+app.patch('/api/user/settings', requireAuth, (req, res) => {
+  const updated = db.updateUserSettings(req.user.id, req.body);
+  res.json({ status: 'success', settings: updated });
+});
+
+// Get User Liked Tracks
+app.get('/api/user/likes', requireAuth, (req, res) => {
+  const likes = db.getLikedTracks(req.user.id);
+  res.json({ status: 'success', likes });
+});
+
+// Like Track
+app.post('/api/user/likes', requireAuth, (req, res) => {
+  const { track } = req.body;
+  if (!track || !track.id) return res.status(400).json({ error: 'Track object required' });
+
+  const likes = db.addLikedTrack(req.user.id, track);
+  cloudRecommendationService.processEvents(req.user.id, [{
+    eventType: 'LIKE',
+    trackId: track.id,
+    title: track.title,
+    artist: track.artist,
+  }]);
+
+  res.json({ status: 'success', likes });
+});
+
+// Unlike Track
+app.delete('/api/user/likes/:trackId', requireAuth, (req, res) => {
+  const trackId = req.params.trackId;
+  const likes = db.removeLikedTrack(req.user.id, trackId);
+  cloudRecommendationService.processEvents(req.user.id, [{
+    eventType: 'UNLIKE',
+    trackId,
+  }]);
+
+  res.json({ status: 'success', likes });
+});
+
+// Get User Playlists
+app.get('/api/user/playlists', requireAuth, (req, res) => {
+  const playlists = db.getPlaylists(req.user.id);
+  res.json({ status: 'success', playlists });
+});
+
+// Create / Save Playlist
+app.post('/api/user/playlists', requireAuth, (req, res) => {
+  const playlist = req.body;
+  if (!playlist || !playlist.title) return res.status(400).json({ error: 'Playlist title required' });
+
+  const saved = db.savePlaylist(req.user.id, playlist);
+  res.json({ status: 'success', playlist: saved });
+});
+
+// Delete Playlist
+app.delete('/api/user/playlists/:id', requireAuth, (req, res) => {
+  const playlistId = req.params.id;
+  const success = db.deletePlaylist(req.user.id, playlistId);
+  res.json({ status: 'success', success });
+});
+
+// Get User History
+app.get('/api/user/history', requireAuth, (req, res) => {
+  const history = db.getUserHistory(req.user.id);
+  res.json({ status: 'success', history });
+});
+
+// Clear User History
+app.delete('/api/user/history', requireAuth, (req, res) => {
+  db.clearUserHistory(req.user.id);
+  res.json({ status: 'success', message: 'History cleared' });
+});
+
+// Ingest Behavioral Events Batch
+app.post('/api/user/events', optionalAuth, (req, res) => {
+  const { events } = req.body;
+  const userId = req.user ? req.user.id : null;
+
+  if (userId && Array.isArray(events)) {
+    cloudRecommendationService.processEvents(userId, events);
+  }
+
+  res.json({ status: 'success', count: events?.length || 0 });
+});
+
+// Migrate Local Data into Cloud Account
+app.post('/api/user/migrate', requireAuth, (req, res) => {
+  const { likedTracks, playlists, history } = req.body;
+
+  if (Array.isArray(likedTracks)) {
+    for (const t of likedTracks) db.addLikedTrack(req.user.id, t);
+  }
+  if (Array.isArray(playlists)) {
+    for (const p of playlists) db.savePlaylist(req.user.id, p);
+  }
+  if (Array.isArray(history)) {
+    db.addEvents(req.user.id, history);
+  }
+
+  res.json({ status: 'success', message: 'Local data migrated to cloud account successfully' });
+});
+
+// ==========================================
+// 3. RECOMMENDATION ROUTES
+// ==========================================
+
+// Personalized Home
+app.get('/api/recommendations/home', optionalAuth, (req, res) => {
+  const userId = req.user ? req.user.id : null;
+  const homeData = cloudRecommendationService.getPersonalizedHome(userId, CURATED_CHARTS.trending);
+  res.json({ status: 'success', ...homeData });
+});
+
+// Seed Radio
+app.get('/api/recommendations/radio/:trackId', optionalAuth, (req, res) => {
+  const trackId = req.params.trackId;
+  const userId = req.user ? req.user.id : null;
+  const seedTrack = CURATED_CHARTS.trending.find(t => t.id === trackId) || { id: trackId, artist: '', title: '' };
+
+  const radio = cloudRecommendationService.getSeedRadio(userId, seedTrack, CURATED_CHARTS.trending);
+  res.json({ status: 'success', radio });
+});
+
+// Mood Station
+app.get('/api/recommendations/mood/:mood', optionalAuth, (req, res) => {
+  const moodId = req.params.mood;
+  const userId = req.user ? req.user.id : null;
+
+  const station = cloudRecommendationService.getMoodStation(userId, moodId, CURATED_CHARTS.trending);
+  res.json({ status: 'success', ...station });
+});
+
+// ==========================================
+// 4. MUSIC CATALOG & STREAM ROUTES
+// ==========================================
+
+// Charts
 app.get('/api/music/charts', (req, res) => {
   res.json({
     status: 'success',
     trending: CURATED_CHARTS.trending,
     quickPicks: CURATED_CHARTS.trending.slice(0, 8),
-    moods: CURATED_CHARTS.moods,
   });
 });
 
-// 2. Direct Real-Time YouTube Search Scraper with Categorization
+// Real-Time Search Scraper
 app.get('/api/music/search', async (req, res) => {
   const query = req.query.q;
-  const type = req.query.type || 'all'; // 'all', 'songs', 'albums', 'artists'
+  const type = req.query.type || 'all';
 
   if (!query) {
     return res.status(400).json({ error: 'Query parameter q is required' });
@@ -170,7 +398,6 @@ app.get('/api/music/search', async (req, res) => {
     const match = response.data.match(/var ytInitialData = ({.+?});<\/script>/);
     let songs = [];
     let artists = [];
-    let albums = [];
 
     if (match) {
       const data = JSON.parse(match[1]);
@@ -179,7 +406,6 @@ app.get('/api/music/search', async (req, res) => {
       for (const section of contents) {
         const items = section?.itemSectionRenderer?.contents || [];
         for (const item of items) {
-          // 1. Video / Song item
           if (item.videoRenderer) {
             const v = item.videoRenderer;
             const videoId = v.videoId;
@@ -201,7 +427,6 @@ app.get('/api/music/search', async (req, res) => {
             });
           }
 
-          // 2. Channel / Artist item
           if (item.channelRenderer) {
             const c = item.channelRenderer;
             artists.push({
@@ -229,15 +454,13 @@ app.get('/api/music/search', async (req, res) => {
       query,
       results: songs,
       artists: artists.slice(0, 5),
-      albums: [],
     });
   } catch (error) {
-    console.error('Search error:', error.message);
     res.status(500).json({ error: 'Search failed', details: error.message });
   }
 });
 
-// 3. Artist Scraper Endpoint
+// Artist Scraper
 app.get('/api/music/artist/:name', async (req, res) => {
   const artistName = decodeURIComponent(req.params.name);
 
@@ -289,7 +512,7 @@ app.get('/api/music/artist/:name', async (req, res) => {
       name: artistName,
       thumbnail: topSongs[0]?.thumbnail || `https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400`,
       monthlyListeners: '45.2M Monthly Listeners',
-      bio: `${artistName} is one of the most celebrated and streamed artists globally, with millions of fans worldwide.`,
+      bio: `${artistName} is one of the most celebrated and streamed artists globally.`,
       topSongs: topSongs.slice(0, 10),
       albums: [
         {
@@ -305,7 +528,6 @@ app.get('/api/music/artist/:name', async (req, res) => {
       singles: topSongs.slice(5, 12),
       relatedArtists: [
         { id: 'rel_1', name: 'Global Hitmakers', thumbnail: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=300', listeners: '50M' },
-        { id: 'rel_2', name: 'Top Charts Radio', thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300', listeners: '38M' },
       ]
     };
 
@@ -315,8 +537,8 @@ app.get('/api/music/artist/:name', async (req, res) => {
   }
 });
 
-// 4. Album Scraper Endpoint
-app.get('/api/music/album/:id', async (req, res) => {
+// Album Scraper
+app.get('/api/music/album/:id', (req, res) => {
   const albumId = req.params.id;
   res.json({
     status: 'success',
@@ -333,7 +555,7 @@ app.get('/api/music/album/:id', async (req, res) => {
   });
 });
 
-// 5. Audio Stream Resolver (Provides Direct Stream Info)
+// Stream info
 app.get('/api/music/stream/:id', (req, res) => {
   const videoId = req.params.id;
   res.json({
@@ -341,16 +563,13 @@ app.get('/api/music/stream/:id', (req, res) => {
     videoId,
     streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
     quality: 'Opus 160kbps (High-Fi)',
-    bitrate: '160 kbps',
-    codec: 'opus/webm',
   });
 });
 
-// 6. Direct Audio Download Pipe (Pipes Real Audio Stream to Client)
+// Real Audio Download Pipe
 app.get('/api/music/download/:id', async (req, res) => {
   const videoId = req.params.id;
 
-  // Attempt to resolve real direct audio stream URL from public Invidious / Piped instances
   let resolvedAudioUrl = null;
 
   for (const inst of INVIDIOUS_INSTANCES) {
@@ -377,7 +596,6 @@ app.get('/api/music/download/:id', async (req, res) => {
     }
   }
 
-  // If a direct stream URL was resolved, pipe it
   if (resolvedAudioUrl) {
     try {
       const streamResp = await axios({
@@ -395,7 +613,6 @@ app.get('/api/music/download/:id', async (req, res) => {
     }
   }
 
-  // Graceful fallback audio stream
   res.json({
     status: 'online_only',
     message: 'Track available for online playback via High-Fi stream engine',
@@ -403,7 +620,7 @@ app.get('/api/music/download/:id', async (req, res) => {
   });
 });
 
-// 7. Synchronized Real-Time Lyrics
+// Synchronized Lyrics
 app.get('/api/music/lyrics', async (req, res) => {
   const { track, artist, duration } = req.query;
   if (!track || !artist) {
@@ -432,34 +649,12 @@ app.get('/api/music/lyrics', async (req, res) => {
   });
 });
 
-// 8. Dynamic Recommendations & Radio
-app.get('/api/music/recommendations', (req, res) => {
-  const { videoId } = req.query;
-  const pool = CURATED_CHARTS.trending.filter(t => t.id !== videoId);
-  const shuffled = pool.sort(() => 0.5 - Math.random());
-
-  res.json({
-    status: 'success',
-    radioQueue: shuffled,
-  });
-});
-
-// 9. Offline Ad Bundle
+// Ad Bundle
 app.get('/api/ads/bundle', (req, res) => {
   res.json({
     status: 'success',
     version: '1.0',
-    audioAds: [
-      {
-        id: 'ad_mrj_vip',
-        title: 'MRJ Music Unlimited',
-        sponsor: 'MRJ Audio Labs',
-        audioUrl: '',
-        bannerUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600',
-        ctaText: 'Enjoy High-Fi Sound',
-        ctaUrl: 'https://mrjmusic.app'
-      }
-    ],
+    audioAds: [],
     displayBanners: []
   });
 });
