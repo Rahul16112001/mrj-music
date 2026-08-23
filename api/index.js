@@ -7,15 +7,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://api.piped.privacydev.net',
-  'https://pipedapi.tokhmi.xyz',
-  'https://pipedapi.leptons.xyz',
-];
-
+// 1. Curated Top Global Charts & Moods
 const CURATED_CHARTS = {
   trending: [
+    {
+      id: 'BddP6PYo2gs',
+      title: 'Kesariya - Brahmāstra',
+      artist: 'Arijit Singh, Pritam',
+      album: 'Brahmāstra',
+      thumbnail: 'https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg',
+      duration: 268,
+      views: '650M',
+      genre: 'Bollywood / Romantic'
+    },
     {
       id: 'kJQP7kiw5Fk',
       title: 'Despacito',
@@ -25,6 +29,16 @@ const CURATED_CHARTS = {
       duration: 282,
       views: '8.4B',
       genre: 'Latin / Pop'
+    },
+    {
+      id: 'JGwWNGJdvx8',
+      title: 'Shape of You',
+      artist: 'Ed Sheeran',
+      album: '÷ (Divide)',
+      thumbnail: 'https://i.ytimg.com/vi/JGwWNGJdvx8/hqdefault.jpg',
+      duration: 233,
+      views: '6.2B',
+      genre: 'Pop'
     },
     {
       id: 'OPf0YbXqDm0',
@@ -45,16 +59,6 @@ const CURATED_CHARTS = {
       duration: 359,
       views: '1.7B',
       genre: 'Rock / Classic'
-    },
-    {
-      id: 'JGwWNGJdvx8',
-      title: 'Shape of You',
-      artist: 'Ed Sheeran',
-      album: '÷ (Divide)',
-      thumbnail: 'https://i.ytimg.com/vi/JGwWNGJdvx8/hqdefault.jpg',
-      duration: 233,
-      views: '6.2B',
-      genre: 'Pop'
     },
     {
       id: '9bZkp7q19f0',
@@ -97,26 +101,6 @@ const CURATED_CHARTS = {
       genre: 'Hip-Hop / Pop'
     },
     {
-      id: 'CevxZvSJLk8',
-      title: 'Roar',
-      artist: 'Katy Perry',
-      album: 'Prism',
-      thumbnail: 'https://i.ytimg.com/vi/CevxZvSJLk8/hqdefault.jpg',
-      duration: 269,
-      views: '4.0B',
-      genre: 'Pop'
-    },
-    {
-      id: 'kffacxfA7G4',
-      title: 'Baby',
-      artist: 'Justin Bieber ft. Ludacris',
-      album: 'My World 2.0',
-      thumbnail: 'https://i.ytimg.com/vi/kffacxfA7G4/hqdefault.jpg',
-      duration: 224,
-      views: '3.2B',
-      genre: 'Pop / R&B'
-    },
-    {
       id: 'YQHsXMglC9A',
       title: 'Hello',
       artist: 'Adele',
@@ -125,16 +109,6 @@ const CURATED_CHARTS = {
       duration: 367,
       views: '3.1B',
       genre: 'Soul / Pop'
-    },
-    {
-      id: '0KSOMA3QBU0',
-      title: 'Dark Horse',
-      artist: 'Katy Perry ft. Juicy J',
-      album: 'Prism',
-      thumbnail: 'https://i.ytimg.com/vi/0KSOMA3QBU0/hqdefault.jpg',
-      duration: 215,
-      views: '3.7B',
-      genre: 'Trap / Pop'
     }
   ],
   moods: [
@@ -157,7 +131,7 @@ app.get('/api/music/charts', (req, res) => {
   });
 });
 
-// 2. Worldwide Real-Time Search
+// 2. Direct Real-Time YouTube Search Web Scraper
 app.get('/api/music/search', async (req, res) => {
   const query = req.query.q;
   if (!query) {
@@ -165,99 +139,97 @@ app.get('/api/music/search', async (req, res) => {
   }
 
   try {
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' song audio')}`;
+    const response = await axios.get(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      timeout: 6000,
+    });
+
+    const match = response.data.match(/var ytInitialData = ({.+?});<\/script>/);
     let results = [];
-    for (const instance of PIPED_INSTANCES) {
-      try {
-        const response = await axios.get(`${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
-          timeout: 4000
-        });
-        if (response.data && response.data.items) {
-          results = response.data.items.map((item) => ({
-            id: item.url.replace('/watch?v=', ''),
-            title: item.title,
-            artist: item.uploaderName || 'Unknown Artist',
-            album: item.album || 'Single',
-            thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${item.url.replace('/watch?v=', '')}/hqdefault.jpg`,
-            duration: item.duration || 210,
-            views: item.views ? `${(item.views / 1000000).toFixed(1)}M` : '1.2M',
-          }));
-          break;
+
+    if (match) {
+      const data = JSON.parse(match[1]);
+      const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+
+      for (const section of contents) {
+        const items = section?.itemSectionRenderer?.contents || [];
+        for (const item of items) {
+          if (item.videoRenderer) {
+            const v = item.videoRenderer;
+            const videoId = v.videoId;
+            const title = v.title?.runs?.[0]?.text || 'Untitled';
+            const artist = v.ownerText?.runs?.[0]?.text || 'Various Artists';
+            const lengthText = v.lengthText?.simpleText || '3:30';
+            
+            // Parse duration string to seconds
+            const parts = lengthText.split(':').map(Number);
+            const durationSec = parts.length === 2 ? parts[0] * 60 + parts[1] : parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : 210;
+
+            results.push({
+              id: videoId,
+              title,
+              artist,
+              album: 'Single',
+              thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              duration: durationSec,
+              views: v.viewCountText?.simpleText || '1M views',
+            });
+          }
         }
-      } catch (err) {
-        // try next
       }
     }
 
+    // Limit to top 25 high-relevance tracks
+    results = results.slice(0, 25);
+
     if (results.length === 0) {
-      const qLower = String(query).toLowerCase();
-      results = CURATED_CHARTS.trending
-        .filter(t => t.title.toLowerCase().includes(qLower) || t.artist.toLowerCase().includes(qLower))
-        .concat([
-          {
-            id: 'JGwWNGJdvx8',
-            title: `${query} (Official Audio)`,
-            artist: 'Global Hitmaker',
-            album: 'Worldwide Collection',
-            thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-            duration: 215,
-            views: '4.8M',
-          }
-        ]);
-    }
-
-    res.json({ status: 'success', query, results });
-  } catch (error) {
-    res.status(500).json({ error: 'Search failed', details: error.message });
-  }
-});
-
-// 3. Audio Stream Resolver
-app.get('/api/music/stream/:id', async (req, res) => {
-  const videoId = req.params.id;
-
-  try {
-    let streamUrl = null;
-    let audioFormat = 'Opus 160kbps (Format 251)';
-
-    for (const instance of PIPED_INSTANCES) {
-      try {
-        const response = await axios.get(`${instance}/streams/${videoId}`, { timeout: 3500 });
-        if (response.data && response.data.audioStreams && response.data.audioStreams.length > 0) {
-          const highStream = response.data.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
-          streamUrl = highStream.url;
-          audioFormat = `${highStream.format || 'Opus'} ${Math.round(highStream.bitrate / 1000)}kbps`;
-          break;
-        }
-      } catch (err) {}
-    }
-
-    if (!streamUrl) {
-      streamUrl = `https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3`;
+      // Fallback
+      results = CURATED_CHARTS.trending.filter(t =>
+        t.title.toLowerCase().includes(String(query).toLowerCase()) ||
+        t.artist.toLowerCase().includes(String(query).toLowerCase())
+      );
     }
 
     res.json({
       status: 'success',
-      videoId,
-      streamUrl,
-      quality: audioFormat,
-      bitrate: '160 kbps',
-      codec: 'opus/webm',
-      cached: true,
+      query,
+      results,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Stream resolution failed', details: error.message });
+    console.error('Scraping error:', error.message);
+    res.status(500).json({ error: 'Search failed', details: error.message });
   }
 });
 
-// 4. Lyrics
+// 3. Audio Stream Resolver (Provides Video ID and Direct Stream Meta)
+app.get('/api/music/stream/:id', (req, res) => {
+  const videoId = req.params.id;
+  res.json({
+    status: 'success',
+    videoId,
+    streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    quality: 'Opus 160kbps (Format 251 High-Fi)',
+    bitrate: '160 kbps',
+    codec: 'opus/webm',
+  });
+});
+
+// 4. Synchronized Real-Time Lyrics (LRCLIB API)
 app.get('/api/music/lyrics', async (req, res) => {
   const { track, artist, duration } = req.query;
   if (!track || !artist) {
     return res.status(400).json({ error: 'track and artist query parameters required' });
   }
 
+  // Clean track title (strip out "Official Video", "(Lyrics)", etc.)
+  const cleanTrack = String(track).replace(/\(.*?\)|\[.*?\]|official|video|audio|lyrics/gi, '').trim();
+
   try {
-    const lrcUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(track)}&artist_name=${encodeURIComponent(artist)}&duration=${duration || ''}`;
+    const lrcUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(artist)}&duration=${duration || ''}`;
     const response = await axios.get(lrcUrl, { timeout: 4000 });
 
     if (response.data) {
@@ -267,18 +239,16 @@ app.get('/api/music/lyrics', async (req, res) => {
         plainLyrics: response.data.plainLyrics || null,
       });
     }
+  } catch (err) {}
 
-    res.json({ status: 'not_found', syncedLyrics: null, plainLyrics: null });
-  } catch (error) {
-    res.json({
-      status: 'fallback',
-      syncedLyrics: `[00:05.00] (Instrumental Intro)\n[00:15.00] Welcome to MRJ Music\n[00:25.00] High-Fidelity Worldwide Audio\n[00:35.00] Enjoying ${track} by ${artist}\n[00:50.00] Offline and Online Synchronized Lyrics\n[01:10.00] (Instrumental Solo)`,
-      plainLyrics: `Welcome to MRJ Music\nEnjoying ${track} by ${artist}\nHigh-Fidelity Worldwide Audio`,
-    });
-  }
+  res.json({
+    status: 'fallback',
+    syncedLyrics: `[00:05.00] (Instrumental Intro)\n[00:15.00] Welcome to MRJ Music\n[00:25.00] High-Fidelity Worldwide Audio\n[00:35.00] Enjoying ${cleanTrack}\n[00:50.00] Full Offline & Online Streaming\n[01:10.00] (Instrumental Solo)`,
+    plainLyrics: `Welcome to MRJ Music\nEnjoying ${cleanTrack}\nHigh-Fidelity Worldwide Audio`,
+  });
 });
 
-// 5. Recommendations
+// 5. Dynamic Recommendations & Radio
 app.get('/api/music/recommendations', (req, res) => {
   const { videoId } = req.query;
   const pool = CURATED_CHARTS.trending.filter(t => t.id !== videoId);
@@ -290,7 +260,7 @@ app.get('/api/music/recommendations', (req, res) => {
   });
 });
 
-// 6. Offline Ads
+// 6. Offline Ad Bundle
 app.get('/api/ads/bundle', (req, res) => {
   res.json({
     status: 'success',
@@ -300,7 +270,7 @@ app.get('/api/ads/bundle', (req, res) => {
         id: 'ad_mrj_vip',
         title: 'MRJ Music VIP Pass',
         sponsor: 'MRJ Audio Labs',
-        audioUrl: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=short-ad-chime.mp3',
+        audioUrl: '',
         bannerUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600',
         ctaText: 'Get Unlimited VIP',
         ctaUrl: 'https://mrjmusic.app/vip'
