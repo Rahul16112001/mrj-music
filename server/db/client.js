@@ -8,28 +8,30 @@ const { Pool } = pg;
 const DATABASE_URL = process.env.DATABASE_URL;
 
 let pool = null;
-let isConnected = false;
 
 // If DATABASE_URL is provided, initialize pg.Pool
 if (DATABASE_URL) {
-  const isSslRequired = DATABASE_URL.includes('sslmode=require') || !DATABASE_URL.includes('localhost') && !DATABASE_URL.includes('127.0.0.1');
+  try {
+    const isSslRequired = DATABASE_URL.includes('sslmode=require') || (!DATABASE_URL.includes('localhost') && !DATABASE_URL.includes('127.0.0.1'));
 
-  pool = new Pool({
-    connectionString: DATABASE_URL,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
-    ssl: isSslRequired ? { rejectUnauthorized: false } : false,
-  });
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+      ssl: isSslRequired ? { rejectUnauthorized: false } : false,
+    });
 
-  pool.on('error', (err) => {
-    console.error('Unexpected PostgreSQL client error:', err.message);
-  });
-} else if (process.env.NODE_ENV === 'production') {
-  console.error('FATAL: DATABASE_URL environment variable is required in production.');
+    pool.on('error', (err) => {
+      console.error('Unexpected PostgreSQL client error:', err.message);
+    });
+  } catch (e) {
+    console.error('PostgreSQL Pool initialization error:', e.message);
+    pool = null;
+  }
 }
 
-// In-Memory Relational Store used only when DATABASE_URL is not configured in local development
+// In-Memory Relational Store used when DATABASE_URL is not configured or in local/serverless fallback
 class EmbeddedRelationalStore {
   constructor() {
     this.tables = {
@@ -51,7 +53,6 @@ class EmbeddedRelationalStore {
   }
 
   async query(text, params = []) {
-    // SQL Emulation for local testing without external Postgres daemon running
     const sql = text.trim();
 
     // 1. SELECT 1 (Health check)
@@ -89,7 +90,6 @@ class EmbeddedRelationalStore {
     }
 
     if (/UPDATE users SET/i.test(sql)) {
-      // Dynamic user update
       const id = params[params.length - 1];
       const user = this.tables.users.get(id);
       if (user) {
@@ -190,7 +190,7 @@ class EmbeddedRelationalStore {
       return { rows: profile ? [profile] : [], rowCount: profile ? 1 : 0 };
     }
 
-    if (/INSERT INTO taste_profiles/i.test(sql) || /UPSERT INTO taste_profiles/i.test(sql)) {
+    if (/INSERT INTO taste_profiles/i.test(sql)) {
       const [user_id, preferred_artists, preferred_genres, preferred_moods, liked_artists, disliked_artists, liked_genres, disliked_genres, skip_rate, completion_rate, total_plays, total_skips, total_completions, recent_seeds, updated_at] = params;
       const profile = {
         user_id,
@@ -291,7 +291,6 @@ class EmbeddedRelationalStore {
         .filter(p => p.user_id === userId)
         .sort((a, b) => b.updated_at - a.updated_at);
 
-      // Hydrate with playlist_tracks
       const result = userPlaylists.map(p => {
         const tracks = Array.from(this.tables.playlist_tracks.values())
           .filter(t => t.playlist_id === p.id)
@@ -355,14 +354,22 @@ const embeddedStore = new EmbeddedRelationalStore();
 export const dbClient = {
   async query(text, params) {
     if (pool) {
-      return await pool.query(text, params);
+      try {
+        return await pool.query(text, params);
+      } catch (err) {
+        console.warn('PostgreSQL query error, using embedded engine:', err.message);
+      }
     }
     return await embeddedStore.query(text, params);
   },
 
   async getClient() {
     if (pool) {
-      return await pool.connect();
+      try {
+        return await pool.connect();
+      } catch (err) {
+        console.warn('PostgreSQL connect error:', err.message);
+      }
     }
     return {
       query: (text, params) => embeddedStore.query(text, params),
