@@ -1,13 +1,7 @@
 import axios from 'axios';
 import { contentClassifier, CONTENT_TYPES } from './contentClassifier.js';
 import { searchIntentEngine, INTENT_TYPES } from './searchIntentEngine.js';
-
-function cleanSlug(text = '') {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-}
+import { trackIdentityManager } from './trackIdentityManager.js';
 
 export const canonicalMusicResolver = {
   /**
@@ -37,10 +31,10 @@ export const canonicalMusicResolver = {
           const rawArtist = item.artistName || '';
           const cleanTitle = contentClassifier.cleanTitle(rawTitle);
           const cleanArtist = contentClassifier.cleanArtist(rawArtist);
-          const entityKey = `${cleanSlug(cleanTitle)}|${cleanSlug(cleanArtist)}`;
+          const canonicalTrackId = trackIdentityManager.generateCanonicalTrackId(cleanTitle, cleanArtist);
 
-          if (seenEntities.has(entityKey)) continue;
-          seenEntities.add(entityKey);
+          if (seenEntities.has(canonicalTrackId)) continue;
+          seenEntities.add(canonicalTrackId);
 
           const durationSec = Math.round((item.trackTimeMillis || 210000) / 1000);
           const releaseYear = item.releaseDate ? item.releaseDate.substring(0, 4) : '2024';
@@ -59,8 +53,9 @@ export const canonicalMusicResolver = {
           }
 
           songs.push({
-            id: entityKey,
-            canonicalMusicEntityId: entityKey,
+            id: canonicalTrackId,
+            canonicalTrackId,
+            canonicalMusicEntityId: canonicalTrackId,
             title: cleanTitle,
             rawTitle,
             artist: cleanArtist,
@@ -83,7 +78,7 @@ export const canonicalMusicResolver = {
             isShort: false,
             isReaction: false,
             isCompilation: false,
-            musicEntityKey: entityKey,
+            musicEntityKey: canonicalTrackId,
             sourceType: 'canonical_catalog',
             playbackFormat: 'audio',
             provider: 'canonical',
@@ -134,109 +129,38 @@ export const canonicalMusicResolver = {
   },
 
   /**
-   * Discovers and binds playable YouTube Audio and Video sources for a canonical music entity
+   * Discovers and binds playable YouTube Audio and Video sources with strict identity validation
    */
   async bindPlaybackSources(canonicalSong, youtubeCandidates = []) {
     if (!canonicalSong) return null;
 
-    const targetTitle = (canonicalSong.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const targetArtist = (canonicalSong.artist || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const validatedAudioSource = trackIdentityManager.resolvePlaybackSource(
+      canonicalSong,
+      youtubeCandidates,
+      'audio'
+    );
+    const validatedVideoSource = trackIdentityManager.resolvePlaybackSource(
+      canonicalSong,
+      youtubeCandidates,
+      'video'
+    );
 
-    let bestAudioCandidate = null;
-    let bestAudioScore = -Infinity;
+    const providerTrackId = validatedAudioSource?.providerTrackId || validatedVideoSource?.providerTrackId || null;
 
-    let bestVideoCandidate = null;
-    let bestVideoScore = -Infinity;
-
-    for (const cand of youtubeCandidates) {
-      const candRawTitle = (cand.rawTitle || cand.title || '').toLowerCase();
-      const candTitleClean = candRawTitle.replace(/[^a-z0-9]/g, '');
-      const candArtist = (cand.artist || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const text = `${candRawTitle} ${candArtist}`;
-
-      const classification = contentClassifier.classifySearchResult(cand);
-
-      // Skip reactions, shorts, slowed, compilations, covers
-      if (classification.isReaction || classification.isShort || classification.isCompilation || classification.isSlowed || classification.isCover) {
-        continue;
-      }
-
-      // 1. Audio Candidate Scoring
-      let aScore = 0;
-
-      if (candTitleClean.includes(targetTitle) || targetTitle.includes(candTitleClean)) {
-        aScore += 100;
-      }
-      if (text.includes(targetArtist) || targetArtist.includes(candArtist)) {
-        aScore += 50;
-      }
-
-      // Verified Official Audio / Full Audio / Topic track
-      if (text.includes('full audio') || text.includes('official audio') || text.includes('- topic')) {
-        aScore += 80;
-      }
-      if (classification.isOfficialMusic) {
-        aScore += 40;
-      }
-
-      if (classification.isMusicVideo) {
-        aScore += 20; // Valid fallback
-      }
-
-      const durDiff = Math.abs(cand.duration - canonicalSong.duration);
-      if (durDiff <= 25) {
-        aScore += 60;
-      } else if (durDiff <= 60) {
-        aScore += 20;
-      }
-
-      if (aScore > bestAudioScore) {
-        bestAudioScore = aScore;
-        bestAudioCandidate = cand;
-      }
-
-      // 2. Video Candidate Scoring
-      if (classification.isMusicVideo || classification.contentType === CONTENT_TYPES.VIDEO || classification.isLyricsVideo) {
-        let vScore = 0;
-        if (candTitleClean.includes(targetTitle)) vScore += 100;
-        if (text.includes(targetArtist)) vScore += 50;
-        if (classification.isMusicVideo) vScore += 60;
-        if (classification.isOfficialMusic) vScore += 40;
-
-        if (vScore > bestVideoScore) {
-          bestVideoScore = vScore;
-          bestVideoCandidate = cand;
-        }
-      }
-    }
-
-    const selectedAudio = bestAudioCandidate || youtubeCandidates[0];
-    const selectedVideo = bestVideoCandidate || bestAudioCandidate;
-
-    const audioId = selectedAudio ? selectedAudio.id : canonicalSong.id;
-    const videoId = selectedVideo ? selectedVideo.id : audioId;
+    // Use authentic candidate thumbnail only if validated
+    const matchedCandidate = youtubeCandidates.find(
+      (c) => (c.id || c.videoId) === providerTrackId
+    );
+    const thumbnail = matchedCandidate?.thumbnail || canonicalSong.thumbnail;
 
     return {
       ...canonicalSong,
-      providerTrackId: audioId,
-      provider: 'youtube',
-      thumbnail: selectedAudio?.thumbnail || canonicalSong.thumbnail,
-      audioSource: {
-        sourceId: `src_aud_${audioId}`,
-        musicEntityId: canonicalSong.id,
-        type: 'audio',
-        provider: 'youtube',
-        providerTrackId: audioId,
-        duration: selectedAudio ? selectedAudio.duration : canonicalSong.duration,
-      },
-      videoSource: {
-        sourceId: `src_vid_${videoId}`,
-        musicEntityId: canonicalSong.id,
-        type: 'video',
-        provider: 'youtube',
-        providerTrackId: videoId,
-        duration: selectedVideo ? selectedVideo.duration : canonicalSong.duration,
-      },
+      canonicalTrackId: canonicalSong.canonicalTrackId || canonicalSong.id,
+      providerTrackId,
+      provider: providerTrackId ? 'youtube' : 'canonical',
+      thumbnail,
+      audioSource: validatedAudioSource,
+      videoSource: validatedVideoSource,
     };
   },
 };

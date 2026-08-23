@@ -14,6 +14,9 @@ const POPULAR_SEARCH_SEEDS = [
   'Dua Lipa',
   'Pritam',
   'Badshah',
+  'Guru Randhawa',
+  'Diljit Dosanjh',
+  'Karan Aujla',
   'Imagine Dragons',
   'Harry Styles',
   'King',
@@ -31,22 +34,54 @@ const POPULAR_SEARCH_SEEDS = [
 ];
 
 export const searchSuggestionService = {
-  async getSuggestions(query = '', userId = null) {
+  /**
+   * Generates persona-aware and region-aware search suggestions
+   */
+  async getSuggestions(query = '', userId = null, options = {}) {
     const rawClean = (query || '').trim();
     const normQuery = searchRelevanceEngine.normalize(rawClean);
     const intent = searchIntentEngine.parse(rawClean);
 
-    // 1. If query is empty, return Recent Searches + Popular Seeds
-    if (!normQuery) {
-      const recentSearches = userId ? await db.getSearchHistory(userId) : [];
-      const profile = userId ? await db.getTasteProfile(userId) : null;
-      const preferredArtists = Object.keys(profile?.preferred_artists || {}).slice(0, 5);
+    // 1. Fetch User Profile, History, Likes & Session Signals
+    let profile = null;
+    let searchHistory = [];
+    let recentlyPlayed = [];
+    let likedTracks = [];
 
+    if (userId) {
+      try {
+        const [p, sh, rh, lt] = await Promise.allSettled([
+          db.getTasteProfile(userId),
+          db.getSearchHistory(userId),
+          db.getUserHistory(userId),
+          db.getLikedTracks(userId),
+        ]);
+        profile = p.status === 'fulfilled' ? p.value : null;
+        searchHistory = sh.status === 'fulfilled' ? sh.value || [] : [];
+        recentlyPlayed = rh.status === 'fulfilled' ? rh.value || [] : [];
+        likedTracks = lt.status === 'fulfilled' ? lt.value || [] : [];
+      } catch (err) {
+        console.warn('Taste profile fetch notice:', err.message);
+      }
+    }
+
+    const preferredArtists = new Set(Object.keys(profile?.preferred_artists || {}));
+    const likedArtists = new Set(profile?.liked_artists || []);
+    const preferredGenres = new Set(Object.keys(profile?.preferred_genres || {}));
+    const preferredLanguages = new Set(profile?.preferred_languages || []);
+    const userRegion = options.region || profile?.region || 'GLOBAL';
+
+    const sessionSearches = options.sessionContext?.sessionSearches || [];
+    const sessionArtists = options.sessionContext?.sessionArtists || [];
+
+    // 2. EMPTY QUERY: Return Recent Searches + Popular Seeds + Preferred Artists
+    if (!normQuery) {
+      const topArtists = Array.from(new Set([...preferredArtists, ...likedArtists])).slice(0, 5);
       return {
         query: '',
-        recent: recentSearches.slice(0, 8),
+        recent: searchHistory.slice(0, 8),
         popular: POPULAR_SEARCH_SEEDS.slice(0, 10),
-        personalized: preferredArtists,
+        personalized: topArtists,
         suggestions: POPULAR_SEARCH_SEEDS.slice(0, 6),
         songs: [],
         artists: [],
@@ -56,75 +91,143 @@ export const searchSuggestionService = {
       };
     }
 
-    // 2. Separate RECENT SEARCHES (Strictly from user history matching query prefix/tokens)
+    // 3. SEPARATE RECENT SEARCHES (Strictly User History matching query)
     const recentMatches = [];
-    if (userId) {
-      const history = await db.getSearchHistory(userId);
-      for (const h of history) {
-        const normH = searchRelevanceEngine.normalize(h);
-        if (normH.includes(normQuery) || normQuery.includes(normH)) {
-          recentMatches.push(h);
-        }
+    for (const h of searchHistory) {
+      const normH = searchRelevanceEngine.normalize(h);
+      if (normH.startsWith(normQuery) || normH.includes(normQuery) || normQuery.includes(normH)) {
+        if (!recentMatches.includes(h)) recentMatches.push(h);
       }
     }
 
-    // 3. Progressive SUGGESTIONS: Build query completions based on prefix relevance
-    const suggestionMap = new Map();
+    // 4. CANDIDATE QUERY SUGGESTIONS POOL
+    const rawSuggestions = new Set();
 
-    const addSuggestion = (text, weight) => {
-      if (!text) return;
-      const clean = text.trim();
-      const normText = searchRelevanceEngine.normalize(clean);
-      if (!normText) return;
+    // Base query + natural intent completions
+    rawSuggestions.add(rawClean);
+    rawSuggestions.add(`${rawClean} song`);
+    rawSuggestions.add(`${rawClean} songs`);
+    rawSuggestions.add(`${rawClean} lyrics`);
+    rawSuggestions.add(`${rawClean} live`);
+    rawSuggestions.add(`${rawClean} remix`);
 
-      // Progressive relevance check
-      if (normText === normQuery) {
-        suggestionMap.set(clean, Math.max(suggestionMap.get(clean) || 0, weight + 500));
-      } else if (normText.startsWith(normQuery)) {
-        suggestionMap.set(clean, Math.max(suggestionMap.get(clean) || 0, weight + 300));
-      } else if (normText.includes(normQuery)) {
-        suggestionMap.set(clean, Math.max(suggestionMap.get(clean) || 0, weight + 100));
-      }
-    };
-
-    // Add base query & intent variations
-    addSuggestion(rawClean, 200);
-    addSuggestion(`${rawClean} song`, 180);
-    addSuggestion(`${rawClean} lyrics`, 160);
-    addSuggestion(`${rawClean} live`, 140);
-    addSuggestion(`${rawClean} remix`, 120);
-
-    // Add matching popular seeds
+    // Popular seeds matching query
     for (const seed of POPULAR_SEARCH_SEEDS) {
-      addSuggestion(seed, 150);
+      const normSeed = searchRelevanceEngine.normalize(seed);
+      if (normSeed.includes(normQuery) || normQuery.includes(normSeed)) {
+        rawSuggestions.add(seed);
+        rawSuggestions.add(`${seed} songs`);
+      }
     }
 
-    // 4. Query Catalog with Search Relevance Engine
+    // User's liked artists or preferred artists matching query
+    for (const art of [...preferredArtists, ...likedArtists]) {
+      const normArt = searchRelevanceEngine.normalize(art);
+      if (normArt.includes(normQuery) || normQuery.includes(normArt)) {
+        rawSuggestions.add(art);
+        rawSuggestions.add(`${art} songs`);
+        rawSuggestions.add(`${art} new songs`);
+      }
+    }
+
+    // 5. QUERY CATALOG WITH RELEVANCE ENGINE
     let searchResults = { songs: [], videos: [], artists: [], albums: [], podcasts: [] };
     try {
       searchResults = await musicProvider.search(rawClean, 'all', 20);
     } catch (e) {
-      console.warn('Search suggestion provider fallback:', e.message);
+      console.warn('Search suggestion provider notice:', e.message);
     }
 
-    // Extract title completions from top songs
     for (const song of searchResults.songs || []) {
-      addSuggestion(song.title, 190);
+      rawSuggestions.add(song.title);
+      if (song.artist) rawSuggestions.add(`${song.title} ${song.artist}`);
     }
     for (const artist of searchResults.artists || []) {
-      addSuggestion(artist.name, 170);
-    }
-    for (const alb of searchResults.albums || []) {
-      addSuggestion(alb.title, 150);
+      rawSuggestions.add(artist.name);
+      rawSuggestions.add(`${artist.name} songs`);
     }
 
-    // Sort suggestions descending by progressive relevance weight
-    const sortedSuggestions = Array.from(suggestionMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map((entry) => entry[0])
-      .slice(0, 8);
+    // 6. MULTI-SIGNAL SUGGESTION SCORING (Query Relevance Dominates + Persona Boost)
+    const scoredSuggestions = [];
+    const queryTokens = searchRelevanceEngine.tokenize(normQuery);
 
-    // Apply strict search relevance engine to filter Songs in suggestions
+    for (const text of rawSuggestions) {
+      const clean = text.trim();
+      const normText = searchRelevanceEngine.normalize(clean);
+      if (!normText) continue;
+
+      let score = 0;
+
+      // A. Query Relevance (Dominant Weight)
+      if (normText === normQuery) {
+        score += 600; // Exact match
+      } else if (normText.startsWith(normQuery)) {
+        score += 400; // Prefix match
+      } else if (normText.includes(normQuery)) {
+        score += 250; // Phrase match
+      }
+
+      // Token match
+      const textTokens = searchRelevanceEngine.tokenize(normText);
+      let matchedTokens = 0;
+      for (const qt of queryTokens) {
+        if (textTokens.includes(qt)) matchedTokens++;
+      }
+      score += Math.round((matchedTokens / Math.max(1, queryTokens.length)) * 180);
+
+      // B. User History & Persona Signals (Tie-Breaking & Relevant Boost)
+      if (searchHistory.some((h) => searchRelevanceEngine.normalize(h) === normText)) {
+        score += 150;
+      }
+      if (recentlyPlayed.some((r) => normText.includes(searchRelevanceEngine.normalize(r.artist || r.title)))) {
+        score += 120;
+      }
+      for (const art of [...preferredArtists, ...likedArtists]) {
+        const normArt = searchRelevanceEngine.normalize(art);
+        if (normText.includes(normArt)) {
+          score += 160;
+          break;
+        }
+      }
+
+      // C. Genre / Language Signals
+      for (const genre of preferredGenres) {
+        if (normText.includes(genre.toLowerCase())) {
+          score += 100;
+          break;
+        }
+      }
+
+      // D. Session Context
+      for (const sArt of sessionArtists) {
+        if (normText.includes(searchRelevanceEngine.normalize(sArt))) {
+          score += 120;
+          break;
+        }
+      }
+
+      // E. Popularity Tie-Breaker
+      if (POPULAR_SEARCH_SEEDS.some((s) => searchRelevanceEngine.normalize(s) === normText)) {
+        score += 30;
+      }
+
+      scoredSuggestions.push({ text: clean, score });
+    }
+
+    // Sort descending by score and deduplicate
+    scoredSuggestions.sort((a, b) => b.score - a.score);
+    const finalSuggestions = [];
+    const seenTexts = new Set();
+    for (const item of scoredSuggestions) {
+      const lower = item.text.toLowerCase();
+      if (!seenTexts.has(lower)) {
+        seenTexts.add(lower);
+        finalSuggestions.push(item.text);
+      }
+      if (finalSuggestions.length >= 8) break;
+    }
+
+    // 7. MUSIC MATCHES FILTERED BY SEARCH RELEVANCE ENGINE
     const relevantSongs = searchRelevanceEngine.filterAndRank(
       searchResults.songs || [],
       rawClean,
@@ -132,7 +235,6 @@ export const searchSuggestionService = {
       6
     );
 
-    // Filter matching Artists
     const relevantArtists = (searchResults.artists || [])
       .filter((a) => {
         const normArt = searchRelevanceEngine.normalize(a.name);
@@ -140,10 +242,9 @@ export const searchSuggestionService = {
       })
       .slice(0, 3);
 
-    // Filter matching Albums
     const relevantAlbums = (searchResults.albums || [])
       .filter((a) => {
-        const normAlb = searchRelevanceEngine.normalize(a.title);
+        const normAlb = searchRelevanceEngine.normalize(a.title + ' ' + a.artist);
         return normAlb.includes(normQuery) || normQuery.includes(normAlb);
       })
       .slice(0, 2);
@@ -152,7 +253,7 @@ export const searchSuggestionService = {
       query: rawClean,
       intent: intent.primaryIntent,
       recent: recentMatches.slice(0, 4),
-      suggestions: sortedSuggestions,
+      suggestions: finalSuggestions,
       songs: relevantSongs,
       artists: relevantArtists,
       albums: relevantAlbums,

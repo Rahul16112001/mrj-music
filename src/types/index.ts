@@ -32,6 +32,7 @@ export interface Track {
   isReaction?: boolean;
   isCompilation?: boolean;
   isPodcast?: boolean;
+  canonicalTrackId?: string;
   canonicalMusicEntityId?: string;
   releaseYear?: string;
   artistId?: string;

@@ -274,7 +274,13 @@ app.get(['/api/music/suggestions', '/music/suggestions'], optionalAuth, async (r
   try {
     const query = req.query.q || '';
     const userId = req.user ? req.user.id : null;
-    const data = await searchSuggestionService.getSuggestions(query, userId);
+    const region = req.query.region || req.headers['x-mrj-region'] || 'GLOBAL';
+    const language = req.query.lang || req.headers['x-mrj-lang'] || 'all';
+
+    const data = await searchSuggestionService.getSuggestions(query, userId, {
+      region,
+      language,
+    });
     res.json({ status: 'success', ...data });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -483,12 +489,27 @@ app.get(['/api/music/album/:id', '/music/album/:id'], async (req, res) => {
 
 app.get(['/api/music/stream/:id', '/music/stream/:id'], async (req, res) => {
   try {
-    const videoId = req.params.id;
+    const id = req.params.id;
+    let videoId = id;
+
+    // If id is a canonical track ID, resolve its verified playback source
+    if (id.includes('|')) {
+      const parts = id.split('|');
+      const title = parts[0].replace(/-/g, ' ');
+      const artist = parts[1] ? parts[1].replace(/-/g, ' ') : '';
+      const searchRes = await musicProvider.search(`${title} ${artist}`, 'songs', 5);
+      const topSong = searchRes.songs[0];
+      if (topSong && topSong.providerTrackId) {
+        videoId = topSong.providerTrackId;
+      }
+    }
+
     const stream = await musicProvider.resolveAudioStream(videoId);
 
     if (stream) {
       return res.json({
         status: 'success',
+        canonicalTrackId: id,
         videoId,
         streamUrl: stream.url,
         mimeType: stream.mimeType,
@@ -502,6 +523,7 @@ app.get(['/api/music/stream/:id', '/music/stream/:id'], async (req, res) => {
 
     res.json({
       status: 'online_only',
+      canonicalTrackId: id,
       videoId,
       streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
       mimeType: 'audio/webm',
