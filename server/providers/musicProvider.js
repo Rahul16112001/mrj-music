@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { contentClassifier, CONTENT_TYPES } from '../catalog/contentClassifier.js';
 import { searchIntentEngine, INTENT_TYPES } from '../catalog/searchIntentEngine.js';
+import { canonicalMusicResolver } from '../catalog/canonicalMusicResolver.js';
 
 // Multiple resilient multi-region stream endpoints
 const PIPED_INSTANCES = [
@@ -33,7 +34,7 @@ function recordInstanceMetric(url, success, latencyMs) {
 }
 
 export const musicProvider = {
-  // 1. Search Music Catalog with Music-First Classification and Entity Deduplication
+  // 1. Search Music Catalog with Canonical Music Entity Resolution & Playback Source Binding
   async search(query, type = 'all', limit = 30) {
     if (!query || !query.trim()) {
       return { songs: [], videos: [], artists: [], albums: [], podcasts: [], results: [] };
@@ -42,153 +43,157 @@ export const musicProvider = {
     const intent = searchIntentEngine.parse(query);
 
     try {
+      // 1. Parallel: Search Canonical Music Metadata & Scrape YouTube Playback Candidates
       const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query.trim())}`;
 
-      const response = await axios.get(searchUrl, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        timeout: 6000,
-      });
+      const [canonicalRes, ytResponse] = await Promise.allSettled([
+        canonicalMusicResolver.searchCanonicalEntities(query, intent),
+        axios.get(searchUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          timeout: 6000,
+        }),
+      ]);
 
-      const match = response.data.match(/var ytInitialData = ({.+?});<\/script>/);
+      // Extract raw YouTube candidates
       const rawCandidates = [];
-      const artists = [];
+      const ytArtists = [];
 
-      if (match) {
-        const data = JSON.parse(match[1]);
-        const contents =
-          data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+      if (ytResponse.status === 'fulfilled' && ytResponse.value?.data) {
+        const match = ytResponse.value.data.match(/var ytInitialData = ({.+?});<\/script>/);
+        if (match) {
+          const data = JSON.parse(match[1]);
+          const contents =
+            data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
 
-        for (const section of contents) {
-          const items = section?.itemSectionRenderer?.contents || [];
-          for (const item of items) {
-            if (item.videoRenderer) {
-              const v = item.videoRenderer;
-              const videoId = v.videoId;
-              const rawTitle = v.title?.runs?.[0]?.text || v.title?.accessibility?.accessibilityData?.label || 'Untitled';
-              const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
-              const lengthText = v.lengthText?.simpleText || '3:30';
+          for (const section of contents) {
+            const items = section?.itemSectionRenderer?.contents || [];
+            for (const item of items) {
+              if (item.videoRenderer) {
+                const v = item.videoRenderer;
+                const videoId = v.videoId;
+                const rawTitle = v.title?.runs?.[0]?.text || v.title?.accessibility?.accessibilityData?.label || 'Untitled';
+                const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
+                const lengthText = v.lengthText?.simpleText || '3:30';
 
-              const parts = lengthText.split(':').map(Number);
-              const durationSec =
-                parts.length === 2
-                  ? parts[0] * 60 + parts[1]
-                  : parts.length === 3
-                  ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-                  : 210;
+                const parts = lengthText.split(':').map(Number);
+                const durationSec =
+                  parts.length === 2
+                    ? parts[0] * 60 + parts[1]
+                    : parts.length === 3
+                    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+                    : 210;
 
-              rawCandidates.push({
-                id: videoId,
-                videoId,
-                rawTitle,
-                title: rawTitle,
-                artist,
-                duration: durationSec,
-                thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                views: v.viewCountText?.simpleText || null,
-              });
-            }
+                rawCandidates.push({
+                  id: videoId,
+                  videoId,
+                  rawTitle,
+                  title: rawTitle,
+                  artist,
+                  duration: durationSec,
+                  thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                  views: v.viewCountText?.simpleText || null,
+                });
+              }
 
-            if (item.channelRenderer) {
-              const c = item.channelRenderer;
-              artists.push({
-                id: c.channelId,
-                name: c.title?.simpleText || 'Artist',
-                thumbnail:
-                  c.thumbnail?.thumbnails?.[0]?.url ||
-                  'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
-                subscribers: c.subscriberCountText?.simpleText || null,
-              });
+              if (item.channelRenderer) {
+                const c = item.channelRenderer;
+                ytArtists.push({
+                  id: c.channelId,
+                  name: c.title?.simpleText || 'Artist',
+                  thumbnail:
+                    c.thumbnail?.thumbnails?.[0]?.url ||
+                    'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
+                  subscribers: c.subscriberCountText?.simpleText || null,
+                });
+              }
             }
           }
         }
       }
 
-      // 2. Classify and Score All Candidates
-      const allClassified = [];
+      // Classify YouTube Candidates
+      const allClassifiedYt = [];
       for (const raw of rawCandidates) {
         const track = contentClassifier.normalizeTrack(raw);
         if (track.isCompilation || track.isReaction || track.isShort) continue;
 
         track.musicScore = contentClassifier.scoreCandidate(track, intent);
         track.videoScore = contentClassifier.scoreVideoCandidate(track, intent);
-        allClassified.push(track);
+        allClassifiedYt.push(track);
       }
 
-      // 3. Music Entity Deduplication & Bucketing
+      const canonicalData = canonicalRes.status === 'fulfilled' ? canonicalRes.value : { songs: [], albums: [], artists: [] };
+      const canonicalSongs = canonicalData.songs || [];
+      const realAlbums = canonicalData.albums || [];
+      const realArtists = canonicalData.artists.length > 0 ? canonicalData.artists : ytArtists;
+
       const songs = [];
       const videos = [];
       const podcasts = [];
 
-      const entityBestMap = new Map();
+      const isExplicitVariant = intent.wantsSlowed || intent.wantsRemix || intent.wantsCover || intent.wantsLive || intent.wantsLyrics;
 
-      for (const track of allClassified) {
-        if (track.isPodcast || track.contentType === CONTENT_TYPES.PODCAST) {
-          podcasts.push(track);
-          continue;
+      if (!isExplicitVariant && canonicalSongs.length > 0) {
+        // A. CANONICAL MUSIC ENTITY FIRST (Album-First Architecture)
+        for (const canonical of canonicalSongs.slice(0, 10)) {
+          const bound = await canonicalMusicResolver.bindPlaybackSources(canonical, allClassifiedYt);
+          songs.push(bound);
         }
 
-        // Check if track qualifies as a canonical song for the query intent
-        const isExplicitVariant = intent.wantsSlowed || intent.wantsRemix || intent.wantsCover || intent.wantsLive || intent.wantsLyrics;
-
-        if (isExplicitVariant) {
-          // Explicit query (e.g. slowed, remix, cover): highest scoring candidate enters songs
-          if (track.musicScore > 100) {
-            songs.push({ ...track, playbackFormat: 'audio' });
-          } else {
+        // Separate and rank Videos
+        for (const track of allClassifiedYt) {
+          if (track.isPodcast) {
+            podcasts.push(track);
+          } else if (track.contentType === CONTENT_TYPES.VIDEO || track.isMusicVideo || track.isLyricsVideo || track.isLive) {
             videos.push({ ...track, playbackFormat: 'video' });
           }
-        } else {
-          // Normal Query (ORIGINAL_MUSIC):
-          // ONLY true music audio recordings / official artist music releases enter songs
-          const isTrueMusicTrack = (track.contentType === CONTENT_TYPES.MUSIC || track.isOfficialMusic) &&
-            !track.isSlowed &&
-            !track.isRemix &&
-            !track.isCover &&
-            !track.isLive &&
-            !track.isLyricsVideo;
+        }
+      } else {
+        // B. EXPLICIT VARIANT OR FALLBACK TO CLASSIFIED STREAMS
+        const entityBestMap = new Map();
 
-          if (isTrueMusicTrack) {
-            // Deduplicate across same entity (e.g. topic audio vs label audio vs official artist channel)
-            const key = track.musicEntityKey;
-            const existing = entityBestMap.get(key);
-            if (!existing || track.musicScore > existing.musicScore) {
-              entityBestMap.set(key, track);
+        for (const track of allClassifiedYt) {
+          if (track.isPodcast || track.contentType === CONTENT_TYPES.PODCAST) {
+            podcasts.push(track);
+            continue;
+          }
+
+          if (isExplicitVariant) {
+            if (track.musicScore > 100) {
+              songs.push({ ...track, playbackFormat: 'audio' });
+            } else {
+              videos.push({ ...track, playbackFormat: 'video' });
             }
           } else {
-            // Video / Variant candidate
-            videos.push({ ...track, playbackFormat: 'video' });
+            const isTrueMusic = (track.contentType === CONTENT_TYPES.MUSIC || track.isOfficialMusic) &&
+              !track.isSlowed && !track.isRemix && !track.isCover && !track.isLive && !track.isLyricsVideo;
+
+            if (isTrueMusic) {
+              const key = track.musicEntityKey;
+              const existing = entityBestMap.get(key);
+              if (!existing || track.musicScore > existing.musicScore) {
+                entityBestMap.set(key, track);
+              }
+            } else {
+              videos.push({ ...track, playbackFormat: 'video' });
+            }
+          }
+        }
+
+        if (!isExplicitVariant) {
+          for (const track of entityBestMap.values()) {
+            songs.push({ ...track, playbackFormat: 'audio' });
           }
         }
       }
 
-      // Populate deduplicated canonical songs
-      if (!intent.wantsSlowed && !intent.wantsRemix && !intent.wantsCover && !intent.wantsLive && !intent.wantsLyrics) {
-        for (const track of entityBestMap.values()) {
-          songs.push({ ...track, playbackFormat: 'audio' });
-        }
-      }
-
-      // Sort songs by musicScore, videos by videoScore
+      // Sort results
       songs.sort((a, b) => (b.musicScore || 0) - (a.musicScore || 0));
       videos.sort((a, b) => (b.videoScore || 0) - (a.videoScore || 0));
-      podcasts.sort((a, b) => (b.musicScore || 0) - (a.musicScore || 0));
-
-      // 4. Generate Associated Album Essentials if applicable
-      const albums = [];
-      if (query.trim().length >= 3 && (songs.length > 0 || artists.length > 0)) {
-        const mainArtist = artists[0]?.name || songs[0]?.artist || query.trim();
-        albums.push({
-          id: `alb_${query.toLowerCase().replace(/\s+/g, '_')}`,
-          title: `${query.trim()} Essentials`,
-          artist: mainArtist,
-          thumbnail: songs[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
-          trackCount: Math.max(8, songs.length),
-        });
-      }
 
       const finalSongs = songs.slice(0, limit);
       const finalVideos = videos.slice(0, limit);
@@ -198,8 +203,8 @@ export const musicProvider = {
         intent: intent.primaryIntent,
         songs: finalSongs,
         videos: finalVideos,
-        artists: artists.slice(0, 6),
-        albums: albums.slice(0, 4),
+        artists: realArtists.slice(0, 6),
+        albums: realAlbums.slice(0, 6),
         podcasts: podcasts.slice(0, 4),
         results: finalSongs.length > 0 ? finalSongs : finalVideos,
       };
@@ -225,27 +230,14 @@ export const musicProvider = {
           matchedArtist?.thumbnail ||
           topSongs[0]?.thumbnail ||
           'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-        subscribers: matchedArtist?.subscribers || '1.2M subscribers',
-        monthlyListeners: '4.8M monthly listeners',
-        bio: `${artistName} is a top trending recording artist on MRJ Music with millions of global streams.`,
+        subscribers: matchedArtist?.subscribers || null,
         topSongs,
         singles: topSongs.slice(0, 8),
-        albums: [
-          {
-            id: `alb_${artistName.toLowerCase().replace(/\s+/g, '_')}_essentials`,
-            title: `${artistName} Essentials`,
-            artist: artistName,
-            thumbnail: topSongs[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-            year: '2026',
-            trackCount: topSongs.length,
-            tracks: topSongs,
-          },
-        ],
+        albums: searchRes.albums || [],
         relatedArtists: (searchRes.artists || []).slice(1, 6).map((a) => ({
           id: a.id,
           name: a.name,
           thumbnail: a.thumbnail,
-          listeners: a.subscribers || '950K listeners',
         })),
       };
     } catch (err) {
@@ -257,16 +249,57 @@ export const musicProvider = {
   // 3. Fetch Full Album Metadata
   async getAlbum(albumId) {
     try {
+      const cleanId = albumId.replace(/^alb_/, '');
+      // If iTunes collection ID, fetch exact album tracklist
+      if (/^\d+$/.test(cleanId)) {
+        const res = await axios.get(`https://itunes.apple.com/lookup?id=${cleanId}&entity=song`, { timeout: 4500 });
+        if (res.data?.results && res.data.results.length > 0) {
+          const albumInfo = res.data.results[0];
+          const trackItems = res.data.results.slice(1);
+          const artwork = (albumInfo.artworkUrl100 || '')
+            .replace('100x100bb.jpg', '600x600bb.jpg')
+            .replace('100x100bb.png', '600x600bb.png');
+
+          const tracks = trackItems.map((t) => ({
+            id: `${t.trackName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}|${t.artistName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+            canonicalMusicEntityId: `${t.trackName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}|${t.artistName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+            title: t.trackName,
+            artist: t.artistName,
+            album: albumInfo.collectionName,
+            thumbnail: artwork,
+            duration: Math.round((t.trackTimeMillis || 210000) / 1000),
+            releaseYear: albumInfo.releaseDate?.substring(0, 4) || '2024',
+            contentType: CONTENT_TYPES.MUSIC,
+            isOfficialMusic: true,
+            isAudioOnly: true,
+            playbackFormat: 'audio',
+            provider: 'canonical',
+          }));
+
+          return {
+            id: albumId,
+            title: albumInfo.collectionName,
+            artist: albumInfo.artistName,
+            thumbnail: artwork,
+            year: albumInfo.releaseDate?.substring(0, 4) || '2024',
+            trackCount: tracks.length,
+            totalDuration: tracks.reduce((acc, t) => acc + (t.duration || 0), 0),
+            tracks,
+          };
+        }
+      }
+
+      // Fallback
       const query = albumId.replace(/^alb_/, '').replace(/_/g, ' ');
       const searchRes = await this.search(query, 'songs', 15);
       const tracks = searchRes.songs || [];
 
       return {
         id: albumId,
-        title: `${query.charAt(0).toUpperCase() + query.slice(1)} Album`,
+        title: tracks[0]?.album || `${query.charAt(0).toUpperCase() + query.slice(1)} Album`,
         artist: tracks[0]?.artist || 'Various Artists',
         thumbnail: tracks[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-        year: '2026',
+        year: tracks[0]?.releaseYear || '2024',
         trackCount: tracks.length,
         totalDuration: tracks.reduce((acc, t) => acc + (t.duration || 0), 0),
         tracks,

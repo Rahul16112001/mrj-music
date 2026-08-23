@@ -193,6 +193,11 @@ export const TrackCard: React.FC<TrackCardProps> = ({
               className="text-[11px] md:text-xs text-[#aaaaaa] hover:text-white truncate mt-0.5 transition-colors"
             >
               {track.artist}
+              {track.album && track.album !== 'Single'
+                ? ` • ${track.album}`
+                : track.releaseYear
+                ? ` • ${track.releaseYear}`
+                : ''}
             </p>
           </div>
         </div>

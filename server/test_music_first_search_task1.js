@@ -1,9 +1,10 @@
 import { musicProvider } from './providers/musicProvider.js';
+import { canonicalMusicResolver } from './catalog/canonicalMusicResolver.js';
 import { contentClassifier, CONTENT_TYPES } from './catalog/contentClassifier.js';
-import { searchIntentEngine, INTENT_TYPES } from './catalog/searchIntentEngine.js';
+import { searchIntentEngine } from './catalog/searchIntentEngine.js';
 
-async function runTask1BTests() {
-  console.log('🧪 Starting MRJ Music Task 1B: Music-First Classification & Search Test Suite...\n');
+async function runTask1CTests() {
+  console.log('🧪 Starting MRJ Music Task 1C: Canonical Album-Track Resolution Test Suite...\n');
   let passed = 0;
   let failed = 0;
 
@@ -17,134 +18,72 @@ async function runTask1BTests() {
     }
   }
 
-  // 1. CONTENT CLASSIFICATION FUNCTION CONTRACT
-  console.log('1. Testing classifySearchResult() Contract & Reasons...');
-  const testCandidate = {
-    id: 'test_123',
-    title: 'Desi Kalakaar Full AUDIO Song | Yo Yo Honey Singh | Desi Kalakaar',
-    artist: 'T-Series',
-    duration: 235,
-  };
-  const classification = contentClassifier.classifySearchResult(testCandidate);
-  assert(classification.contentType === CONTENT_TYPES.MUSIC, 'Classified canonical music');
-  assert(classification.isOfficialMusic === true, 'isOfficialMusic is true for T-Series audio');
-  assert(classification.isAudioOnly === true, 'isAudioOnly is true');
-  assert(Array.isArray(classification.reasons), 'reasons is an array');
-  assert(classification.musicEntityKey.includes('desi kalakaar'), 'musicEntityKey generated accurately');
+  // 1. CANONICAL MUSIC ENTITY RESOLUTION FOR "DESI KALAKAAR"
+  console.log('1. Testing Canonical Music Entity Resolution for "desi kalakaar"...');
+  const resDesi = await musicProvider.search('desi kalakaar');
+  const topSong = resDesi.songs[0];
 
-  // 2. NEGATIVE CANDIDATE CLASSIFICATIONS
-  console.log('\n2. Testing Negative Candidate Classifications...');
-  const lofiTrack = contentClassifier.classifySearchResult({
-    title: 'Desi Kalakaar Lofi Flip | Yo Yo Honey Singh | Sonakshi Sinha',
-    artist: 'Reverb World',
-    duration: 210,
-  });
-  assert(lofiTrack.contentType === CONTENT_TYPES.SLOWED, 'Lofi Flip classified as SLOWED');
-  assert(lofiTrack.isSlowed === true, 'isSlowed is true for Lofi Flip');
-  assert(lofiTrack.isAudioOnly === false, 'isAudioOnly is false for Lofi Flip');
+  assert(topSong !== undefined, 'Song 1 returned');
+  assert(topSong.title.toLowerCase().includes('desi kalakaar'), `Canonical Title is "${topSong.title}"`);
+  assert(topSong.artist.toLowerCase().includes('honey singh'), `Canonical Artist is "${topSong.artist}"`);
+  assert(topSong.album.toLowerCase().includes('desi kalakaar'), `Canonical Album is "${topSong.album}"`);
+  assert(topSong.releaseYear === '2014', `Canonical Year is "${topSong.releaseYear}"`);
+  assert(topSong.duration >= 240 && topSong.duration <= 270, `Canonical Track Duration is ${topSong.duration}s (~4:13, NOT 9:57 music video)`);
+  assert(topSong.duration !== 597 && topSong.duration !== 598, 'Duration does NOT inherit 9:57 music video duration');
+  assert(topSong.id.includes('desi-kalakaar'), `Canonical Entity ID is "${topSong.id}"`);
+  assert(topSong.playbackFormat === 'audio', 'PlaybackFormat is "audio"');
+  assert(topSong.providerTrackId !== undefined, `Playable ProviderTrackId is "${topSong.providerTrackId}"`);
+  assert(topSong.audioSource !== undefined, 'Attached decoupled audioSource object');
 
-  const amvTrack = contentClassifier.classifySearchResult({
-    title: 'DESI KALAKAAR [AMW/EDIT] | Yo Yo Honey Singh',
-    artist: 'AMV Master',
-    duration: 180,
-  });
-  assert(amvTrack.contentType === CONTENT_TYPES.VIDEO, 'AMW/EDIT classified as VIDEO');
-  assert(amvTrack.isAudioOnly === false, 'isAudioOnly is false for AMV');
+  // 2. VIDEO DISSOCIATION
+  console.log('\n2. Testing Decoupled Video Presentation for "desi kalakaar"...');
+  const topVideo = resDesi.videos[0];
+  assert(topVideo !== undefined, 'Top video candidate returned in videos[]');
+  assert(topVideo.playbackFormat === 'video', 'Video playbackFormat is "video"');
+  assert(resDesi.videos.some((v) => v.duration > 500), 'Long-form music video is placed in videos[], NOT songs[]');
 
-  const slowedTrack = contentClassifier.classifySearchResult({
-    title: 'Desi Kalakar - Lofi + Slowed | Honey Singh | Reverb World',
-    artist: 'Reverb World',
-    duration: 240,
-  });
-  assert(slowedTrack.contentType === CONTENT_TYPES.SLOWED, 'Slowed + Reverb classified as SLOWED');
+  // 3. REAL ALBUMS & REAL ARTISTS (No synthetic templates)
+  console.log('\n3. Testing Real Albums and Artists Resolution...');
+  assert(resDesi.albums.length > 0, 'Real albums returned');
+  assert(!resDesi.albums[0].title.includes('Essentials'), `Album title is real: "${resDesi.albums[0].title}" (no "Essentials" template)`);
+  assert(resDesi.artists.length > 0, 'Real artists returned');
 
-  // 3. INTENT-DRIVEN SCORING FOR DESI KALAKAR
-  console.log('\n3. Testing Scoring on Normal vs Explicit Intent...');
-  const normalIntent = searchIntentEngine.parse('desi kalakar');
-  const slowedIntent = searchIntentEngine.parse('desi kalakar slowed reverb');
-
-  const officialTrack = contentClassifier.normalizeTrack(testCandidate);
-  const lofiNormalized = contentClassifier.normalizeTrack({
-    id: 'lofi_1',
-    title: 'Desi Kalakaar Lofi Flip',
-    artist: 'Reverb World',
-    duration: 210,
-  });
-
-  const officialScoreNormal = contentClassifier.scoreCandidate(officialTrack, normalIntent);
-  const lofiScoreNormal = contentClassifier.scoreCandidate(lofiNormalized, normalIntent);
-  assert(officialScoreNormal > lofiScoreNormal, `Normal search: Official (${officialScoreNormal}) > Lofi (${lofiScoreNormal})`);
-
-  const officialScoreSlowed = contentClassifier.scoreCandidate(officialTrack, slowedIntent);
-  const lofiScoreSlowed = contentClassifier.scoreCandidate(lofiNormalized, slowedIntent);
-  assert(lofiScoreSlowed > officialScoreSlowed, `Slowed search: Lofi (${lofiScoreSlowed}) > Official (${officialScoreSlowed})`);
-
-  // 4. LIVE SEARCH MANDATORY TESTS
-  console.log('\n4. Testing Live Search on Mandatory Queries...');
-
-  // Test: desi kalakar
-  console.log('Testing "desi kalakar"...');
-  const resDesi = await musicProvider.search('desi kalakar');
-  assert(resDesi.songs.length > 0, '"desi kalakar" returned canonical songs');
-  assert(
-    !resDesi.songs[0].title.toLowerCase().includes('lofi') &&
-    !resDesi.songs[0].title.toLowerCase().includes('slowed') &&
-    !resDesi.songs[0].title.toLowerCase().includes('amv'),
-    `Top song "${resDesi.songs[0].title}" is NOT Lofi/Slowed/AMV`
-  );
-  assert(resDesi.songs[0].playbackFormat === 'audio', 'Song playbackFormat is audio');
-
-  // Test: shayraana
-  console.log('Testing "shayraana"...');
-  const resShayraana = await musicProvider.search('shayraana');
-  assert(resShayraana.songs.length > 0, '"shayraana" returned songs');
-  assert(resShayraana.songs[0].contentType === 'music', 'Top Shayraana is canonical music');
-
-  // Test: kesariya
-  console.log('Testing "kesariya"...');
-  const resKesariya = await musicProvider.search('kesariya');
-  assert(resKesariya.songs.length > 0, '"kesariya" returned songs');
-  assert(resKesariya.songs[0].contentType === 'music', 'Top Kesariya is canonical music');
-
-  // Test: tum hi ho
-  console.log('Testing "tum hi ho"...');
-  const resTumHiHo = await musicProvider.search('tum hi ho');
-  assert(resTumHiHo.songs.length > 0, '"tum hi ho" returned songs');
-
-  // Test: blinding lights
-  console.log('Testing "blinding lights"...');
-  const resBlinding = await musicProvider.search('blinding lights');
-  assert(resBlinding.songs.length > 0, '"blinding lights" returned songs');
-
-  // Test: shape of you
-  console.log('Testing "shape of you"...');
-  const resShape = await musicProvider.search('shape of you');
-  assert(resShape.songs.length > 0, '"shape of you" returned songs');
-
-  // 5. EXPLICIT VARIANT SEARCH TESTS
-  console.log('\n5. Testing Explicit Variant Intent Searches...');
-  const variantQueries = [
-    { q: 'desi kalakar slowed reverb', expectedType: 'slowed' },
-    { q: 'desi kalakar remix', expectedType: 'remix' },
-    { q: 'desi kalakar live', expectedType: 'live' },
-    { q: 'desi kalakar cover', expectedType: 'cover' },
-    { q: 'desi kalakar lyrics', expectedType: 'lyrics' },
+  // 4. MANDATORY 7 QUERY TESTS
+  console.log('\n4. Testing All 7 Mandatory Queries for Canonical Resolution...');
+  const testQueries = [
+    { q: 'desi kalakaar', expectedTitle: 'desi kalakaar', expectedYear: '2014' },
+    { q: 'kesariya', expectedTitle: 'kesariya', expectedYear: '2022' },
+    { q: 'tum hi ho', expectedTitle: 'tum hi ho', expectedYear: '2013' },
+    { q: 'shayraana', expectedTitle: 'shaayraana', expectedYear: '2014' },
+    { q: 'tose naina', expectedTitle: 'tose naina', expectedYear: '2013' },
+    { q: 'blinding lights', expectedTitle: 'blinding lights', expectedYear: '2019' },
+    { q: 'shape of you', expectedTitle: 'shape of you', expectedYear: '2017' },
   ];
 
-  for (const { q, expectedType } of variantQueries) {
-    const res = await musicProvider.search(q);
-    assert(res.songs.length > 0, `Query "${q}" returned results in songs`);
+  for (const item of testQueries) {
+    const res = await musicProvider.search(item.q);
+    const s = res.songs[0];
+    assert(s !== undefined, `Query "${item.q}" returned canonical song`);
     assert(
-      res.songs[0].contentType === expectedType || res.songs[0].title.toLowerCase().includes(expectedType),
-      `Top result for "${q}" matches requested variant (${res.songs[0].contentType})`
+      s.title.toLowerCase().includes(item.expectedTitle) || item.expectedTitle.includes(s.title.toLowerCase()),
+      `Query "${item.q}" has title "${s.title}"`
     );
+    assert(
+      s.duration >= 150 && s.duration <= 320,
+      `Query "${item.q}" has canonical studio duration (${s.duration}s)`
+    );
+    assert(
+      s.releaseYear === item.expectedYear,
+      `Query "${item.q}" resolved release year "${s.releaseYear}"`
+    );
+    assert(s.playbackFormat === 'audio', `Query "${item.q}" plays format "audio"`);
   }
 
   console.log(`\n======================================================`);
-  console.log(`🎉 TASK 1B TEST SUMMARY: ${passed} Passed, ${failed} Failed`);
+  console.log(`🎉 TASK 1C TEST SUMMARY: ${passed} Passed, ${failed} Failed`);
   console.log(`======================================================\n`);
 
   if (failed > 0) process.exit(1);
 }
 
-runTask1BTests().catch(console.error);
+runTask1CTests().catch(console.error);

@@ -32,6 +32,26 @@ export interface Track {
   isReaction?: boolean;
   isCompilation?: boolean;
   isPodcast?: boolean;
+  canonicalMusicEntityId?: string;
+  releaseYear?: string;
+  artistId?: string;
+  albumId?: string;
+  audioSource?: {
+    sourceId: string;
+    musicEntityId: string;
+    type: string;
+    provider: string;
+    providerTrackId: string;
+    duration?: number;
+  };
+  videoSource?: {
+    sourceId: string;
+    musicEntityId: string;
+    type: string;
+    provider: string;
+    providerTrackId: string;
+    duration?: number;
+  } | null;
   sourceType?: string;
   provider?: string;
   providerTrackId?: string;
