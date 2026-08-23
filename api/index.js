@@ -5,6 +5,7 @@ import { authService } from '../server/auth/authService.js';
 import { requireAuth, optionalAuth } from '../server/auth/authMiddleware.js';
 import { db } from '../server/db/schema.js';
 import { dbClient } from '../server/db/client.js';
+import { chartService } from '../server/charts/chartService.js';
 import { cloudRecommendationService } from '../server/recommendations/cloudRecommendationService.js';
 import { musicProvider } from '../server/providers/musicProvider.js';
 
@@ -124,7 +125,74 @@ app.post(['/api/auth/reset-password', '/auth/reset-password'], async (req, res) 
   }
 });
 
-// 2. User Data Routes
+// 2. Official Charts Routes
+app.get(['/api/charts/trending', '/charts/trending'], async (req, res) => {
+  try {
+    const region = req.query.region || 'GLOBAL';
+    const data = await chartService.getTrending(region);
+    res.json({ status: 'success', ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/charts/top-songs', '/charts/top-songs'], async (req, res) => {
+  try {
+    const region = req.query.region || 'GLOBAL';
+    const data = await chartService.getTopSongs(region);
+    res.json({ status: 'success', ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/charts/top-artists', '/charts/top-artists'], async (req, res) => {
+  try {
+    const region = req.query.region || 'GLOBAL';
+    const data = await chartService.getTopArtists(region);
+    res.json({ status: 'success', ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Recommendation Routes
+app.get(['/api/recommendations/home', '/recommendations/home'], optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const region = req.query.region || 'IN';
+    const homeData = await cloudRecommendationService.getPersonalizedHome(userId, region);
+    res.json({ status: 'success', ...homeData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/recommendations/radio/:videoId', '/recommendations/radio/:videoId'], optionalAuth, async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    const userId = req.user ? req.user.id : null;
+
+    const radio = await cloudRecommendationService.getSeedRadio(userId, { id: videoId });
+    res.json({ status: 'success', radio });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/recommendations/mood/:mood', '/recommendations/mood/:mood'], optionalAuth, async (req, res) => {
+  try {
+    const moodId = req.params.mood;
+    const userId = req.user ? req.user.id : null;
+
+    const station = await cloudRecommendationService.getMoodStation(userId, moodId);
+    res.json({ status: 'success', ...station });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. User Data Routes
 app.get(['/api/user/likes', '/user/likes'], requireAuth, async (req, res) => {
   try {
     const likes = await db.getLikedTracks(req.user.id);
@@ -243,49 +311,11 @@ app.post(['/api/user/migrate', '/user/migrate'], requireAuth, async (req, res) =
   }
 });
 
-// 3. Recommendations Routes
-app.get(['/api/recommendations/home', '/recommendations/home'], optionalAuth, async (req, res) => {
-  try {
-    const userId = req.user ? req.user.id : null;
-    const charts = await musicProvider.getCharts();
-    const homeData = await cloudRecommendationService.getPersonalizedHome(userId, charts.trending);
-    res.json({ status: 'success', ...homeData });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get(['/api/recommendations/radio/:videoId', '/recommendations/radio/:videoId'], optionalAuth, async (req, res) => {
-  try {
-    const { videoId } = req.params;
-    const userId = req.user ? req.user.id : null;
-
-    const candidatePool = await musicProvider.getCandidatePool({ id: videoId, artist: '', title: '' });
-    const radio = await cloudRecommendationService.getSeedRadio(userId, { id: videoId }, candidatePool);
-    res.json({ status: 'success', radio });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get(['/api/recommendations/mood/:mood', '/recommendations/mood/:mood'], optionalAuth, async (req, res) => {
-  try {
-    const moodId = req.params.mood;
-    const userId = req.user ? req.user.id : null;
-
-    const candidatePool = await musicProvider.getCandidatePool({ id: moodId, genre: moodId });
-    const station = await cloudRecommendationService.getMoodStation(userId, moodId, candidatePool);
-    res.json({ status: 'success', ...station });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 4. Music Routes
+// 5. Music Routes
 app.get(['/api/music/charts', '/music/charts'], async (req, res) => {
   try {
-    const charts = await musicProvider.getCharts();
-    res.json({ status: 'success', ...charts });
+    const charts = await chartService.getTrending('GLOBAL');
+    res.json({ status: 'success', trending: charts.tracks, quickPicks: charts.tracks.slice(0, 10) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

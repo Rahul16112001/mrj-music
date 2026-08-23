@@ -6,6 +6,7 @@ import { authService } from './auth/authService.js';
 import { requireAuth, optionalAuth } from './auth/authMiddleware.js';
 import { db } from './db/schema.js';
 import { dbClient } from './db/client.js';
+import { chartService } from './charts/chartService.js';
 import { cloudRecommendationService } from './recommendations/cloudRecommendationService.js';
 import { musicProvider } from './providers/musicProvider.js';
 
@@ -128,7 +129,56 @@ app.post('/api/auth/reset-password', async (req, res) => {
 });
 
 // ==========================================
-// 2. CLOUD USER DATA & SYNC ROUTES
+// 2. OFFICIAL CHARTS ROUTES (NON-PERSONALIZED)
+// ==========================================
+
+app.get('/api/charts/trending', async (req, res) => {
+  const region = req.query.region || 'GLOBAL';
+  const data = await chartService.getTrending(region);
+  res.json({ status: 'success', ...data });
+});
+
+app.get('/api/charts/top-songs', async (req, res) => {
+  const region = req.query.region || 'GLOBAL';
+  const data = await chartService.getTopSongs(region);
+  res.json({ status: 'success', ...data });
+});
+
+app.get('/api/charts/top-artists', async (req, res) => {
+  const region = req.query.region || 'GLOBAL';
+  const data = await chartService.getTopArtists(region);
+  res.json({ status: 'success', ...data });
+});
+
+// ==========================================
+// 3. RECOMMENDATIONS & SEED RADIO
+// ==========================================
+
+app.get('/api/recommendations/home', optionalAuth, async (req, res) => {
+  const userId = req.user ? req.user.id : null;
+  const region = req.query.region || 'IN';
+  const homeData = await cloudRecommendationService.getPersonalizedHome(userId, region);
+  res.json({ status: 'success', ...homeData });
+});
+
+app.get('/api/recommendations/radio/:videoId', optionalAuth, async (req, res) => {
+  const { videoId } = req.params;
+  const userId = req.user ? req.user.id : null;
+
+  const radio = await cloudRecommendationService.getSeedRadio(userId, { id: videoId });
+  res.json({ status: 'success', radio });
+});
+
+app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {
+  const moodId = req.params.mood;
+  const userId = req.user ? req.user.id : null;
+
+  const station = await cloudRecommendationService.getMoodStation(userId, moodId);
+  res.json({ status: 'success', ...station });
+});
+
+// ==========================================
+// 4. CLOUD USER DATA & SYNC ROUTES
 // ==========================================
 
 app.get('/api/user/likes', requireAuth, async (req, res) => {
@@ -210,41 +260,12 @@ app.post('/api/user/migrate', requireAuth, async (req, res) => {
 });
 
 // ==========================================
-// 3. RECOMMENDATIONS & SEED RADIO
-// ==========================================
-
-app.get('/api/recommendations/home', optionalAuth, async (req, res) => {
-  const userId = req.user ? req.user.id : null;
-  const charts = await musicProvider.getCharts();
-  const homeData = await cloudRecommendationService.getPersonalizedHome(userId, charts.trending);
-  res.json({ status: 'success', ...homeData });
-});
-
-app.get('/api/recommendations/radio/:videoId', optionalAuth, async (req, res) => {
-  const { videoId } = req.params;
-  const userId = req.user ? req.user.id : null;
-
-  const candidatePool = await musicProvider.getCandidatePool({ id: videoId, artist: '', title: '' });
-  const radio = await cloudRecommendationService.getSeedRadio(userId, { id: videoId }, candidatePool);
-  res.json({ status: 'success', radio });
-});
-
-app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {
-  const moodId = req.params.mood;
-  const userId = req.user ? req.user.id : null;
-
-  const candidatePool = await musicProvider.getCandidatePool({ id: moodId, genre: moodId });
-  const station = await cloudRecommendationService.getMoodStation(userId, moodId, candidatePool);
-  res.json({ status: 'success', ...station });
-});
-
-// ==========================================
-// 4. MUSIC CATALOG & STREAM ROUTES
+// 5. MUSIC CATALOG & STREAM ROUTES
 // ==========================================
 
 app.get('/api/music/charts', async (req, res) => {
-  const charts = await musicProvider.getCharts();
-  res.json({ status: 'success', ...charts });
+  const charts = await chartService.getTrending('GLOBAL');
+  res.json({ status: 'success', trending: charts.tracks, quickPicks: charts.tracks.slice(0, 10) });
 });
 
 app.get('/api/music/search', async (req, res) => {

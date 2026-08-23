@@ -1,22 +1,8 @@
 import { db } from '../db/schema.js';
-
-const MOOD_METADATA = {
-  chill: { name: 'Chill & Relax', genres: ['Lofi', 'Ambient', 'Indie', 'Acoustic'], energy: 0.3, valence: 0.6 },
-  relax: { name: 'Relax & Unwind', genres: ['Acoustic', 'Soul', 'Soft Pop'], energy: 0.3, valence: 0.5 },
-  focus: { name: 'Focus & Study', genres: ['Lofi Beats', 'Instrumental', 'Classical', 'Ambient'], energy: 0.4, valence: 0.5 },
-  study: { name: 'Deep Study', genres: ['Lofi Beats', 'Piano', 'Binaural'], energy: 0.3, valence: 0.5 },
-  workout: { name: 'Workout & High Energy', genres: ['EDM', 'Hip-Hop', 'Rock', 'Pop Dance'], energy: 0.9, valence: 0.8 },
-  energy: { name: 'Pure Energy', genres: ['Electronic', 'Dance', 'Club'], energy: 0.9, valence: 0.9 },
-  party: { name: 'Party & Club Hits', genres: ['Pop', 'Reggaeton', 'Hip-Hop', 'Dance'], energy: 0.85, valence: 0.9 },
-  romance: { name: 'Romance & Love', genres: ['Romantic', 'Bollywood', 'R&B', 'Ballad'], energy: 0.4, valence: 0.7 },
-  sleep: { name: 'Deep Sleep & Ambient', genres: ['Ambient', 'Nature', 'Binaural', 'Soft Piano'], energy: 0.1, valence: 0.3 },
-  commute: { name: 'Daily Commute', genres: ['Pop', 'Indie Rock', 'Podcasts', 'Hits'], energy: 0.6, valence: 0.6 },
-  sad: { name: 'Melancholy & Healing', genres: ['Acoustic', 'Slow Pop', 'Indie Folk'], energy: 0.3, valence: 0.2 },
-  happy: { name: 'Feel Good & Uplifting', genres: ['Pop', 'Funk', 'Disco', 'Upbeat'], energy: 0.8, valence: 0.9 },
-  motivation: { name: 'Motivation & Drive', genres: ['Epic', 'Soundtrack', 'Rock', 'Rap'], energy: 0.85, valence: 0.8 },
-  nostalgia: { name: 'Throwback & Classics', genres: ['80s', '90s', '2000s Hits', 'Classic Rock'], energy: 0.6, valence: 0.7 },
-  instrumental: { name: 'Pure Instrumental', genres: ['Orchestral', 'Guitar', 'Piano', 'Synthwave'], energy: 0.5, valence: 0.5 },
-};
+import { chartService } from '../charts/chartService.js';
+import { seedRadioService } from './seedRadioService.js';
+import { moodEngine } from './moodEngine.js';
+import { contentClassifier } from '../catalog/contentClassifier.js';
 
 export const cloudRecommendationService = {
   // 1. Process Event Batch & Update Taste Profile
@@ -44,7 +30,7 @@ export const cloudRecommendationService = {
         profile.total_completions = (profile.total_completions || 0) + 1;
         if (artist) {
           if (!profile.preferred_artists) profile.preferred_artists = {};
-          profile.preferred_artists[artist] = (profile.preferred_artists[artist] || 0) + 2;
+          profile.preferred_artists[artist] = (profile.preferred_artists[artist] || 0) + 3;
         }
         if (genre) {
           if (!profile.preferred_genres) profile.preferred_genres = {};
@@ -79,6 +65,9 @@ export const cloudRecommendationService = {
         if (artist && !profile.disliked_artists.includes(artist)) {
           profile.disliked_artists.push(artist);
         }
+        if (profile.preferred_artists?.[artist]) {
+          delete profile.preferred_artists[artist];
+        }
       }
     }
 
@@ -91,135 +80,91 @@ export const cloudRecommendationService = {
     return profile;
   },
 
-  // 2. Generate Seed-Based Radio from Large Candidate Pool
-  async getSeedRadio(userId, seedTrack, candidatePool = []) {
-    const profile = userId ? await db.getTasteProfile(userId) : null;
-    const history = userId ? await db.getUserHistory(userId) : [];
-    const recentTrackIds = new Set(history.slice(0, 20).map(h => h.track_id));
-    const dislikedArtists = new Set(profile?.disliked_artists || []);
-
-    const seedArtist = (seedTrack?.artist || '').toLowerCase();
-    const seedGenre = (seedTrack?.genre || '').toLowerCase();
-
-    const scored = candidatePool
-      .filter(t => t.id !== seedTrack?.id && !dislikedArtists.has(t.artist))
-      .map(track => {
-        let score = 0;
-        const trackArtist = (track.artist || '').toLowerCase();
-        const trackGenre = (track.genre || '').toLowerCase();
-
-        // 1. Metadata & Artist similarity
-        if (trackArtist && seedArtist && (trackArtist.includes(seedArtist) || seedArtist.includes(trackArtist))) {
-          score += 45;
-        }
-        if (trackGenre && seedGenre && trackGenre === seedGenre) {
-          score += 35;
-        }
-
-        // 2. User taste affinity
-        if (profile?.preferred_artists?.[track.artist]) {
-          score += Math.min(30, profile.preferred_artists[track.artist] * 3);
-        }
-        if (profile?.liked_artists?.includes(track.artist)) {
-          score += 25;
-        }
-
-        // 3. History & Skip penalties
-        if (recentTrackIds.has(track.id)) score -= 35;
-
-        // 4. Freshness jitter
-        score += Math.random() * 8;
-
-        return { track, score };
-      });
-
-    scored.sort((a, b) => b.score - a.score);
-
-    // Apply diversity filter: Max 2 tracks per artist in radio queue
-    const result = [];
-    const artistCounts = {};
-
-    for (const item of scored) {
-      const art = item.track.artist;
-      artistCounts[art] = (artistCounts[art] || 0) + 1;
-      if (artistCounts[art] <= 2) {
-        result.push(item.track);
-      }
-      if (result.length >= 35) break;
-    }
-
-    return result;
+  // 2. Generate Seed-Based Radio (Delegated to SeedRadioService)
+  async getSeedRadio(userId, seedTrack, candidatePool = null) {
+    return await seedRadioService.generateRadio(userId, seedTrack, candidatePool);
   },
 
-  // 3. Generate Mood Station
-  async getMoodStation(userId, moodId, candidatePool = []) {
-    const moodMeta = MOOD_METADATA[moodId] || MOOD_METADATA.chill;
-    const profile = userId ? await db.getTasteProfile(userId) : null;
-    const dislikedArtists = new Set(profile?.disliked_artists || []);
-
-    const filtered = candidatePool
-      .filter(t => !dislikedArtists.has(t.artist))
-      .map(track => {
-        let score = 0;
-        if (profile?.preferred_artists?.[track.artist]) score += 20;
-        if (profile?.liked_artists?.includes(track.artist)) score += 25;
-        score += Math.random() * 10;
-        return { track, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .map(i => i.track);
-
-    return {
-      mood: moodMeta.name,
-      moodId,
-      tracks: filtered.slice(0, 30),
-    };
+  // 3. Generate Mood Station (Delegated to MoodEngine)
+  async getMoodStation(userId, moodId, candidatePool = null) {
+    return await moodEngine.getMoodStation(userId, moodId, candidatePool);
   },
 
-  // 4. Generate Personalized Home Sections with Distinct Daily Mixes
-  async getPersonalizedHome(userId, globalTrending = []) {
+  // 4. Generate Structured Home Contract with Clear Architectural Separation
+  async getPersonalizedHome(userId, userRegion = 'IN') {
+    // 1. Fetch Official Charts (Strictly Non-Personalized)
+    const regionalTrending = await chartService.getTrending(userRegion);
+    const globalTrending = await chartService.getTrending('GLOBAL');
+    const topSongs = await chartService.getTopSongs(userRegion);
+    const topArtists = await chartService.getTopArtists(userRegion);
+
+    // 2. Fetch User Profile Data
     const profile = userId ? await db.getTasteProfile(userId) : null;
     const liked = userId ? await db.getLikedTracks(userId) : [];
     const history = userId ? await db.getUserHistory(userId) : [];
 
-    const quickPicks = (liked.length > 0 ? liked : history.length > 0 ? history : globalTrending).slice(0, 16);
+    // Filter out compilations
+    const cleanLiked = liked.filter(t => !contentClassifier.isCompilation(t.title, t.artist, t.duration));
+    const cleanHistory = history.filter(t => !contentClassifier.isCompilation(t.title, t.artist, t.duration));
 
+    // 3. Generate Personalized Quick Picks
+    let quickPicks = [];
+    if (cleanLiked.length > 0) {
+      quickPicks = cleanLiked.slice(0, 16);
+    } else if (cleanHistory.length > 0) {
+      quickPicks = cleanHistory.slice(0, 16);
+    } else {
+      quickPicks = regionalTrending.tracks.slice(0, 16);
+    }
+
+    // 4. Generate Distinct Daily Mixes from Clusters
     const sortedArtists = Object.entries(profile?.preferred_artists || {}).sort((a, b) => b[1] - a[1]);
     const topArtist1 = sortedArtists[0]?.[0] || 'Popular Artists';
-    const topArtist2 = sortedArtists[1]?.[0] || 'Global Hitmakers';
+    const topArtist2 = sortedArtists[1]?.[0] || 'Trending Hitmakers';
 
     const dailyMix1 = {
       id: 'mix_daily_1',
       title: 'Daily Mix 1',
-      description: topArtist1 ? `Featuring ${topArtist1} and similar favorites` : 'Personalized blend of your top tracks',
+      description: topArtist1 !== 'Popular Artists' ? `Featuring ${topArtist1} and similar favorites` : 'Personalized blend of your top tracks',
       tracks: quickPicks.slice(0, 8),
     };
 
     const dailyMix2 = {
       id: 'mix_daily_2',
       title: 'Daily Mix 2',
-      description: topArtist2 ? `Featuring ${topArtist2} and energetic tracks` : 'Upbeat and trending discoveries',
-      tracks: globalTrending.slice(0, 8),
+      description: topArtist2 !== 'Trending Hitmakers' ? `Featuring ${topArtist2} and energetic tracks` : 'Upbeat and trending discoveries',
+      tracks: regionalTrending.tracks.slice(0, 8),
     };
 
     const dailyMix3 = {
       id: 'mix_daily_3',
       title: 'Chill Discovery Mix',
       description: 'Relaxing tunes, acoustic tracks, and lofi study beats',
-      tracks: globalTrending.slice(4, 10),
+      tracks: globalTrending.tracks.slice(4, 12),
     };
 
+    // 5. Build Final Home Data Contract
     return {
-      quickPicks,
-      trending: globalTrending,
-      dailyMixes: [dailyMix1, dailyMix2, dailyMix3],
-      topArtistRec: topArtist1 ? { artist: topArtist1 } : null,
-      moods: Object.entries(MOOD_METADATA).map(([id, data]) => ({
-        id,
-        name: data.name,
-        color: id === 'workout' ? 'from-red-600 to-orange-900' : id === 'focus' ? 'from-emerald-600 to-teal-900' : id === 'party' ? 'from-fuchsia-600 to-pink-900' : 'from-blue-600 to-indigo-900',
-        count: '40+ Songs',
-      })),
+      personalized: {
+        quickPicks,
+        dailyMixes: [dailyMix1, dailyMix2, dailyMix3],
+        listenAgain: cleanHistory.slice(0, 10),
+        recommendedForYou: quickPicks.slice(0, 10),
+        becauseYouLike: topArtist1 !== 'Popular Artists' ? { artist: topArtist1, tracks: quickPicks.slice(0, 6) } : null,
+      },
+      discovery: {
+        newReleases: regionalTrending.tracks.slice(8, 18),
+        topArtists: topArtists.artists,
+      },
+      charts: {
+        trendingRegional: regionalTrending.tracks,
+        trendingWorldwide: globalTrending.tracks,
+        topSongs: topSongs.tracks,
+        topArtists: topArtists.artists,
+        region: userRegion.toUpperCase(),
+        updatedAt: regionalTrending.updatedAt,
+      },
+      moods: moodEngine.getAllMoods(),
     };
   },
 };

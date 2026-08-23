@@ -130,6 +130,89 @@ export const api = {
     return data;
   },
 
+  // ==================== OFFICIAL CHARTS API ====================
+  async getTrending(region: string = 'GLOBAL'): Promise<{ tracks: Track[]; region: string; updatedAt: number }> {
+    try {
+      const res = await fetch(`${API_BASE}/charts/trending?region=${encodeURIComponent(region)}`);
+      if (!res.ok) throw new Error('Trending fetch failed');
+      const data = await res.json();
+      return { tracks: data.tracks || [], region: data.region || region, updatedAt: data.updatedAt || Date.now() };
+    } catch {
+      return { tracks: [], region, updatedAt: Date.now() };
+    }
+  },
+
+  async getTopSongs(region: string = 'GLOBAL'): Promise<{ tracks: Track[]; region: string; updatedAt: number }> {
+    try {
+      const res = await fetch(`${API_BASE}/charts/top-songs?region=${encodeURIComponent(region)}`);
+      if (!res.ok) throw new Error('Top songs fetch failed');
+      const data = await res.json();
+      return { tracks: data.tracks || [], region: data.region || region, updatedAt: data.updatedAt || Date.now() };
+    } catch {
+      return { tracks: [], region, updatedAt: Date.now() };
+    }
+  },
+
+  async getTopArtists(region: string = 'GLOBAL'): Promise<{ artists: any[]; region: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/charts/top-artists?region=${encodeURIComponent(region)}`);
+      if (!res.ok) throw new Error('Top artists fetch failed');
+      const data = await res.json();
+      return { artists: data.artists || [], region: data.region || region };
+    } catch {
+      return { artists: [], region };
+    }
+  },
+
+  // ==================== RECOMMENDATION API ====================
+  async getPersonalizedHome(region: string = 'IN'): Promise<{
+    personalized: { quickPicks: Track[]; dailyMixes: any[]; listenAgain: Track[]; recommendedForYou: Track[]; becauseYouLike: any };
+    discovery: { newReleases: Track[]; topArtists: any[] };
+    charts: { trendingRegional: Track[]; trendingWorldwide: Track[]; topSongs: Track[]; topArtists: any[]; region: string; updatedAt: number };
+    moods: MoodStation[];
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/home?region=${encodeURIComponent(region)}`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Home recommendation failed');
+      const data = await res.json();
+      return {
+        personalized: data.personalized || { quickPicks: [], dailyMixes: [], listenAgain: [], recommendedForYou: [], becauseYouLike: null },
+        discovery: data.discovery || { newReleases: [], topArtists: [] },
+        charts: data.charts || { trendingRegional: [], trendingWorldwide: [], topSongs: [], topArtists: [], region, updatedAt: Date.now() },
+        moods: data.moods || [],
+      };
+    } catch {
+      return {
+        personalized: { quickPicks: [], dailyMixes: [], listenAgain: [], recommendedForYou: [], becauseYouLike: null },
+        discovery: { newReleases: [], topArtists: [] },
+        charts: { trendingRegional: [], trendingWorldwide: [], topSongs: [], topArtists: [], region, updatedAt: Date.now() },
+        moods: [],
+      };
+    }
+  },
+
+  async getRadio(videoId: string): Promise<Track[]> {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/radio/${videoId}`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Radio fetch failed');
+      const data = await res.json();
+      return data.radio || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async getMoodStation(mood: string): Promise<{ mood: string; tracks: Track[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/mood/${encodeURIComponent(mood)}`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Mood fetch failed');
+      const data = await res.json();
+      return { mood: data.mood, tracks: data.tracks || [] };
+    } catch {
+      return { mood, tracks: [] };
+    }
+  },
+
   // ==================== USER CLOUD DATA API ====================
   async getUserLikes(): Promise<Track[]> {
     try {
@@ -242,45 +325,6 @@ export const api = {
     }
   },
 
-  // ==================== RECOMMENDATION API ====================
-  async getPersonalizedHome(): Promise<{ quickPicks: Track[]; trending: Track[]; dailyMixes: any[]; moods: MoodStation[] }> {
-    try {
-      const res = await fetch(`${API_BASE}/recommendations/home`, { headers: getAuthHeaders() });
-      if (!res.ok) throw new Error('Home recommendation failed');
-      const data = await res.json();
-      return {
-        quickPicks: data.quickPicks || [],
-        trending: data.trending || [],
-        dailyMixes: data.dailyMixes || [],
-        moods: data.moods || [],
-      };
-    } catch {
-      return { quickPicks: [], trending: [], dailyMixes: [], moods: [] };
-    }
-  },
-
-  async getRadio(videoId: string): Promise<Track[]> {
-    try {
-      const res = await fetch(`${API_BASE}/recommendations/radio/${videoId}`, { headers: getAuthHeaders() });
-      if (!res.ok) throw new Error('Radio fetch failed');
-      const data = await res.json();
-      return data.radio || [];
-    } catch {
-      return [];
-    }
-  },
-
-  async getMoodStation(mood: string): Promise<{ mood: string; tracks: Track[] }> {
-    try {
-      const res = await fetch(`${API_BASE}/recommendations/mood/${encodeURIComponent(mood)}`, { headers: getAuthHeaders() });
-      if (!res.ok) throw new Error('Mood fetch failed');
-      const data = await res.json();
-      return { mood: data.mood, tracks: data.tracks || [] };
-    } catch {
-      return { mood, tracks: [] };
-    }
-  },
-
   // ==================== MUSIC CATALOG API ====================
   async getCharts(): Promise<{ trending: Track[]; quickPicks: Track[] }> {
     try {
@@ -333,7 +377,6 @@ export const api = {
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) return null;
       const blob = await res.blob();
-      // Ensure real audio blob
       if (blob.size < 1000) return null;
       return blob;
     } catch {

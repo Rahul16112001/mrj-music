@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { contentClassifier } from '../catalog/contentClassifier.js';
 
 const INVIDIOUS_INSTANCES = [
   'https://yt.artemislena.eu',
@@ -61,7 +62,7 @@ export const musicProvider = {
 
               results.push({
                 id: videoId,
-                title,
+                title: contentClassifier.cleanTitle(title),
                 artist,
                 album: 'Single',
                 thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
@@ -98,190 +99,210 @@ export const musicProvider = {
 
   // 2. Fetch Charts / Trending
   async getCharts() {
-    const searchRes = await this.search('top songs global music hits 2026', 'songs', 40);
-    if (searchRes.results.length > 0) {
-      return {
-        trending: searchRes.results,
-        quickPicks: searchRes.results.slice(0, 16),
-      };
-    }
-
-    // Fallback baseline tracks if network query fails
     const defaultTracks = [
-      {
-        id: 'BddP6PYo2gs',
-        title: 'Kesariya',
-        artist: 'Arijit Singh, Pritam',
-        album: 'Brahmāstra',
-        thumbnail: 'https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg',
-        duration: 268,
-        genre: 'Bollywood',
-      },
-      {
-        id: 'kJQP7kiw5Fk',
-        title: 'Despacito',
-        artist: 'Luis Fonsi ft. Daddy Yankee',
-        album: 'VIDA',
-        thumbnail: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
-        duration: 282,
-        genre: 'Latin / Pop',
-      },
-      {
-        id: 'JGwWNGJdvx8',
-        title: 'Shape of You',
-        artist: 'Ed Sheeran',
-        album: '÷ (Divide)',
-        thumbnail: 'https://i.ytimg.com/vi/JGwWNGJdvx8/hqdefault.jpg',
-        duration: 233,
-        genre: 'Pop',
-      },
-      {
-        id: 'OPf0YbXqDm0',
-        title: 'Uptown Funk',
-        artist: 'Mark Ronson ft. Bruno Mars',
-        album: 'Uptown Special',
-        thumbnail: 'https://i.ytimg.com/vi/OPf0YbXqDm0/hqdefault.jpg',
-        duration: 270,
-        genre: 'Funk / Pop',
-      },
+      { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen', duration: 359 },
+      { id: '4NRXx6U8ABQ', title: 'Blinding Lights', artist: 'The Weeknd', duration: 200 },
+      { id: '0V3wHalROFU', title: 'Cruel Summer', artist: 'Taylor Swift', duration: 178 },
+      { id: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran', duration: 233 },
+      { id: 'k2qgadSvNyU', title: 'Levitating', artist: 'Dua Lipa', duration: 203 },
+      { id: 'gNi_6U5Pm_o', title: 'As It Was', artist: 'Harry Styles', duration: 167 },
+      { id: 'H5v3k_57c8g', title: 'Flowers', artist: 'Miley Cyrus', duration: 200 },
+      { id: 'DYed5whEf4g', title: 'Stay', artist: 'The Kid LAROI & Justin Bieber', duration: 141 },
+      { id: 'L7_jYl8A060', title: 'Save Your Tears', artist: 'The Weeknd', duration: 215 },
+      { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', duration: 270 },
+      { id: '7wtfhZwyrcc', title: 'Believer', artist: 'Imagine Dragons', duration: 204 },
+      { id: '2Vv-BfVoq4g', title: 'Perfect', artist: 'Ed Sheeran', duration: 263 },
     ];
 
     return {
       trending: defaultTracks,
-      quickPicks: defaultTracks,
+      quickPicks: defaultTracks.slice(0, 10),
     };
   },
 
-  // 3. Fetch Artist Profile & Tracks
+  // 3. Get Artist Details
   async getArtist(artistName) {
-    const searchRes = await this.search(`${artistName} official audio top songs`, 'songs', 20);
-    const topSongs = searchRes.results;
-
-    if (topSongs.length === 0) return null;
+    if (!artistName) return null;
+    const cleanName = artistName.replace(/\(.*?\)/g, '').trim();
+    const searchRes = await this.search(`${cleanName} official songs`, 'songs', 20);
 
     return {
-      id: encodeURIComponent(artistName.toLowerCase().replace(/\s+/g, '-')),
-      name: artistName,
-      thumbnail: topSongs[0]?.thumbnail || null,
-      subscribers: null,
-      monthlyListeners: null,
-      bio: null,
-      topSongs: topSongs.slice(0, 10),
-      albums: [],
-      singles: topSongs.slice(5, 15),
-      relatedArtists: [],
+      id: 'art_' + Buffer.from(cleanName).toString('hex').slice(0, 16),
+      name: cleanName,
+      monthlyListeners: 'Verified Artist',
+      avatar:
+        searchRes.artists?.[0]?.thumbnail ||
+        'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80',
+      headerImage: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200&q=80',
+      topTracks: searchRes.results.slice(0, 12),
+      albums: [
+        {
+          id: 'alb_essentials_' + cleanName.toLowerCase().replace(/\s+/g, '_'),
+          title: `${cleanName} - Essentials`,
+          year: '2024',
+          thumbnail:
+            searchRes.results?.[0]?.thumbnail ||
+            'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300',
+          trackCount: searchRes.results.length,
+        },
+      ],
+      singles: searchRes.results.slice(0, 8).map((t, idx) => ({
+        id: `sgl_${t.id}`,
+        title: t.title,
+        year: '2024',
+        thumbnail: t.thumbnail,
+      })),
+      similarArtists: [
+        {
+          id: 'sim_1',
+          name: `${cleanName} Radio`,
+          thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200',
+        },
+      ],
     };
   },
 
-  // 4. Fetch Album
+  // 4. Get Album Details
   async getAlbum(albumId) {
+    const rawName = albumId.replace(/^alb_essentials_/, '').replace(/_/g, ' ');
+    const searchRes = await this.search(`${rawName} songs`, 'songs', 15);
+
     return {
       id: albumId,
-      title: 'Album',
-      artist: 'Artist',
-      thumbnail: null,
-      year: null,
-      trackCount: 0,
-      totalDuration: 0,
-      tracks: [],
+      title: `${rawName.toUpperCase()} Essentials`,
+      artist: rawName,
+      year: '2024',
+      thumbnail:
+        searchRes.results?.[0]?.thumbnail ||
+        'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400',
+      tracks: searchRes.results,
     };
   },
 
-  // 5. Dynamic Large Candidate Pool for Seed Radio (100+ candidates)
+  // 5. Gather Large Candidate Pool for Recommendations (100+ candidates)
   async getCandidatePool(seedTrack) {
-    const pool = [];
-    const seenIds = new Set();
+    const queries = [];
+    const seedArtist = seedTrack.artist ? seedTrack.artist.replace(/\(.*?\)/g, '').trim() : '';
+    const seedTitle = seedTrack.title ? seedTrack.title.replace(/\(.*?\)/g, '').trim() : '';
+    const seedGenre = seedTrack.genre || '';
 
-    const addTracks = (tracks) => {
-      for (const t of tracks) {
-        if (!seenIds.has(t.id)) {
-          seenIds.add(t.id);
-          pool.push(t);
+    if (seedArtist) {
+      queries.push(`${seedArtist} top tracks`);
+      queries.push(`${seedArtist} similar artists`);
+    }
+    if (seedGenre) {
+      queries.push(`${seedGenre} hit songs`);
+    }
+    if (seedTitle) {
+      queries.push(`${seedTitle} song radio`);
+    }
+    queries.push('global trending hits');
+
+    const trackMap = new Map();
+
+    const searchPromises = queries.map(async (q) => {
+      try {
+        const res = await this.search(q, 'songs', 30);
+        for (const t of res.results) {
+          if (!trackMap.has(t.id)) {
+            trackMap.set(t.id, t);
+          }
         }
+      } catch (err) {
+        // Continue on query failure
       }
-    };
+    });
 
-    try {
-      const queries = [
-        `${seedTrack.artist} songs playlist`,
-        `${seedTrack.title} similar songs`,
-        `${seedTrack.artist} top hits`,
-        `${seedTrack.genre || 'popular'} music playlist`,
-      ];
+    await Promise.all(searchPromises);
 
-      const searchPromises = queries.map((q) => this.search(q, 'songs', 30));
-      const results = await Promise.allSettled(searchPromises);
-
-      for (const res of results) {
-        if (res.status === 'fulfilled' && res.value?.results) {
-          addTracks(res.value.results);
-        }
+    if (trackMap.size < 20) {
+      const charts = await this.getCharts();
+      for (const t of charts.trending) {
+        if (!trackMap.has(t.id)) trackMap.set(t.id, t);
       }
-    } catch {}
+    }
 
-    return pool;
+    return Array.from(trackMap.values());
   },
 
-  // 6. Real Stream Resolution (SSRF-Protected)
+  // 6. Resolve Audio Stream with SSRF Protection
   async resolveAudioStream(videoId) {
     if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
       return null;
     }
 
-    for (const inst of INVIDIOUS_INSTANCES) {
+    // Try Piped instances
+    for (const instance of PIPED_INSTANCES) {
       try {
-        const resp = await axios.get(`${inst}/api/v1/videos/${videoId}`, { timeout: 3500 });
-        const formats = resp.data?.adaptiveFormats?.filter((f) => f.type?.includes('audio')) || [];
-        if (formats.length > 0) {
-          const best = formats[0];
-          return {
-            url: best.url,
-            mimeType: best.type || 'audio/webm',
-            bitrate: best.bitrate ? `${Math.round(best.bitrate / 1000)} kbps` : null,
-            codec: best.container || 'opus',
-          };
+        const resp = await axios.get(`${instance}/streams/${videoId}`, { timeout: 3500 });
+        if (resp.data && resp.data.audioStreams && resp.data.audioStreams.length > 0) {
+          const stream = resp.data.audioStreams[0];
+          if (stream.url && (stream.url.startsWith('https://') || stream.url.startsWith('http://'))) {
+            return {
+              url: stream.url,
+              mimeType: stream.mimeType || 'audio/webm',
+              codec: stream.codec || 'opus',
+              bitrate: stream.bitrate || 160000,
+            };
+          }
         }
-      } catch {}
+      } catch (e) {
+        // Fallback to next instance
+      }
     }
 
-    for (const inst of PIPED_INSTANCES) {
+    // Try Invidious instances
+    for (const instance of INVIDIOUS_INSTANCES) {
       try {
-        const resp = await axios.get(`${inst}/streams/${videoId}`, { timeout: 3500 });
-        const audios = resp.data?.audioStreams || [];
-        if (audios.length > 0) {
-          const best = audios[0];
-          return {
-            url: best.url,
-            mimeType: best.mimeType || 'audio/webm',
-            bitrate: best.bitrate ? `${Math.round(best.bitrate / 1000)} kbps` : null,
-            codec: best.codec || 'opus',
-          };
+        const resp = await axios.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 3500 });
+        if (resp.data && resp.data.adaptiveFormats) {
+          const audioFormats = resp.data.adaptiveFormats.filter((f) => f.type && f.type.startsWith('audio/'));
+          if (audioFormats.length > 0) {
+            const stream = audioFormats[0];
+            return {
+              url: stream.url,
+              mimeType: stream.type || 'audio/webm',
+              codec: stream.encoding || 'opus',
+              bitrate: stream.bitrate || 128000,
+            };
+          }
         }
-      } catch {}
+      } catch (e) {
+        // Fallback to next instance
+      }
     }
 
     return null;
   },
 
-  // 7. Synced Lyrics
+  // 7. Get Synced Lyrics via LRCLIB
   async getLyrics(title, artist, duration) {
-    if (!title || !artist) return { syncedLyrics: null, plainLyrics: null };
-    const cleanTrack = String(title).replace(/\(.*?\)|\[.*?\]|official|video|audio|lyrics/gi, '').trim();
-
     try {
-      const lrcUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTrack)}&artist_name=${encodeURIComponent(
-        artist
-      )}&duration=${duration || ''}`;
-      const response = await axios.get(lrcUrl, { timeout: 3500 });
+      const cleanTitle = title ? title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim() : '';
+      const cleanArtist = artist ? artist.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim() : '';
 
-      if (response.data) {
+      const resp = await axios.get('https://lrclib.net/api/get', {
+        params: {
+          track_name: cleanTitle,
+          artist_name: cleanArtist,
+          duration: duration || undefined,
+        },
+        timeout: 4000,
+      });
+
+      if (resp.data) {
         return {
-          syncedLyrics: response.data.syncedLyrics || null,
-          plainLyrics: response.data.plainLyrics || null,
+          syncedLyrics: resp.data.syncedLyrics || null,
+          plainLyrics: resp.data.plainLyrics || null,
         };
       }
-    } catch {}
+    } catch (e) {
+      // LRCLIB fallback
+    }
 
-    return { syncedLyrics: null, plainLyrics: null };
+    return {
+      syncedLyrics: null,
+      plainLyrics: null,
+    };
   },
 };
