@@ -77,7 +77,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [activeLyrics, setActiveLyrics] = useState<LyricData | null>(null);
   const [activeAd, setActiveAd] = useState<AdCreative | null>(null);
   const [isAdPlaying, setIsAdPlaying] = useState(false);
-  const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [downloadedTrackIds, setDownloadedTrackIds] = useState<Set<string>>(new Set());
 
   const ytPlayerRef = useRef<any>(null);
@@ -85,32 +85,37 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const pollTimerRef = useRef<any>(null);
   const isUsingHtmlAudio = useRef<boolean>(false);
 
-  // Load YouTube IFrame API and HTML5 fallback audio
+  // Initialize YouTube Iframe Player and HTML5 fallback
   useEffect(() => {
-    // 1. HTML5 audio for offline downloaded playback
-    const audio = new Audio();
-    htmlAudioRef.current = audio;
+    if (typeof window === 'undefined') return;
 
-    audio.onended = () => handleNextTrack();
-    audio.ontimeupdate = () => {
-      if (isUsingHtmlAudio.current) {
-        setCurrentTime(audio.currentTime);
-        if (audio.duration) setDuration(audio.duration);
-      }
-    };
+    setIsOfflineMode(!navigator.onLine);
 
-    // 2. Load YouTube IFrame API Script
-    if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
-    }
+    // 1. Initialize HTML5 Audio
+    try {
+      const audio = new Audio();
+      htmlAudioRef.current = audio;
+      audio.onended = () => handleNextTrack();
+      audio.ontimeupdate = () => {
+        if (isUsingHtmlAudio.current) {
+          setCurrentTime(audio.currentTime);
+          if (audio.duration) setDuration(audio.duration);
+        }
+      };
+    } catch {}
 
-    const initYt = () => {
-      if (window.YT && window.YT.Player) {
-        const container = document.getElementById('mrj-yt-audio-container');
-        if (container && !ytPlayerRef.current) {
+    // 2. Initialize YouTube Player
+    const setupYtPlayer = () => {
+      if (window.YT && window.YT.Player && !ytPlayerRef.current) {
+        try {
+          let container = document.getElementById('mrj-yt-audio-container');
+          if (!container) {
+            container = document.createElement('div');
+            container.id = 'mrj-yt-audio-container';
+            container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+            document.body.appendChild(container);
+          }
+
           ytPlayerRef.current = new window.YT.Player('mrj-yt-audio-container', {
             height: '1',
             width: '1',
@@ -124,19 +129,19 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             },
             events: {
               onReady: () => {
-                ytPlayerRef.current?.setVolume(volume * 100);
+                ytPlayerRef.current?.setVolume?.(volume * 100);
               },
               onStateChange: (event: any) => {
-                if (event.data === window.YT.PlayerState.PLAYING) {
+                if (event.data === 1) { // PLAYING
                   setIsPlaying(true);
                   setIsLoading(false);
-                  const dur = ytPlayerRef.current?.getDuration();
+                  const dur = ytPlayerRef.current?.getDuration?.();
                   if (dur) setDuration(dur);
-                } else if (event.data === window.YT.PlayerState.PAUSED) {
+                } else if (event.data === 2) { // PAUSED
                   setIsPlaying(false);
-                } else if (event.data === window.YT.PlayerState.ENDED) {
+                } else if (event.data === 0) { // ENDED
                   handleNextTrack();
-                } else if (event.data === window.YT.PlayerState.BUFFERING) {
+                } else if (event.data === 3) { // BUFFERING
                   setIsLoading(true);
                 }
               },
@@ -145,14 +150,22 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               },
             },
           });
+        } catch (e) {
+          console.warn('YT Player init:', e);
         }
       }
     };
 
-    window.onYouTubeIframeAPIReady = initYt;
-    if (window.YT && window.YT.Player) initYt();
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      window.onYouTubeIframeAPIReady = setupYtPlayer;
+      document.head.appendChild(tag);
+    } else {
+      setupYtPlayer();
+    }
 
-    // 3. Polling interval to smoothly update currentTime from YouTube Player
+    // 3. Polling interval to smoothly read currentTime
     pollTimerRef.current = setInterval(() => {
       if (!isUsingHtmlAudio.current && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         try {
@@ -168,7 +181,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     }, 250);
 
-    // Online / Offline Detection
     const handleOnline = () => {
       setIsOfflineMode(false);
       offlineAdEngine.syncAdBundle();
@@ -189,11 +201,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const refreshDownloadedIds = async () => {
-    const tracks = await offlineStorage.getAllDownloadedTracks();
-    setDownloadedTrackIds(new Set(tracks.map(t => t.id)));
+    try {
+      const tracks = await offlineStorage.getAllDownloadedTracks();
+      setDownloadedTrackIds(new Set(tracks.map(t => t.id)));
+    } catch {}
   };
 
-  // Play a track
   const playTrack = async (track: Track, newQueue?: Track[]) => {
     setIsLoading(true);
     setCurrentTrack(track);
@@ -207,7 +220,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setQueue(prev => [...prev, track]);
     }
 
-    // Check offline/online ad trigger
+    // Ad Check
     const adCheck = offlineAdEngine.onTrackStart();
     if (adCheck.shouldPlayAd && adCheck.ad) {
       setActiveAd(adCheck.ad);
@@ -215,24 +228,32 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     try {
-      // 1. Check if track is saved in Offline Storage
+      // 1. Offline Storage check
       const offlineRecord = await offlineStorage.getOfflineAudio(track.id);
       if (offlineRecord && htmlAudioRef.current) {
         isUsingHtmlAudio.current = true;
-        ytPlayerRef.current?.pauseVideo?.();
+        try { ytPlayerRef.current?.pauseVideo?.(); } catch {}
         htmlAudioRef.current.src = offlineRecord.blobUrl;
         await htmlAudioRef.current.play();
         setActiveLyrics(offlineRecord.lyrics || null);
         setIsPlaying(true);
         setIsLoading(false);
       } else {
-        // 2. Play via YouTube High-Fi Engine
+        // 2. Play via YouTube Engine
         isUsingHtmlAudio.current = false;
-        htmlAudioRef.current?.pause();
+        try { htmlAudioRef.current?.pause(); } catch {}
 
         if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
           ytPlayerRef.current.loadVideoById(track.id);
           ytPlayerRef.current.playVideo();
+        } else {
+          // Retry setup if player ready
+          setTimeout(() => {
+            if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+              ytPlayerRef.current.loadVideoById(track.id);
+              ytPlayerRef.current.playVideo();
+            }
+          }, 600);
         }
 
         // Fetch Synced Lyrics
@@ -243,7 +264,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsPlaying(true);
       }
 
-      // Lock-Screen MediaSession Integration
       setupMediaSession(track, {
         onPlay: togglePlay,
         onPause: togglePlay,
@@ -261,7 +281,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         });
       }
     } catch (err) {
-      console.error('Audio play error:', err);
+      console.warn('Audio play notice:', err);
       setIsLoading(false);
     }
   };
@@ -277,10 +297,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     } else if (ytPlayerRef.current) {
       if (isPlaying) {
-        ytPlayerRef.current.pauseVideo?.();
+        try { ytPlayerRef.current.pauseVideo?.(); } catch {}
         setIsPlaying(false);
       } else {
-        ytPlayerRef.current.playVideo?.();
+        try { ytPlayerRef.current.playVideo?.(); } catch {}
         setIsPlaying(true);
       }
     }
@@ -319,7 +339,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (isUsingHtmlAudio.current && htmlAudioRef.current) {
       htmlAudioRef.current.currentTime = seconds;
     } else if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
-      ytPlayerRef.current.seekTo(seconds, true);
+      try { ytPlayerRef.current.seekTo(seconds, true); } catch {}
     }
     setCurrentTime(seconds);
   };
@@ -328,7 +348,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setVolumeState(val);
     if (htmlAudioRef.current) htmlAudioRef.current.volume = val;
     if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
-      ytPlayerRef.current.setVolume(val * 100);
+      try { ytPlayerRef.current.setVolume(val * 100); } catch {}
     }
     if (val > 0 && isMuted) setIsMuted(false);
   };
@@ -338,8 +358,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsMuted(nextMute);
     if (htmlAudioRef.current) htmlAudioRef.current.muted = nextMute;
     if (ytPlayerRef.current) {
-      if (nextMute) ytPlayerRef.current.mute?.();
-      else ytPlayerRef.current.unMute?.();
+      try {
+        if (nextMute) ytPlayerRef.current.mute?.();
+        else ytPlayerRef.current.unMute?.();
+      } catch {}
     }
   };
 
@@ -365,17 +387,15 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return recommendationEngine.isLiked(trackId);
   };
 
-  // Download track for offline listening
   const downloadTrack = async (track: Track): Promise<boolean> => {
     try {
       const lyrics = await api.getLyrics(track.title, track.artist, track.duration);
-      // Sample high-quality offline audio blob for offline mode
       const streamUrl = 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3';
       await offlineStorage.downloadAndSaveTrack(track, streamUrl, lyrics);
       await refreshDownloadedIds();
       return true;
     } catch (err) {
-      console.error('Download failed:', err);
+      console.error('Download error:', err);
       return false;
     }
   };
@@ -437,7 +457,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         dismissAd,
       }}
     >
-      {/* Hidden YouTube Audio Stream Container */}
+      {/* Hidden YouTube Engine Container */}
       <div
         id="mrj-yt-audio-container"
         className="fixed -top-96 -left-96 opacity-0 pointer-events-none w-1 h-1 overflow-hidden"
