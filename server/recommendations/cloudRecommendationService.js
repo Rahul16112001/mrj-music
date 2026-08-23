@@ -2,7 +2,8 @@ import { db } from '../db/schema.js';
 import { chartService } from '../charts/chartService.js';
 import { seedRadioService } from './seedRadioService.js';
 import { moodEngine } from './moodEngine.js';
-import { contentClassifier } from '../catalog/contentClassifier.js';
+import { contentClassifier, CONTENT_TYPES } from '../catalog/contentClassifier.js';
+import { personalizationEngine } from './personalizationEngine.js';
 
 export const cloudRecommendationService = {
   // 1. Process Event Batch & Update Taste Profile
@@ -10,154 +11,158 @@ export const cloudRecommendationService = {
     if (!Array.isArray(events) || events.length === 0) return;
 
     await db.addEvents(userId, events);
-    const profile = await db.getTasteProfile(userId);
-
     for (const evt of events) {
-      const artist = (evt.artist || '').trim();
-      const genre = (evt.genre || '').trim();
-
-      if (evt.eventType === 'PLAY_STARTED') {
-        profile.total_plays = (profile.total_plays || 0) + 1;
-        if (evt.trackId) {
-          if (!profile.recent_seeds) profile.recent_seeds = [];
-          if (!profile.recent_seeds.includes(evt.trackId)) {
-            profile.recent_seeds = [evt.trackId, ...profile.recent_seeds].slice(0, 30);
-          }
-        }
-      }
-
-      if (evt.eventType === 'PLAY_COMPLETED' || (evt.completionPercent && evt.completionPercent >= 75)) {
-        profile.total_completions = (profile.total_completions || 0) + 1;
-        if (artist) {
-          if (!profile.preferred_artists) profile.preferred_artists = {};
-          profile.preferred_artists[artist] = (profile.preferred_artists[artist] || 0) + 3;
-        }
-        if (genre) {
-          if (!profile.preferred_genres) profile.preferred_genres = {};
-          profile.preferred_genres[genre] = (profile.preferred_genres[genre] || 0) + 2;
-        }
-      }
-
-      if (evt.eventType === 'SKIP') {
-        profile.total_skips = (profile.total_skips || 0) + 1;
-        if (artist && profile.preferred_artists?.[artist]) {
-          profile.preferred_artists[artist] = Math.max(0, profile.preferred_artists[artist] - 1);
-        }
-      }
-
-      if (evt.eventType === 'LIKE') {
-        if (!profile.liked_artists) profile.liked_artists = [];
-        if (!profile.preferred_artists) profile.preferred_artists = {};
-        if (artist && !profile.liked_artists.includes(artist)) {
-          profile.liked_artists.push(artist);
-          profile.preferred_artists[artist] = (profile.preferred_artists[artist] || 0) + 5;
-        }
-      }
-
-      if (evt.eventType === 'UNLIKE') {
-        if (profile.liked_artists) {
-          profile.liked_artists = profile.liked_artists.filter(a => a !== artist);
-        }
-      }
-
-      if (evt.eventType === 'DISLIKE' || evt.eventType === 'NOT_INTERESTED') {
-        if (!profile.disliked_artists) profile.disliked_artists = [];
-        if (artist && !profile.disliked_artists.includes(artist)) {
-          profile.disliked_artists.push(artist);
-        }
-        if (profile.preferred_artists?.[artist]) {
-          delete profile.preferred_artists[artist];
-        }
-      }
+      await personalizationEngine.processBehavioralEvent(userId, evt);
     }
 
-    if (profile.total_plays > 0) {
-      profile.skip_rate = +(profile.total_skips / profile.total_plays).toFixed(2);
-      profile.completion_rate = +(profile.total_completions / profile.total_plays).toFixed(2);
-    }
-
-    await db.saveTasteProfile(userId, profile);
-    return profile;
+    return await db.getTasteProfile(userId);
   },
 
-  // 2. Generate Seed-Based Radio (Delegated to SeedRadioService)
+  // 2. Generate Seed-Based Radio
   async getSeedRadio(userId, seedTrack, candidatePool = null) {
     return await seedRadioService.generateRadio(userId, seedTrack, candidatePool);
   },
 
-  // 3. Generate Mood Station (Delegated to MoodEngine)
+  // 3. Generate Mood Station
   async getMoodStation(userId, moodId, candidatePool = null) {
     return await moodEngine.getMoodStation(userId, moodId, candidatePool);
   },
 
-  // 4. Generate Structured Home Contract with Clear Architectural Separation
+  // 4. Generate Deep Music-First Home Contract
   async getPersonalizedHome(userId, userRegion = 'IN') {
-    // 1. Fetch Official Charts (Strictly Non-Personalized)
+    // 1. Fetch Official Charts
     const regionalTrending = await chartService.getTrending(userRegion);
     const globalTrending = await chartService.getTrending('GLOBAL');
     const topSongs = await chartService.getTopSongs(userRegion);
     const topArtists = await chartService.getTopArtists(userRegion);
 
-    // 2. Fetch User Profile Data
+    // 2. Fetch User Profile Data & History
     const profile = userId ? await db.getTasteProfile(userId) : null;
     const liked = userId ? await db.getLikedTracks(userId) : [];
     const history = userId ? await db.getUserHistory(userId) : [];
 
-    // Filter out compilations
-    const cleanLiked = liked.filter(t => !contentClassifier.isCompilation(t.title, t.artist, t.duration));
-    const cleanHistory = history.filter(t => !contentClassifier.isCompilation(t.title, t.artist, t.duration));
+    // Music-first normalization & filtering
+    const cleanLiked = liked.map(t => contentClassifier.normalizeTrack(t)).filter(t => !t.isCompilation && !t.isReaction);
+    const cleanHistory = history.map(t => contentClassifier.normalizeTrack(t)).filter(t => !t.isCompilation && !t.isReaction);
+    const cleanRegional = regionalTrending.tracks.map(t => contentClassifier.normalizeTrack(t)).filter(t => !t.isCompilation);
 
-    // 3. Generate Personalized Quick Picks
-    let quickPicks = [];
-    if (cleanLiked.length > 0) {
-      quickPicks = cleanLiked.slice(0, 16);
-    } else if (cleanHistory.length > 0) {
-      quickPicks = cleanHistory.slice(0, 16);
-    } else {
-      quickPicks = regionalTrending.tracks.slice(0, 16);
+    // 3. Calculate Intelligent "Listen Again" (Plays + Completions + Likes)
+    const playFrequency = new Map();
+    for (const h of cleanHistory) {
+      playFrequency.set(h.id, (playFrequency.get(h.id) || 0) + 1);
+    }
+    for (const l of cleanLiked) {
+      playFrequency.set(l.id, (playFrequency.get(l.id) || 0) + 3);
     }
 
-    // 4. Generate Distinct Daily Mixes from Clusters
+    const listenAgainCandidates = [...cleanLiked, ...cleanHistory];
+    const uniqueListenAgainMap = new Map();
+    for (const track of listenAgainCandidates) {
+      if (!uniqueListenAgainMap.has(track.id)) {
+        const score = (playFrequency.get(track.id) || 1) * 10;
+        uniqueListenAgainMap.set(track.id, { ...track, listenScore: score });
+      }
+    }
+
+    const listenAgain = Array.from(uniqueListenAgainMap.values())
+      .sort((a, b) => b.listenScore - a.listenScore)
+      .slice(0, 12);
+
+    // 4. Calculate "On Repeat" Stats (Songs played >= 2 times or with high affinity)
+    const onRepeatSongs = Array.from(uniqueListenAgainMap.values())
+      .filter(t => (playFrequency.get(t.id) || 0) >= 2)
+      .slice(0, 8);
+
+    const onRepeatArtists = Object.entries(profile?.preferred_artists || {})
+      .filter(([_, score]) => score >= 10)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => ({ name, thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200' }))
+      .slice(0, 6);
+
+    // 5. Generate Personalized Quick Picks
+    let quickPicks = [];
+    if (listenAgain.length > 0) {
+      quickPicks = listenAgain.slice(0, 16);
+    } else {
+      quickPicks = cleanRegional.slice(0, 16);
+    }
+
+    // 6. Generate 6 Distinct Daily Mixes
     const sortedArtists = Object.entries(profile?.preferred_artists || {}).sort((a, b) => b[1] - a[1]);
-    const topArtist1 = sortedArtists[0]?.[0] || 'Popular Artists';
-    const topArtist2 = sortedArtists[1]?.[0] || 'Trending Hitmakers';
+    const topArtist1 = sortedArtists[0]?.[0] || 'Arijit Singh';
+    const topArtist2 = sortedArtists[1]?.[0] || 'Diljit Dosanjh';
+    const topArtist3 = sortedArtists[2]?.[0] || 'The Weeknd';
 
-    const dailyMix1 = {
-      id: 'mix_daily_1',
-      title: 'Daily Mix 1',
-      description: topArtist1 !== 'Popular Artists' ? `Featuring ${topArtist1} and similar favorites` : 'Personalized blend of your top tracks',
-      tracks: quickPicks.slice(0, 8),
-    };
+    const dailyMixes = [
+      {
+        id: 'mix_daily_1',
+        title: 'Daily Mix 1',
+        description: `Featuring ${topArtist1} and essential hits`,
+        tracks: quickPicks.slice(0, 8),
+      },
+      {
+        id: 'mix_daily_2',
+        title: 'Daily Mix 2',
+        description: `Energetic tracks featuring ${topArtist2}`,
+        tracks: cleanRegional.slice(0, 8),
+      },
+      {
+        id: 'mix_daily_3',
+        title: 'Chill & Acoustic Mix',
+        description: `Mellow acoustic melodies and relaxing beats`,
+        tracks: globalTrending.tracks.slice(4, 12),
+      },
+      {
+        id: 'mix_daily_4',
+        title: 'Workout & Energy Mix',
+        description: `High-BPM motivational tracks for high performance`,
+        tracks: cleanRegional.slice(8, 16),
+      },
+      {
+        id: 'mix_daily_5',
+        title: 'Discovery Mix',
+        description: `Fresh music and new creators based on your taste`,
+        tracks: globalTrending.tracks.slice(12, 20),
+      },
+      {
+        id: 'mix_daily_6',
+        title: 'On Repeat Mix',
+        description: `Your most played and looped songs`,
+        tracks: (onRepeatSongs.length > 0 ? onRepeatSongs : quickPicks).slice(0, 8),
+      },
+    ];
 
-    const dailyMix2 = {
-      id: 'mix_daily_2',
-      title: 'Daily Mix 2',
-      description: topArtist2 !== 'Trending Hitmakers' ? `Featuring ${topArtist2} and energetic tracks` : 'Upbeat and trending discoveries',
-      tracks: regionalTrending.tracks.slice(0, 8),
-    };
+    // 7. "Because You Like..." Sections
+    const becauseYouLikeSections = [];
+    if (topArtist1) {
+      becauseYouLikeSections.push({
+        type: 'artist',
+        title: `Because you like ${topArtist1}`,
+        artist: topArtist1,
+        tracks: quickPicks.filter(t => t.artist.includes(topArtist1) || t.artist === topArtist1).concat(quickPicks.slice(0, 6)).slice(0, 6),
+      });
+    }
 
-    const dailyMix3 = {
-      id: 'mix_daily_3',
-      title: 'Chill Discovery Mix',
-      description: 'Relaxing tunes, acoustic tracks, and lofi study beats',
-      tracks: globalTrending.tracks.slice(4, 12),
-    };
-
-    // 5. Build Final Home Data Contract
+    // 8. Build Final Home Data Contract
     return {
       personalized: {
         quickPicks,
-        dailyMixes: [dailyMix1, dailyMix2, dailyMix3],
-        listenAgain: cleanHistory.slice(0, 10),
+        dailyMixes,
+        listenAgain: listenAgain.slice(0, 10),
+        onRepeat: {
+          songs: onRepeatSongs,
+          artists: onRepeatArtists,
+        },
         recommendedForYou: quickPicks.slice(0, 10),
-        becauseYouLike: topArtist1 !== 'Popular Artists' ? { artist: topArtist1, tracks: quickPicks.slice(0, 6) } : null,
+        becauseYouLike: becauseYouLikeSections[0] || null,
+        becauseYouLikeSections,
       },
       discovery: {
-        newReleases: regionalTrending.tracks.slice(8, 18),
+        newReleases: cleanRegional.slice(8, 18),
         topArtists: topArtists.artists,
       },
       charts: {
-        trendingRegional: regionalTrending.tracks,
+        trendingRegional: cleanRegional,
         trendingWorldwide: globalTrending.tracks,
         topSongs: topSongs.tracks,
         topArtists: topArtists.artists,

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { Track, LyricData, AdCreative, PlaybackMode, AudioQuality, Playlist } from '../types';
+import { Track, LyricData, AdCreative, PlaybackMode, AudioQuality, Playlist, PlaybackFormat, TuneConfig } from '../types';
 import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 import { offlineAdEngine } from '../services/offlineAdEngine';
@@ -20,12 +20,14 @@ interface MusicPlayerContextType {
   volume: number;
   isMuted: boolean;
   
-  // Independent Playback & Queue Modes
+  // Independent Playback & Format Modes
+  playbackFormat: PlaybackFormat;
   shuffleEnabled: boolean;
   repeatMode: RepeatMode;
   autoplayEnabled: boolean;
   sourceType: QueueSourceType;
   audioQuality: AudioQuality;
+  tuneConfig: TuneConfig;
   
   // Authoritative Queue
   queue: Track[];
@@ -37,6 +39,7 @@ interface MusicPlayerContextType {
   isFullScreenPlayerOpen: boolean;
   isLyricsOpen: boolean;
   isQueueOpen: boolean;
+  isTuneModalOpen: boolean;
   activeLyrics: LyricData | null;
   activeAd: AdCreative | null;
   isAdPlaying: boolean;
@@ -46,8 +49,9 @@ interface MusicPlayerContextType {
   playlists: Playlist[];
   
   // Playback Actions
-  playTrack: (track: Track, newQueue?: Track[], source?: QueueSourceType) => Promise<void>;
+  playTrack: (track: Track, newQueue?: Track[], source?: QueueSourceType, format?: PlaybackFormat) => Promise<void>;
   togglePlay: () => void;
+  togglePlaybackFormat: () => void;
   nextTrack: () => void;
   previousTrack: () => void;
   seek: (seconds: number) => void;
@@ -57,6 +61,8 @@ interface MusicPlayerContextType {
   cycleRepeatMode: () => void;
   toggleAutoplay: () => void;
   setAudioQuality: (quality: AudioQuality) => void;
+  setTuneConfig: (config: TuneConfig) => void;
+  sendFeedback: (eventType: string, track?: Track | null, artist?: string) => Promise<void>;
   
   // Queue Actions
   addToQueue: (track: Track) => void;
@@ -81,6 +87,7 @@ interface MusicPlayerContextType {
   setFullScreenPlayerOpen: (open: boolean) => void;
   setLyricsOpen: (open: boolean) => void;
   setQueueOpen: (open: boolean) => void;
+  setTuneModalOpen: (open: boolean) => void;
   dismissAd: () => void;
 }
 
@@ -113,6 +120,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isMuted, setIsMuted] = useState(false);
 
   // Playback & Queue Modes
+  const [playbackFormat, setPlaybackFormat] = useState<PlaybackFormat>('audio');
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [autoplayEnabled, setAutoplayEnabled] = useState<boolean>(() => {
@@ -124,6 +132,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   });
   const [sourceType, setSourceType] = useState<QueueSourceType>('single');
   const [audioQuality, setAudioQuality] = useState<AudioQuality>('high');
+  const [tuneConfig, setTuneConfig] = useState<TuneConfig>({
+    artistVariety: 50,
+    discoveryLevel: 40,
+    energy: 50,
+    mood: null,
+  });
 
   // Authoritative Queues
   const [queue, setQueue] = useState<Track[]>([]);
@@ -135,6 +149,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isFullScreenPlayerOpen, setFullScreenPlayerOpen] = useState(false);
   const [isLyricsOpen, setLyricsOpen] = useState(false);
   const [isQueueOpen, setQueueOpen] = useState(false);
+  const [isTuneModalOpen, setTuneModalOpen] = useState(false);
   const [activeLyrics, setActiveLyrics] = useState<LyricData | null>(null);
   const [activeAd, setActiveAd] = useState<AdCreative | null>(null);
   const [isAdPlaying, setIsAdPlaying] = useState(false);
@@ -151,6 +166,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const milestoneRef = useRef<Set<number>>(new Set());
   const autoplayGenerationId = useRef<number>(0);
   const isFetchingAutoplay = useRef<boolean>(false);
+  const sessionIdRef = useRef<string>('sess_' + Math.random().toString(36).substring(2, 9));
 
   // Initialize playback & library storage
   useEffect(() => {
@@ -239,7 +255,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       document.body.appendChild(tag);
     }
 
-    // 3. Time polling for smooth progress
+    // 3. Time polling
     pollTimerRef.current = setInterval(() => {
       if (!isUsingHtmlAudio.current && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         try {
@@ -290,15 +306,15 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const pct = (curr / dur) * 100;
     if (pct >= 25 && !milestoneRef.current.has(25)) {
       milestoneRef.current.add(25);
-      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_25', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 25 });
+      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_25', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 25, sessionId: sessionIdRef.current });
     }
     if (pct >= 50 && !milestoneRef.current.has(50)) {
       milestoneRef.current.add(50);
-      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_50', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 50 });
+      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_50', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 50, sessionId: sessionIdRef.current });
     }
     if (pct >= 75 && !milestoneRef.current.has(75)) {
       milestoneRef.current.add(75);
-      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_75', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 75 });
+      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_75', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 75, sessionId: sessionIdRef.current });
     }
   };
 
@@ -317,11 +333,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  // ==================== 1. CORE PLAYBACK ENGINE ====================
+  // ==================== 1. PLAYBACK ENGINE ====================
 
-  const playTrack = async (track: Track, newQueue?: Track[], source: QueueSourceType = 'single') => {
+  const playTrack = async (track: Track, newQueue?: Track[], source: QueueSourceType = 'single', format: PlaybackFormat = 'audio') => {
     setIsLoading(true);
     setCurrentTrack(track);
+    setPlaybackFormat(format || track.playbackFormat || 'audio');
     milestoneRef.current.clear();
     await offlineStorage.recordPlay(track);
 
@@ -330,7 +347,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       trackId: track.id,
       title: track.title,
       artist: track.artist,
+      genre: track.genre,
       duration: track.duration,
+      sessionId: sessionIdRef.current,
     });
 
     if (newQueue && newQueue.length > 0) {
@@ -379,7 +398,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }, 600);
         }
 
-        // Fetch Synced Lyrics
         api.getLyrics(track.title, track.artist, track.duration).then(l => {
           setActiveLyrics(l);
         });
@@ -403,12 +421,16 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         onSeek: seek,
       });
 
-      // Proactive Autoplay Check: If remaining queue <= 5, fetch next batch
       checkAndTriggerAutoplay(queueIndex, queue);
     } catch (err) {
       console.warn('Audio play notice:', err);
       setIsLoading(false);
     }
+  };
+
+  const togglePlaybackFormat = () => {
+    const nextFormat = playbackFormat === 'audio' ? 'video' : 'audio';
+    setPlaybackFormat(nextFormat);
   };
 
   const togglePlay = () => {
@@ -438,7 +460,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         trackId: currentTrack.id,
         title: currentTrack.title,
         artist: currentTrack.artist,
+        genre: currentTrack.genre,
         completionPercent: 100,
+        sessionId: sessionIdRef.current,
       });
     }
 
@@ -491,6 +515,17 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (queue.length === 0) return;
 
     if (currentTrack) {
+      const isEarlySkip = currentTime < 15;
+      syncService.queueEvent({
+        eventType: isEarlySkip ? 'SKIP_EARLY' : 'SKIP_LATE',
+        trackId: currentTrack.id,
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        genre: currentTrack.genre,
+        completionPercent: duration > 0 ? Math.round((currentTime / duration) * 100) : 0,
+        sessionId: sessionIdRef.current,
+      });
+
       setPlaybackHistory(prev => [currentTrack, ...prev.filter(t => t.id !== currentTrack.id)].slice(0, 30));
     }
 
@@ -500,7 +535,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (repeatMode === 'all') {
         nextIdx = 0;
       } else if (autoplayEnabled && navigator.onLine) {
-        // Trigger emergency autoplay generation
         api.getNextRecommendations({
           currentTrack,
           playedTrackIds: playbackHistory.map(t => t.id),
@@ -580,7 +614,21 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  // ==================== 4. SHUFFLE, REPEAT & AUTOPLAY TOGGLES ====================
+  // ==================== 4. USER FEEDBACK ACTIONS ====================
+
+  const sendFeedback = async (eventType: string, track?: Track | null, artist?: string) => {
+    const target = track || currentTrack;
+    const targetArtist = artist || target?.artist;
+    await api.sendFeedback(eventType, target, targetArtist);
+
+    if (eventType === 'DONT_RECOMMEND_ARTIST' && targetArtist) {
+      setQueue(prev => prev.filter(t => t.artist !== targetArtist));
+    } else if (eventType === 'NOT_INTERESTED' && target) {
+      setQueue(prev => prev.filter(t => t.id !== target.id));
+    }
+  };
+
+  // ==================== 5. SHUFFLE, REPEAT & AUTOPLAY TOGGLES ====================
 
   const toggleShuffle = () => {
     const nextShuffle = !shuffleEnabled;
@@ -589,14 +637,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (queue.length <= 1) return;
 
     if (nextShuffle) {
-      // Shuffle upcoming tracks preserving currently playing track at index 0
       const current = currentTrack || queue[queueIndex];
       const upcoming = queue.slice(queueIndex + 1);
       const played = queue.slice(0, queueIndex);
       const shuffledUpcoming = fisherYatesShuffle(upcoming);
       setQueue([...played, current, ...shuffledUpcoming]);
     } else {
-      // Restore source queue ordering
       if (sourceQueue.length > 0) {
         setQueue(sourceQueue);
         const idx = currentTrack ? sourceQueue.findIndex(t => t.id === currentTrack.id) : 0;
@@ -617,11 +663,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     localStorage.setItem('MRJ_AUTOPLAY_ENABLED', String(nextState));
   };
 
-  // ==================== 5. QUEUE MUTATIONS ====================
+  // ==================== 6. QUEUE MUTATIONS ====================
 
   const addToQueue = (track: Track) => {
     setQueue(prev => [...prev, track]);
-    syncService.queueEvent({ eventType: 'ADD_TO_QUEUE', trackId: track.id, title: track.title, artist: track.artist });
+    syncService.queueEvent({ eventType: 'ADD_TO_QUEUE', trackId: track.id, title: track.title, artist: track.artist, sessionId: sessionIdRef.current });
   };
 
   const playNextInQueue = (track: Track) => {
@@ -666,7 +712,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     playTrack(shuffled[0], shuffled, 'downloaded');
   };
 
-  // ==================== 6. LIBRARY ACTIONS ====================
+  // ==================== 7. LIBRARY ACTIONS ====================
 
   const toggleFavorite = async (track: Track): Promise<boolean> => {
     const isFav = likedTrackIds.has(track.id);
@@ -677,12 +723,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         next.delete(track.id);
         return next;
       });
-      syncService.queueEvent({ eventType: 'UNLIKE', trackId: track.id, title: track.title, artist: track.artist });
+      syncService.queueEvent({ eventType: 'UNLIKE', trackId: track.id, title: track.title, artist: track.artist, sessionId: sessionIdRef.current });
       return false;
     } else {
       await offlineStorage.saveLikedTrack(track);
       setLikedTrackIds(prev => new Set(prev).add(track.id));
-      syncService.queueEvent({ eventType: 'LIKE', trackId: track.id, title: track.title, artist: track.artist });
+      syncService.queueEvent({ eventType: 'LIKE', trackId: track.id, title: track.title, artist: track.artist, sessionId: sessionIdRef.current });
       return true;
     }
   };
@@ -736,7 +782,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const addTrackToPlaylist = async (playlistId: string, track: Track): Promise<boolean> => {
     const success = await offlineStorage.addTrackToPlaylist(playlistId, track);
-    if (success) await refreshLibrary();
+    if (success) {
+      await refreshLibrary();
+      syncService.queueEvent({ eventType: 'PLAYLIST_ADD', trackId: track.id, title: track.title, artist: track.artist, sessionId: sessionIdRef.current });
+    }
     return success;
   };
 
@@ -770,11 +819,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         progress: duration > 0 ? (currentTime / duration) * 100 : 0,
         volume,
         isMuted,
+        playbackFormat,
         shuffleEnabled,
         repeatMode,
         autoplayEnabled,
         sourceType,
         audioQuality,
+        tuneConfig,
         queue,
         queueIndex,
         sourceQueue,
@@ -782,6 +833,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isFullScreenPlayerOpen,
         isLyricsOpen,
         isQueueOpen,
+        isTuneModalOpen,
         activeLyrics,
         activeAd,
         isAdPlaying,
@@ -791,6 +843,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         playlists,
         playTrack,
         togglePlay,
+        togglePlaybackFormat,
         nextTrack: handleNextTrack,
         previousTrack: handlePreviousTrack,
         seek,
@@ -800,6 +853,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         cycleRepeatMode,
         toggleAutoplay,
         setAudioQuality,
+        setTuneConfig,
+        sendFeedback,
         addToQueue,
         playNextInQueue,
         removeFromQueue,
@@ -818,6 +873,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setFullScreenPlayerOpen,
         setLyricsOpen,
         setQueueOpen,
+        setTuneModalOpen,
         dismissAd,
       }}
     >

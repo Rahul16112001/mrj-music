@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Search, Clock, X, Music, User, Disc, Play, Sparkles } from 'lucide-react';
+import React from 'react';
+import { Search, Clock, X, Music, User, Disc, Play, Video, Mic, Sparkles } from 'lucide-react';
 import { Track } from '../types';
 import { SearchSuggestionsResult } from '../services/api';
 import { ArtworkImage } from './ArtworkImage';
@@ -36,8 +36,10 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
   const hasSongs = data.songs && data.songs.length > 0;
   const hasArtists = data.artists && data.artists.length > 0;
   const hasAlbums = data.albums && data.albums.length > 0;
+  const hasVideos = data.videos && data.videos.length > 0;
+  const hasPodcasts = data.podcasts && data.podcasts.length > 0;
 
-  if (!hasRecent && !hasSuggestions && !hasSongs && !hasArtists && !hasAlbums && !isLoading) {
+  if (!hasRecent && !hasSuggestions && !hasSongs && !hasArtists && !hasAlbums && !hasVideos && !hasPodcasts && !isLoading) {
     return null;
   }
 
@@ -122,7 +124,7 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
         </div>
       )}
 
-      {/* 3. MATCHING SONGS */}
+      {/* 3. MUSIC-FIRST SONGS */}
       {hasSongs && (
         <div className="p-3 space-y-1">
           <div className="px-2 py-1">
@@ -132,7 +134,7 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
             </span>
           </div>
           <div className="space-y-1">
-            {data.songs.slice(0, 4).map((track) => (
+            {data.songs.slice(0, 5).map((track) => (
               <div
                 key={track.id}
                 onClick={() => onSelectTrack(track)}
@@ -150,7 +152,7 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
                       {track.title}
                     </p>
                     <p className="text-[11px] text-[#aaaaaa] truncate">
-                      {track.artist}
+                      Song • {track.artist}
                     </p>
                   </div>
                 </div>
@@ -163,7 +165,7 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
         </div>
       )}
 
-      {/* 4. MATCHING ARTISTS & ALBUMS */}
+      {/* 4. ARTISTS & ALBUMS */}
       {(hasArtists || hasAlbums) && (
         <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {hasArtists && (
@@ -214,6 +216,68 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
                       {album.title}
                     </p>
                     <span className="text-[10px] text-[#888888]">Album • {album.artist}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. VIDEOS & PODCASTS */}
+      {(hasVideos || hasPodcasts) && (
+        <div className="p-3 space-y-2">
+          {hasVideos && (
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#888888] px-2 flex items-center gap-1.5">
+                <Video className="w-3 h-3 text-[#ff0000]" />
+                <span>Music Videos</span>
+              </span>
+              {data.videos!.slice(0, 2).map((vid) => (
+                <div
+                  key={`vid-${vid.id}`}
+                  onClick={() => onSelectTrack({ ...vid, playbackFormat: 'video' })}
+                  className="flex items-center justify-between p-2 rounded-xl hover:bg-[#1e1e1e] cursor-pointer group transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative w-12 h-7 rounded-lg overflow-hidden shrink-0 bg-[#222222]">
+                      <ArtworkImage src={vid.thumbnail} alt={vid.title} className="w-full h-full object-cover" />
+                      <div className="absolute bottom-0.5 right-0.5 px-1 bg-black/70 rounded text-[9px] font-bold text-white">
+                        Video
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-white group-hover:text-[#ff4e4e] truncate transition-colors">
+                        {vid.title}
+                      </p>
+                      <p className="text-[10px] text-[#aaaaaa] truncate">{vid.artist}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {hasPodcasts && (
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#888888] px-2 flex items-center gap-1.5">
+                <Mic className="w-3 h-3 text-[#ff0000]" />
+                <span>Podcasts</span>
+              </span>
+              {data.podcasts!.slice(0, 2).map((pod) => (
+                <div
+                  key={`pod-${pod.id}`}
+                  onClick={() => onSelectTrack(pod)}
+                  className="flex items-center justify-between p-2 rounded-xl hover:bg-[#1e1e1e] cursor-pointer group transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <ArtworkImage src={pod.thumbnail} alt={pod.title} className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-white group-hover:text-[#ff4e4e] truncate transition-colors">
+                        {pod.title}
+                      </p>
+                      <p className="text-[10px] text-[#aaaaaa] truncate">Podcast • {pod.artist}</p>
+                    </div>
                   </div>
                 </div>
               ))}

@@ -200,7 +200,7 @@ app.get(['/api/recommendations/related/:trackId', '/recommendations/related/:tra
 app.post(['/api/recommendations/next', '/recommendations/next'], optionalAuth, async (req, res) => {
   try {
     const userId = req.user ? req.user.id : null;
-    const { currentTrack, playedTrackIds, currentQueueIds, mood, sessionSearches } = req.body;
+    const { currentTrack, playedTrackIds, currentQueueIds, mood, sessionSearches, tuneConfig, sessionId } = req.body;
 
     const recommendations = await nextTrackService.getNextRecommendations(userId, {
       currentTrack,
@@ -208,9 +208,50 @@ app.post(['/api/recommendations/next', '/recommendations/next'], optionalAuth, a
       currentQueueIds,
       mood,
       sessionSearches,
+      tuneConfig,
+      sessionId,
     });
 
     res.json({ status: 'success', ...recommendations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/recommendations/tune', '/recommendations/tune'], optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const { sessionId, tuneConfig, currentTrack, currentQueueIds } = req.body;
+
+    const recommendations = await nextTrackService.getNextRecommendations(userId, {
+      currentTrack,
+      currentQueueIds,
+      tuneConfig,
+      sessionId,
+    });
+
+    res.json({ status: 'success', tuneConfig, ...recommendations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/recommendations/feedback', '/recommendations/feedback'], optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const { eventType, track, artist, sessionId } = req.body;
+
+    if (userId && eventType) {
+      await cloudRecommendationService.processEvents(userId, [{
+        eventType,
+        trackId: track?.id,
+        artist: artist || track?.artist,
+        genre: track?.genre,
+        sessionId,
+      }]);
+    }
+
+    res.json({ status: 'success', eventType, message: 'Recommendation profile updated' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

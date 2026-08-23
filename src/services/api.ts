@@ -12,6 +12,7 @@ const getAuthHeaders = () => {
 
 export interface SearchSuggestionsResult {
   query: string;
+  intent?: string;
   recent?: string[];
   popular?: string[];
   personalized?: string[];
@@ -19,6 +20,8 @@ export interface SearchSuggestionsResult {
   songs: Track[];
   artists: any[];
   albums: any[];
+  videos?: Track[];
+  podcasts?: Track[];
 }
 
 export const api = {
@@ -294,6 +297,34 @@ export const api = {
       return { tracks: data.tracks || [] };
     } catch {
       return { tracks: [] };
+    }
+  },
+
+  async tuneRecommendations(tuneConfig: any, currentTrack?: Track | null, currentQueueIds?: string[]): Promise<{ tracks: Track[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/tune`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ tuneConfig, currentTrack, currentQueueIds }),
+      });
+      if (!res.ok) throw new Error('Tune recommendations failed');
+      const data = await res.json();
+      return { tracks: data.tracks || [] };
+    } catch {
+      return { tracks: [] };
+    }
+  },
+
+  async sendFeedback(eventType: string, track?: Track | null, artist?: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/feedback`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ eventType, track, artist }),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   },
 

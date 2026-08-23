@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search as SearchIcon, Compass, Sparkles, Loader2, Music, User } from 'lucide-react';
+import { Search as SearchIcon, Compass, Sparkles, Loader2, Music, User, Video, Disc, Mic } from 'lucide-react';
 import { Track } from '../types';
 import { api } from '../services/api';
 import { TrackCard } from '../components/TrackCard';
+
+type SearchCategoryFilter = 'all' | 'songs' | 'artists' | 'albums' | 'videos' | 'podcasts';
 
 export const Search: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -11,23 +13,25 @@ export const Search: React.FC = () => {
   const queryParam = searchParams.get('q') || '';
 
   const [query, setQuery] = useState(queryParam);
-  const [results, setResults] = useState<Track[]>([]);
+  const [activeFilter, setActiveFilter] = useState<SearchCategoryFilter>('all');
+  const [songs, setSongs] = useState<Track[]>([]);
+  const [videos, setVideos] = useState<Track[]>([]);
+  const [podcasts, setPodcasts] = useState<Track[]>([]);
   const [artists, setArtists] = useState<any[]>([]);
+  const [albums, setAlbums] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const categories = [
-    'Global Top 50',
+  const popularChips = [
     'Arijit Singh',
     'Taylor Swift',
-    'Drake',
     'The Weeknd',
-    'Bad Bunny',
-    'Billie Eilish',
+    'Diljit Dosanjh',
+    'Shreya Ghoshal',
     'Coldplay',
+    'Ed Sheeran',
     'Lofi Beats',
     'Bollywood Hits',
     'Punjabi Hits',
-    'K-Pop'
   ];
 
   useEffect(() => {
@@ -41,9 +45,12 @@ export const Search: React.FC = () => {
     if (!term.trim()) return;
     setIsLoading(true);
     try {
-      const data = await api.search(term.trim());
-      setResults(data.results || []);
-      setArtists(data.artists || []);
+      const suggestions = await api.getSearchSuggestions(term.trim());
+      setSongs(suggestions.songs || []);
+      setArtists(suggestions.artists || []);
+      setAlbums(suggestions.albums || []);
+      setVideos(suggestions.videos || []);
+      setPodcasts(suggestions.podcasts || []);
     } catch (err) {
       console.error('Search error:', err);
     } finally {
@@ -65,15 +72,17 @@ export const Search: React.FC = () => {
     performSearch(cat);
   };
 
+  const hasAnyResults = songs.length > 0 || artists.length > 0 || albums.length > 0 || videos.length > 0 || podcasts.length > 0;
+
   return (
-    <div className="p-4 md:p-8 space-y-10 max-w-7xl mx-auto pb-40 select-none">
+    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto pb-40 select-none">
       {/* Search Input Hero */}
       <div className="max-w-2xl mx-auto text-center space-y-4">
         <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">
-          Explore Worldwide Music
+          Explore Music Catalog
         </h1>
         <p className="text-xs md:text-sm text-[#aaaaaa]">
-          Search over 100 million songs, artists, albums, and remixes in High-Fi audio
+          Music-first search across verified audio tracks, albums, artists, and live performances
         </p>
 
         <form onSubmit={handleSearchSubmit} className="relative">
@@ -82,93 +91,166 @@ export const Search: React.FC = () => {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by song name, singer, band, or lyrics..."
-            className="w-full h-13 pl-12 pr-28 bg-[#212121] border border-[#333333] focus:border-[#ff0000] rounded-2xl text-sm text-white placeholder-[#717171] focus:outline-none shadow-xl transition-all"
+            placeholder="Search by song name, artist, lyrics, or album..."
+            className="w-full h-12 pl-12 pr-28 bg-[#181818] border border-[#2d2d2d] focus:border-[#ff0000] rounded-2xl text-sm text-white placeholder-[#717171] focus:outline-none shadow-xl transition-all"
             autoFocus
           />
           <button
             type="submit"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 px-5 py-2 rounded-xl bg-[#ff0000] hover:bg-[#cc0000] text-white font-bold text-xs shadow-md transition-all hover:scale-105"
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-1.5 rounded-xl bg-[#ff0000] hover:bg-[#cc0000] text-white font-bold text-xs shadow-md transition-all hover:scale-105"
           >
             Search
           </button>
         </form>
 
-        {/* Quick Genre & Artist Chips */}
-        <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-          {categories.map((cat) => (
+        {/* Category Type Filter Pills */}
+        <div className="flex items-center justify-center gap-2 overflow-x-auto no-scrollbar py-2">
+          {(['all', 'songs', 'artists', 'albums', 'videos', 'podcasts'] as const).map((filter) => (
             <button
-              key={cat}
-              onClick={() => handleChipClick(cat)}
-              className="px-3.5 py-1.5 rounded-full bg-[#181818] hover:bg-[#212121] border border-[#282828] text-xs font-semibold text-[#aaaaaa] hover:text-white transition-all hover:scale-105 active:scale-95"
+              key={filter}
+              onClick={() => setActiveFilter(filter)}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${
+                activeFilter === filter
+                  ? 'bg-white text-black border-white shadow-md'
+                  : 'bg-[#181818] text-[#aaaaaa] border-[#2c2c2c] hover:text-white'
+              }`}
             >
-              {cat}
+              {filter}
             </button>
           ))}
         </div>
+
+        {/* Popular Search Seeds */}
+        {!queryParam && (
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+            {popularChips.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => handleChipClick(cat)}
+                className="px-3.5 py-1.5 rounded-full bg-[#181818] hover:bg-[#212121] border border-[#282828] text-xs font-semibold text-[#aaaaaa] hover:text-white transition-all hover:scale-105"
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Artists Result Section */}
-      {artists.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <User className="w-5 h-5 text-[#ff0000]" />
-            <span>Artists</span>
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {artists.map((artist) => (
-              <div
-                key={artist.id || artist.name}
-                onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
-                className="flex flex-col items-center text-center p-4 rounded-2xl bg-[#181818] hover:bg-[#212121] border border-[#262626] cursor-pointer transition-all hover:scale-105 group"
-              >
-                <div className="w-24 h-24 rounded-full overflow-hidden mb-3 shadow-lg border border-[#333333] group-hover:border-[#ff0000]">
-                  <img src={artist.thumbnail} alt={artist.name} className="w-full h-full object-cover" />
-                </div>
-                <h4 className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate w-full">
-                  {artist.name}
-                </h4>
-                <p className="text-[10px] text-[#aaaaaa] mt-0.5">{artist.subscribers}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+      {isLoading && (
+        <div className="flex flex-col items-center justify-center py-16 space-y-3">
+          <Loader2 className="w-8 h-8 text-[#ff0000] animate-spin" />
+          <p className="text-xs font-bold text-[#aaaaaa] uppercase tracking-wider">Searching Music-First Catalog...</p>
+        </div>
       )}
 
-      {/* Songs Results Section */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            {isLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 text-[#ff0000] animate-spin" />
-                <span>Searching Worldwide Catalog...</span>
-              </>
-            ) : results.length > 0 ? (
-              <>
-                <Compass className="w-5 h-5 text-[#ff0000]" />
-                <span>Songs for "{query}" ({results.length})</span>
-              </>
-            ) : (
-              <span>Popular Global Songs</span>
-            )}
-          </h2>
-        </div>
+      {!isLoading && hasAnyResults && (
+        <div className="space-y-10">
+          {/* 1. MUSIC-FIRST SONGS */}
+          {(activeFilter === 'all' || activeFilter === 'songs') && songs.length > 0 && (
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Music className="w-5 h-5 text-[#ff0000]" />
+                  <span>Songs ({songs.length})</span>
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {songs.map((track) => (
+                  <TrackCard key={track.id} track={track} queueContext={songs} />
+                ))}
+              </div>
+            </section>
+          )}
 
-        {results.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {results.map((track) => (
-              <TrackCard key={track.id} track={track} queueContext={results} />
-            ))}
-          </div>
-        ) : !isLoading && query ? (
-          <div className="text-center py-16 text-[#aaaaaa]">
-            <Music className="w-10 h-10 mx-auto mb-2 opacity-40 text-[#717171]" />
-            <p className="text-base font-semibold text-white">No tracks found</p>
-            <p className="text-xs text-[#aaaaaa] mt-1">Try another artist or keyword</p>
-          </div>
-        ) : null}
-      </section>
+          {/* 2. ARTISTS */}
+          {(activeFilter === 'all' || activeFilter === 'artists') && artists.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <User className="w-5 h-5 text-[#ff0000]" />
+                <span>Artists ({artists.length})</span>
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                {artists.map((artist) => (
+                  <div
+                    key={artist.id || artist.name}
+                    onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
+                    className="flex flex-col items-center text-center p-4 rounded-2xl bg-[#181818] hover:bg-[#212121] border border-[#262626] cursor-pointer transition-all hover:scale-105 group"
+                  >
+                    <div className="w-24 h-24 rounded-full overflow-hidden mb-3 shadow-lg border border-[#333333] group-hover:border-[#ff0000]">
+                      <img src={artist.thumbnail} alt={artist.name} className="w-full h-full object-cover" />
+                    </div>
+                    <h4 className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate w-full">
+                      {artist.name}
+                    </h4>
+                    <p className="text-[10px] text-[#aaaaaa] mt-0.5">{artist.subscribers || 'Artist'}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 3. ALBUMS */}
+          {(activeFilter === 'all' || activeFilter === 'albums') && albums.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Disc className="w-5 h-5 text-[#ff0000]" />
+                <span>Albums ({albums.length})</span>
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {albums.map((album) => (
+                  <div
+                    key={album.id}
+                    onClick={() => navigate(`/album/${album.id}`)}
+                    className="flex flex-col p-3 rounded-2xl bg-[#181818] hover:bg-[#212121] border border-[#262626] cursor-pointer transition-all group"
+                  >
+                    <img src={album.thumbnail} alt={album.title} className="w-full aspect-square rounded-xl object-cover mb-2" />
+                    <h4 className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate">{album.title}</h4>
+                    <p className="text-xs text-[#aaaaaa] truncate">{album.artist}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 4. MUSIC VIDEOS */}
+          {(activeFilter === 'all' || activeFilter === 'videos') && videos.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Video className="w-5 h-5 text-[#ff0000]" />
+                <span>Music Videos ({videos.length})</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {videos.map((vid) => (
+                  <TrackCard key={`vid-${vid.id}`} track={{ ...vid, playbackFormat: 'video' }} queueContext={videos} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 5. PODCASTS */}
+          {(activeFilter === 'all' || activeFilter === 'podcasts') && podcasts.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Mic className="w-5 h-5 text-[#ff0000]" />
+                <span>Podcasts ({podcasts.length})</span>
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {podcasts.map((pod) => (
+                  <TrackCard key={`pod-${pod.id}`} track={pod} queueContext={podcasts} />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {!isLoading && queryParam && !hasAnyResults && (
+        <div className="text-center py-20 text-[#aaaaaa] space-y-2">
+          <Music className="w-12 h-12 mx-auto text-[#444444]" />
+          <p className="text-base font-bold text-white">No tracks found for "{queryParam}"</p>
+          <p className="text-xs text-[#777777]">Try searching for a different song title or artist name</p>
+        </div>
+      )}
     </div>
   );
 };

@@ -184,7 +184,7 @@ app.get('/api/recommendations/related/:trackId', optionalAuth, async (req, res) 
 
 app.post('/api/recommendations/next', optionalAuth, async (req, res) => {
   const userId = req.user ? req.user.id : null;
-  const { currentTrack, playedTrackIds, currentQueueIds, mood, sessionSearches } = req.body;
+  const { currentTrack, playedTrackIds, currentQueueIds, mood, sessionSearches, tuneConfig, sessionId } = req.body;
 
   const recommendations = await nextTrackService.getNextRecommendations(userId, {
     currentTrack,
@@ -192,9 +192,42 @@ app.post('/api/recommendations/next', optionalAuth, async (req, res) => {
     currentQueueIds,
     mood,
     sessionSearches,
+    tuneConfig,
+    sessionId,
   });
 
   res.json({ status: 'success', ...recommendations });
+});
+
+app.post('/api/recommendations/tune', optionalAuth, async (req, res) => {
+  const userId = req.user ? req.user.id : null;
+  const { sessionId, tuneConfig, currentTrack, currentQueueIds } = req.body;
+
+  const recommendations = await nextTrackService.getNextRecommendations(userId, {
+    currentTrack,
+    currentQueueIds,
+    tuneConfig,
+    sessionId,
+  });
+
+  res.json({ status: 'success', tuneConfig, ...recommendations });
+});
+
+app.post('/api/recommendations/feedback', optionalAuth, async (req, res) => {
+  const userId = req.user ? req.user.id : null;
+  const { eventType, track, artist, sessionId } = req.body;
+
+  if (userId && eventType) {
+    await cloudRecommendationService.processEvents(userId, [{
+      eventType,
+      trackId: track?.id,
+      artist: artist || track?.artist,
+      genre: track?.genre,
+      sessionId,
+    }]);
+  }
+
+  res.json({ status: 'success', eventType, message: 'Recommendation profile updated' });
 });
 
 app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {

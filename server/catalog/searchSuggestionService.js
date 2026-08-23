@@ -1,6 +1,7 @@
 import { db } from '../db/schema.js';
 import { musicProvider } from '../providers/musicProvider.js';
-import { contentClassifier } from './contentClassifier.js';
+import { contentClassifier, CONTENT_TYPES } from './contentClassifier.js';
+import { searchIntentEngine } from './searchIntentEngine.js';
 
 // Popular trending search seeds for instant fallback
 const POPULAR_SEARCH_SEEDS = [
@@ -28,7 +29,8 @@ const POPULAR_SEARCH_SEEDS = [
 
 export const searchSuggestionService = {
   async getSuggestions(query = '', userId = null) {
-    const cleanQuery = (query || '').trim().toLowerCase();
+    const cleanQuery = (query || '').trim();
+    const intent = searchIntentEngine.parse(cleanQuery);
 
     // 1. If query is empty, return Recent Searches + Popular + Top Artists
     if (!cleanQuery) {
@@ -45,100 +47,105 @@ export const searchSuggestionService = {
         songs: [],
         artists: [],
         albums: [],
+        videos: [],
+        podcasts: [],
       };
     }
 
     // 2. Fetch User Profile for Personalized Ranking
     const profile = userId ? await db.getTasteProfile(userId) : null;
-    const userLikes = userId ? await db.getLikedTracks(userId) : [];
     const likedArtists = new Set(profile?.liked_artists || []);
     const preferredArtists = profile?.preferred_artists || {};
 
     // 3. Generate Matching Query Suggestions
     const querySuggestions = new Set();
 
-    // Check user history matches first
     if (userId) {
       const history = await db.getSearchHistory(userId);
       for (const h of history) {
-        if (h.toLowerCase().includes(cleanQuery)) {
+        if (h.toLowerCase().includes(cleanQuery.toLowerCase())) {
           querySuggestions.add(h);
         }
       }
     }
 
-    // Check popular search seeds matches
     for (const seed of POPULAR_SEARCH_SEEDS) {
-      if (seed.toLowerCase().includes(cleanQuery)) {
+      if (seed.toLowerCase().includes(cleanQuery.toLowerCase())) {
         querySuggestions.add(seed);
       }
     }
 
-    // 4. Query Music Provider Catalog (with timeout & fallback)
+    // 4. Query Music Provider Catalog
     let searchResults = { results: [], artists: [] };
     try {
-      searchResults = await musicProvider.search(cleanQuery, 'all', 15);
+      searchResults = await musicProvider.search(cleanQuery, 'all', 25);
     } catch (e) {
       console.warn('Search suggestion provider fallback:', e.message);
     }
 
-    // 5. Categorize & Score Matching Songs, Artists & Albums
+    // 5. Categorize into Music-First Groups: Songs, Videos, Podcasts, Artists, Albums
     const songs = [];
+    const videos = [];
+    const podcasts = [];
     const artists = [];
     const albums = [];
 
-    // Extract Song suggestions and generate query completions from titles
-    for (const track of searchResults.results || []) {
-      if (!contentClassifier.isCompilation(track.title, track.artist, track.duration)) {
-        // Scoring formula: Text relevance (0-50) + User affinity (0-30) + Popularity
-        let score = 0;
-        const trackTitleLower = track.title.toLowerCase();
-        const trackArtistLower = track.artist.toLowerCase();
+    for (const rawTrack of searchResults.results || []) {
+      const track = contentClassifier.normalizeTrack(rawTrack);
+      if (track.isCompilation || track.isReaction) continue;
 
-        if (trackTitleLower.startsWith(cleanQuery)) score += 50;
-        else if (trackTitleLower.includes(cleanQuery)) score += 30;
+      let score = contentClassifier.scoreCandidate(track, intent);
 
-        if (trackArtistLower.startsWith(cleanQuery)) score += 40;
-        else if (trackArtistLower.includes(cleanQuery)) score += 25;
+      // User taste boost (preserves text relevance as primary)
+      if (preferredArtists[track.artist]) {
+        score += Math.min(25, preferredArtists[track.artist] * 2.5);
+      }
+      if (likedArtists.has(track.artist)) {
+        score += 20;
+      }
 
-        // User taste personalization
-        if (preferredArtists[track.artist]) {
-          score += Math.min(30, preferredArtists[track.artist] * 3);
-        }
-        if (likedArtists.has(track.artist)) {
-          score += 25;
-        }
+      track.searchScore = score;
+      querySuggestions.add(track.title);
 
-        songs.push({ ...track, score });
-        querySuggestions.add(track.title);
+      if (track.isPodcast) {
+        podcasts.push(track);
+      } else if (track.isMusicVideo || track.contentType === CONTENT_TYPES.VIDEO) {
+        videos.push(track);
+      } else {
+        songs.push(track);
       }
     }
 
-    // Sort songs by combined score
-    songs.sort((a, b) => (b.score || 0) - (a.score || 0));
+    // Sort songs and videos by calculated music score
+    songs.sort((a, b) => (b.searchScore || 0) - (a.searchScore || 0));
+    videos.sort((a, b) => (b.searchScore || 0) - (a.searchScore || 0));
 
-    // Extract Artist suggestions
+    // Extract Artists
     for (const artist of searchResults.artists || []) {
       artists.push(artist);
       querySuggestions.add(artist.name);
     }
 
-    // If query matches an artist name pattern, suggest album
+    // Generate Contextual Albums
     if (cleanQuery.length >= 3) {
       albums.push({
-        id: `alb_essentials_${cleanQuery.replace(/\s+/g, '_')}`,
+        id: `alb_essentials_${cleanQuery.toLowerCase().replace(/\s+/g, '_')}`,
         title: `${cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1)} Essentials`,
         artist: searchResults.artists?.[0]?.name || cleanQuery,
-        thumbnail: searchResults.results?.[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
+        thumbnail: songs[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
+        trackCount: 12,
       });
     }
 
     return {
       query: cleanQuery,
+      intent: intent.primaryIntent,
       suggestions: Array.from(querySuggestions).slice(0, 8),
-      songs: songs.slice(0, 6).map(({ score, ...rest }) => rest),
+      songs: songs.slice(0, 6).map(({ searchScore, ...rest }) => rest),
       artists: artists.slice(0, 4),
       albums: albums.slice(0, 2),
+      videos: videos.slice(0, 3).map(({ searchScore, ...rest }) => rest),
+      podcasts: podcasts.slice(0, 2).map(({ searchScore, ...rest }) => rest),
     };
   },
 };

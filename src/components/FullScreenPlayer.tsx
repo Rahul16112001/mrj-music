@@ -21,10 +21,16 @@ import {
   Share2,
   Sparkles,
   Trash2,
-  Plus
+  Plus,
+  Sliders,
+  Video,
+  Music,
+  Ban,
+  ThumbsDown
 } from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { SyncedLyrics } from './SyncedLyrics';
+import { TuneMixModal } from './TuneMixModal';
 import { api } from '../services/api';
 import { Track } from '../types';
 
@@ -37,6 +43,8 @@ export const FullScreenPlayer: React.FC = () => {
     duration,
     volume,
     isMuted,
+    playbackFormat,
+    togglePlaybackFormat,
     shuffleEnabled,
     repeatMode,
     autoplayEnabled,
@@ -44,6 +52,8 @@ export const FullScreenPlayer: React.FC = () => {
     queueIndex,
     isFullScreenPlayerOpen,
     setFullScreenPlayerOpen,
+    isTuneModalOpen,
+    setTuneModalOpen,
     activeLyrics,
     togglePlay,
     nextTrack,
@@ -63,6 +73,7 @@ export const FullScreenPlayer: React.FC = () => {
     playNextInQueue,
     removeFromQueue,
     clearQueue,
+    sendFeedback,
   } = useMusicPlayer();
 
   const [activeTab, setActiveTab] = useState<'queue' | 'lyrics' | 'related'>('lyrics');
@@ -148,28 +159,68 @@ export const FullScreenPlayer: React.FC = () => {
           ))}
         </div>
 
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(window.location.origin);
-          }}
-          className="p-2 rounded-full hover:bg-white/10 text-[#aaaaaa] hover:text-white transition-colors"
-          title="Share song"
-        >
-          <Share2 className="w-5 h-5" />
-        </button>
+        {/* Audio vs Video Mode Switcher */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-[#181818] p-1 rounded-full border border-white/10">
+            <button
+              onClick={() => playbackFormat === 'video' && togglePlaybackFormat()}
+              className={`flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
+                playbackFormat === 'audio'
+                  ? 'bg-[#ff0000] text-white shadow-md'
+                  : 'text-[#aaaaaa] hover:text-white'
+              }`}
+              title="Song (Audio Mode)"
+            >
+              <Music className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Song</span>
+            </button>
+            <button
+              onClick={() => playbackFormat === 'audio' && togglePlaybackFormat()}
+              className={`flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
+                playbackFormat === 'video'
+                  ? 'bg-[#ff0000] text-white shadow-md'
+                  : 'text-[#aaaaaa] hover:text-white'
+              }`}
+              title="Watch Video"
+            >
+              <Video className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Video</span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => navigator.clipboard.writeText(window.location.origin)}
+            className="p-2 rounded-full hover:bg-white/10 text-[#aaaaaa] hover:text-white transition-colors"
+            title="Share song"
+          >
+            <Share2 className="w-5 h-5" />
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area */}
       <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 md:p-12 items-center overflow-y-auto max-w-7xl mx-auto w-full">
-        {/* Left Column: Album Artwork & Track Metadata */}
+        {/* Left Column: Artwork / Video Player */}
         <div className="flex flex-col items-center justify-center space-y-6 max-w-md mx-auto w-full">
-          <div className="relative w-72 h-72 sm:w-88 sm:h-88 rounded-2xl overflow-hidden shadow-2xl shadow-black/80 border border-white/10 group">
-            <img
-              src={currentTrack.thumbnail}
-              alt={currentTrack.title}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          {playbackFormat === 'video' ? (
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black border border-white/10">
+              <iframe
+                src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&playsinline=1&enablejsapi=1`}
+                title={currentTrack.title}
+                className="w-full h-full"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          ) : (
+            <div className="relative w-72 h-72 sm:w-88 sm:h-88 rounded-2xl overflow-hidden shadow-2xl shadow-black/80 border border-white/10 group">
+              <img
+                src={currentTrack.thumbnail}
+                alt={currentTrack.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
 
           <div className="flex items-center justify-between w-full px-2">
             <div className="min-w-0 flex-1 mr-4">
@@ -240,18 +291,31 @@ export const FullScreenPlayer: React.FC = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-[#aaaaaa]">
                   Up Next ({queue.length} Tracks)
                 </span>
-                {/* Autoplay Toggle Button */}
-                <button
-                  onClick={toggleAutoplay}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
-                    autoplayEnabled
-                      ? 'bg-[#ff0000]/20 text-[#ff4e4e] border-[#ff0000]/40'
-                      : 'bg-[#222222] text-[#888888] border-[#333333]'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Autoplay {autoplayEnabled ? 'ON' : 'OFF'}</span>
-                </button>
+                
+                <div className="flex items-center gap-2">
+                  {/* Tune Mix Button */}
+                  <button
+                    onClick={() => setTuneModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#222222] hover:bg-[#333333] text-white border border-[#333333] transition-all"
+                    title="Tune Mix Algorithm"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-[#ff4e4e]" />
+                    <span>Tune</span>
+                  </button>
+
+                  {/* Autoplay Toggle */}
+                  <button
+                    onClick={toggleAutoplay}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                      autoplayEnabled
+                        ? 'bg-[#ff0000]/20 text-[#ff4e4e] border-[#ff0000]/40'
+                        : 'bg-[#222222] text-[#888888] border-[#333333]'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Autoplay {autoplayEnabled ? 'ON' : 'OFF'}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-4 pt-3 no-scrollbar">
@@ -303,19 +367,39 @@ export const FullScreenPlayer: React.FC = () => {
                             <p className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate transition-colors">
                               {track.title}
                             </p>
-                            <p className="text-xs text-[#aaaaaa] truncate">{track.artist}</p>
+                            <div className="flex items-center gap-1.5 text-xs text-[#aaaaaa] truncate">
+                              <span>{track.artist}</span>
+                              {track.recommendationReason && (
+                                <span className="text-[10px] text-[#ff4e4e] font-medium bg-[#ff0000]/10 px-1.5 py-0.5 rounded">
+                                  {track.recommendationReason}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFromQueue(queueIndex + 1 + idx);
-                          }}
-                          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 text-[#777777] hover:text-[#ff4e4e] transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              sendFeedback('NOT_INTERESTED', track);
+                            }}
+                            className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 text-[#777777] hover:text-white transition-all"
+                            title="Not interested"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromQueue(queueIndex + 1 + idx);
+                            }}
+                            className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 text-[#777777] hover:text-[#ff4e4e] transition-all"
+                            title="Remove from queue"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -460,6 +544,12 @@ export const FullScreenPlayer: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Tune Mix Modal */}
+      <TuneMixModal
+        isOpen={isTuneModalOpen}
+        onClose={() => setTuneModalOpen(false)}
+      />
     </div>
   );
 };

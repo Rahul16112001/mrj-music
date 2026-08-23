@@ -5,9 +5,13 @@ export interface User {
   createdAt: number;
 }
 
+export type ContentType = 'music' | 'video' | 'podcast' | 'unknown';
+export type PlaybackFormat = 'audio' | 'video';
+
 export interface Track {
   id: string;
   title: string;
+  rawTitle?: string;
   artist: string;
   album?: string;
   thumbnail: string;
@@ -15,6 +19,21 @@ export interface Track {
   views?: string;
   genre?: string;
   audioUrl?: string;
+  contentType?: ContentType;
+  isOfficialMusic?: boolean;
+  isAudioOnly?: boolean;
+  isMusicVideo?: boolean;
+  isLive?: boolean;
+  isRemix?: boolean;
+  isCover?: boolean;
+  isPodcast?: boolean;
+  isCompilation?: boolean;
+  isReaction?: boolean;
+  sourceType?: string;
+  provider?: string;
+  providerTrackId?: string;
+  playbackFormat?: PlaybackFormat;
+  recommendationReason?: string;
   isOffline?: boolean;
   downloadedAt?: number;
   fileSize?: number;
@@ -93,6 +112,18 @@ export type PlaybackMode = 'repeat-none' | 'repeat-all' | 'repeat-one' | 'shuffl
 
 export type AudioQuality = 'auto' | 'standard' | 'high';
 
+export interface TuneConfig {
+  artistVariety: number; // 0 - 100
+  discoveryLevel: number; // 0 - 100
+  energy: number; // 0 - 100
+  mood?: string | null;
+}
+
+export interface OnRepeatStats {
+  songs: Track[];
+  artists: { name: string; thumbnail: string }[];
+}
+
 export interface SmartDownloadConfig {
   enabled: boolean;
   maxTracks: number;
@@ -120,17 +151,16 @@ export interface BackupData {
 }
 
 export interface ListeningEvent {
-  id?: string;
-  trackId: string;
-  title: string;
-  artist: string;
-  album?: string;
-  thumbnail?: string;
-  eventType: 'PLAY_STARTED' | 'PLAY_25' | 'PLAY_50' | 'PLAY_75' | 'PLAY_COMPLETED' | 'SKIP' | 'LIKE' | 'UNLIKE' | 'DISLIKE' | 'ADD_TO_QUEUE' | 'ADD_TO_PLAYLIST' | 'SEARCH' | 'MOOD_SELECTED';
-  timestamp?: number;
+  eventType: string;
+  trackId?: string;
+  title?: string;
+  artist?: string;
+  genre?: string;
   duration?: number;
-  listenedSeconds?: number;
   completionPercent?: number;
   skipped?: boolean;
   source?: string;
+  timestamp?: number;
+  sessionId?: string;
+  query?: string;
 }
