@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Search,
@@ -9,37 +9,115 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  WifiOff
+  WifiOff,
+  X,
+  Loader2
 } from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { useAuth } from '../context/AuthContext';
+import { api, SearchSuggestionsResult } from '../services/api';
+import { SearchSuggestionDropdown } from './SearchSuggestionDropdown';
+import { Track } from '../types';
 
 export const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isOfflineMode } = useMusicPlayer();
+  const { isOfflineMode, playTrack } = useMusicPlayer();
   const { user, isAuthenticated, logout } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [suggestionsData, setSuggestionsData] = useState<SearchSuggestionsResult | null>(null);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
 
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const debounceTimerRef = useRef<any>(null);
+
+  // 1. Fetch suggestions with 200ms debounce and AbortController
+  const fetchSuggestions = useCallback((query: string) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsSuggestionsLoading(true);
+    api.getSearchSuggestions(query, controller.signal)
+      .then((res) => {
+        setSuggestionsData(res);
+      })
+      .catch(() => {})
+      .finally(() => {
+        setIsSuggestionsLoading(false);
+      });
+  }, []);
+
+  const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      fetchSuggestions(val);
+    }, 200);
+  };
+
+  const handleSearchFocus = () => {
+    setIsSearchFocused(true);
+    fetchSuggestions(searchQuery);
+  };
+
+  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchFocused(false);
+      }
       if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
         setIsProfileMenuOpen(false);
       }
     };
-    if (isProfileMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isProfileMenuOpen]);
+  }, []);
+
+  const executeSearch = (q: string) => {
+    const clean = q.trim();
+    if (!clean) return;
+    setIsSearchFocused(false);
+    if (isAuthenticated) {
+      api.addSearchHistory(clean);
+    }
+    navigate(`/search?q=${encodeURIComponent(clean)}`);
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    executeSearch(searchQuery);
+  };
+
+  const handleSelectTrack = (track: Track) => {
+    setIsSearchFocused(false);
+    if (isAuthenticated) {
+      api.addSearchHistory(track.title);
+    }
+    playTrack(track);
+  };
+
+  const handleDeleteHistoryQuery = async (q: string) => {
+    const updated = await api.removeSearchHistory(q);
+    if (suggestionsData) {
+      setSuggestionsData({ ...suggestionsData, recent: updated });
+    }
+  };
+
+  const handleClearHistory = async () => {
+    await api.clearSearchHistory();
+    if (suggestionsData) {
+      setSuggestionsData({ ...suggestionsData, recent: [] });
     }
   };
 
@@ -51,7 +129,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <header className="h-16 px-4 md:px-8 bg-[#030303]/95 backdrop-blur-md border-b border-[#181818] flex items-center justify-between sticky top-0 z-40 select-none">
-      {/* Left: Navigation & History controls */}
+      {/* Left: Navigation Controls */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 hidden sm:flex">
           <button
@@ -82,21 +160,63 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Middle: Worldwide Search Bar */}
-      <form onSubmit={handleSearchSubmit} className="flex-1 max-w-xl mx-4">
-        <div className="relative">
+      {/* Middle: Live Search Bar with Instant Suggestions */}
+      <div ref={searchContainerRef} className="flex-1 max-w-xl mx-4 relative">
+        <form onSubmit={handleSearchSubmit} className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#717171]" />
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleQueryChange}
+            onFocus={handleSearchFocus}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setIsSearchFocused(false);
+            }}
             placeholder="Search songs, albums, artists, podcasts..."
-            className="w-full h-10 pl-10 pr-4 bg-[#181818] border border-[#2d2d2d] focus:border-[#ff0000] rounded-full text-xs text-white placeholder-[#717171] focus:outline-none transition-all shadow-inner"
+            className="w-full h-10 pl-10 pr-10 bg-[#181818] border border-[#2d2d2d] focus:border-[#ff0000] rounded-full text-xs text-white placeholder-[#717171] focus:outline-none transition-all shadow-inner"
           />
-        </div>
-      </form>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                fetchSuggestions('');
+              }}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#717171] hover:text-white"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {isSuggestionsLoading && (
+            <Loader2 className="absolute right-9 top-1/2 -translate-y-1/2 w-3 h-3 text-[#ff0000] animate-spin" />
+          )}
+        </form>
 
-      {/* Right: Offline Indicator, Settings & User Auth Profile */}
+        {/* Suggestion Dropdown */}
+        <SearchSuggestionDropdown
+          isOpen={isSearchFocused}
+          onClose={() => setIsSearchFocused(false)}
+          data={suggestionsData}
+          onSelectQuery={(q) => {
+            setSearchQuery(q);
+            executeSearch(q);
+          }}
+          onSelectTrack={handleSelectTrack}
+          onSelectArtist={(artistName) => {
+            setIsSearchFocused(false);
+            navigate(`/artist/${encodeURIComponent(artistName)}`);
+          }}
+          onSelectAlbum={(albumId) => {
+            setIsSearchFocused(false);
+            navigate(`/album/${albumId}`);
+          }}
+          onDeleteHistoryQuery={handleDeleteHistoryQuery}
+          onClearHistory={handleClearHistory}
+          isLoading={isSuggestionsLoading}
+        />
+      </div>
+
+      {/* Right: Offline Indicator, Settings & Profile */}
       <div className="flex items-center gap-3 shrink-0">
         {isOfflineMode && (
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[11px] font-bold">
@@ -113,66 +233,61 @@ export const Navbar: React.FC = () => {
           <Settings className="w-4 h-4" />
         </button>
 
-        {/* User Account / Profile Menu */}
+        {/* User Profile */}
         {isAuthenticated && user ? (
           <div className="relative" ref={profileMenuRef}>
             <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-              className="w-8 h-8 rounded-full bg-[#ff0000] text-white font-bold text-xs flex items-center justify-center shadow-lg shadow-red-600/30 hover:scale-105 transition-transform"
-              title={user.name}
+              className="flex items-center gap-2 p-1.5 pr-3 rounded-full bg-[#181818] border border-[#2d2d2d] hover:border-[#444444] transition-all"
             >
-              {user.name.charAt(0).toUpperCase()}
+              <div className="w-7 h-7 rounded-full bg-[#ff0000] text-white font-black text-xs flex items-center justify-center shadow-md">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-xs font-bold text-white max-w-[90px] truncate hidden md:inline">
+                {user.name}
+              </span>
             </button>
 
             {isProfileMenuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-[#181818] border border-[#2d2d2d] rounded-2xl shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                <div className="px-4 py-2 border-b border-[#282828] mb-1">
+              <div className="absolute right-0 mt-2 w-56 bg-[#161616] border border-[#2c2c2c] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95">
+                <div className="p-4 border-b border-[#242424]">
                   <p className="text-xs font-bold text-white truncate">{user.name}</p>
-                  <p className="text-[10px] text-[#aaaaaa] truncate">{user.email}</p>
+                  <p className="text-[11px] text-[#aaaaaa] truncate">{user.email}</p>
                 </div>
-
-                <Link
-                  to="/profile"
-                  onClick={() => setIsProfileMenuOpen(false)}
-                  className="w-full px-4 py-2 flex items-center gap-2.5 text-xs font-semibold text-white hover:bg-[#242424] transition-colors"
-                >
-                  <UserIcon className="w-4 h-4 text-[#ff4e4e]" />
-                  <span>My Profile</span>
-                </Link>
-
-                <Link
-                  to="/settings"
-                  onClick={() => setIsProfileMenuOpen(false)}
-                  className="w-full px-4 py-2 flex items-center gap-2.5 text-xs font-semibold text-white hover:bg-[#242424] transition-colors"
-                >
-                  <Settings className="w-4 h-4 text-[#aaaaaa]" />
-                  <span>Settings</span>
-                </Link>
-
-                <button
-                  onClick={handleLogout}
-                  className="w-full px-4 py-2 flex items-center gap-2.5 text-xs font-semibold text-red-400 hover:bg-red-950/30 transition-colors border-t border-[#282828] mt-1 pt-2 text-left"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
-                </button>
+                <div className="p-1.5 space-y-1">
+                  <Link
+                    to="/profile"
+                    onClick={() => setIsProfileMenuOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 text-xs text-white hover:bg-[#222222] rounded-xl transition-colors font-medium"
+                  >
+                    <UserIcon className="w-4 h-4 text-[#aaaaaa]" />
+                    <span>Your Profile & Taste</span>
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#ff4e4e] hover:bg-[#222222] rounded-xl transition-colors font-medium text-left"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Log Out</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Link
-              to="/login"
-              className="px-4 py-1.5 rounded-full bg-[#212121] hover:bg-[#2c2c2c] border border-[#333333] text-white font-bold text-xs transition-colors"
+            <button
+              onClick={() => navigate('/login')}
+              className="px-4 py-1.5 rounded-full text-xs font-bold text-white hover:bg-[#1f1f1f] transition-colors"
             >
               Sign In
-            </Link>
-            <Link
-              to="/register"
-              className="px-4 py-1.5 rounded-full bg-[#ff0000] hover:bg-[#cc0000] text-white font-bold text-xs shadow-md shadow-red-600/30 transition-all hover:scale-105 hidden sm:inline-block"
+            </button>
+            <button
+              onClick={() => navigate('/register')}
+              className="px-4 py-1.5 rounded-full text-xs font-bold bg-[#ff0000] text-white hover:bg-[#cc0000] transition-colors shadow-md shadow-red-600/30"
             >
               Sign Up
-            </Link>
+            </button>
           </div>
         )}
       </div>

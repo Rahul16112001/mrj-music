@@ -477,4 +477,41 @@ export const db = {
     );
     return await this.getUserSettings(userId);
   },
+
+  // ==================== 9. SEARCH HISTORY ====================
+  async getSearchHistory(userId) {
+    if (!userId) return [];
+    const res = await dbClient.query(
+      'SELECT DISTINCT query, MAX(searched_at) as searched_at FROM search_history WHERE user_id = $1 GROUP BY query ORDER BY searched_at DESC LIMIT 15;',
+      [userId]
+    );
+    return res.rows.map(r => r.query);
+  },
+
+  async addSearchHistory(userId, query) {
+    if (!userId || !query || !query.trim()) return await this.getSearchHistory(userId);
+    const cleanQuery = query.trim();
+    const now = Date.now();
+    const id = 'sh_' + crypto.randomUUID();
+    await dbClient.query(
+      'INSERT INTO search_history (id, user_id, query, searched_at) VALUES ($1, $2, $3, $4);',
+      [id, userId, cleanQuery, now]
+    );
+    return await this.getSearchHistory(userId);
+  },
+
+  async removeSearchHistory(userId, query) {
+    if (!userId || !query) return await this.getSearchHistory(userId);
+    await dbClient.query(
+      'DELETE FROM search_history WHERE user_id = $1 AND LOWER(query) = LOWER($2);',
+      [userId, query.trim()]
+    );
+    return await this.getSearchHistory(userId);
+  },
+
+  async clearSearchHistory(userId) {
+    if (!userId) return [];
+    await dbClient.query('DELETE FROM search_history WHERE user_id = $1;', [userId]);
+    return [];
+  },
 };

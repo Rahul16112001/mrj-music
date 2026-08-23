@@ -43,7 +43,7 @@ class EmbeddedRelationalStore {
       playlist_tracks: new Map(),
       saved_albums: new Map(),
       followed_artists: new Map(),
-      search_history: [],
+      search_history: new Map(),
       sync_operations: [],
       recommendation_cache: new Map(),
     };
@@ -338,6 +338,56 @@ class EmbeddedRelationalStore {
       const playlist_id = params[0];
       for (const [id, t] of this.tables.playlist_tracks.entries()) {
         if (t.playlist_id === playlist_id) this.tables.playlist_tracks.delete(id);
+      }
+      return { rows: [], rowCount: 1 };
+    }
+
+    // 9. SEARCH HISTORY Queries
+    if (/SELECT .* FROM search_history WHERE user_id = \$1/i.test(sql)) {
+      const userId = params[0];
+      if (!this.tables.search_history) this.tables.search_history = new Map();
+      const userSearches = Array.from(this.tables.search_history.values())
+        .filter(s => s.user_id === userId)
+        .reverse()
+        .sort((a, b) => b.searched_at - a.searched_at);
+      
+      const distinctMap = new Map();
+      for (const s of userSearches) {
+        if (!distinctMap.has(s.query.toLowerCase())) {
+          distinctMap.set(s.query.toLowerCase(), s);
+        }
+      }
+      const rows = Array.from(distinctMap.values()).slice(0, 15);
+      return { rows, rowCount: rows.length };
+    }
+
+    if (/INSERT INTO search_history/i.test(sql)) {
+      const [id, user_id, query, searched_at] = params;
+      if (!this.tables.search_history) this.tables.search_history = new Map();
+      const record = { id, user_id, query, searched_at };
+      this.tables.search_history.set(id, record);
+      return { rows: [record], rowCount: 1 };
+    }
+
+    if (/DELETE FROM search_history WHERE user_id = \$1 AND LOWER\(query\) = LOWER\(\$2\)/i.test(sql)) {
+      const [userId, query] = params;
+      if (!this.tables.search_history) this.tables.search_history = new Map();
+      const qLower = String(query).toLowerCase();
+      for (const [id, s] of this.tables.search_history.entries()) {
+        if (s.user_id === userId && s.query.toLowerCase() === qLower) {
+          this.tables.search_history.delete(id);
+        }
+      }
+      return { rows: [], rowCount: 1 };
+    }
+
+    if (/DELETE FROM search_history WHERE user_id = \$1/i.test(sql)) {
+      const userId = params[0];
+      if (!this.tables.search_history) this.tables.search_history = new Map();
+      for (const [id, s] of this.tables.search_history.entries()) {
+        if (s.user_id === userId) {
+          this.tables.search_history.delete(id);
+        }
       }
       return { rows: [], rowCount: 1 };
     }

@@ -353,6 +353,54 @@ class OfflineStorageManager {
       req.onerror = () => reject(req.error);
     });
   }
+
+  async deleteDownloadedTrack(trackId: string): Promise<boolean> {
+    return this.removeTrack(trackId);
+  }
+
+  async saveLikedTrack(track: Track): Promise<boolean> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.LIKED, 'readwrite');
+      const store = tx.objectStore(STORES.LIKED);
+      const req = store.put(track);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async removeLikedTrack(trackId: string): Promise<boolean> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.LIKED, 'readwrite');
+      const store = tx.objectStore(STORES.LIKED);
+      const req = store.delete(trackId);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async addTrackToPlaylist(playlistId: string, track: Track): Promise<boolean> {
+    const playlist = await this.getPlaylist(playlistId);
+    if (!playlist) return false;
+    if (!playlist.tracks.some(t => t.id === track.id)) {
+      playlist.tracks.push(track);
+      playlist.trackCount = playlist.tracks.length;
+      playlist.updatedAt = Date.now();
+      await this.savePlaylist(playlist);
+    }
+    return true;
+  }
+
+  async removeTrackFromPlaylist(playlistId: string, trackId: string): Promise<boolean> {
+    const playlist = await this.getPlaylist(playlistId);
+    if (!playlist) return false;
+    playlist.tracks = playlist.tracks.filter(t => t.id !== trackId);
+    playlist.trackCount = playlist.tracks.length;
+    playlist.updatedAt = Date.now();
+    await this.savePlaylist(playlist);
+    return true;
+  }
 }
 
 export const offlineStorage = new OfflineStorageManager();

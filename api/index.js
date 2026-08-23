@@ -7,6 +7,8 @@ import { db } from '../server/db/schema.js';
 import { dbClient } from '../server/db/client.js';
 import { chartService } from '../server/charts/chartService.js';
 import { cloudRecommendationService } from '../server/recommendations/cloudRecommendationService.js';
+import { nextTrackService } from '../server/recommendations/nextTrackService.js';
+import { searchSuggestionService } from '../server/catalog/searchSuggestionService.js';
 import { musicProvider } from '../server/providers/musicProvider.js';
 
 const app = express();
@@ -180,6 +182,40 @@ app.get(['/api/recommendations/radio/:videoId', '/recommendations/radio/:videoId
   }
 });
 
+app.get(['/api/recommendations/related/:trackId', '/recommendations/related/:trackId'], optionalAuth, async (req, res) => {
+  try {
+    const { trackId } = req.params;
+    const userId = req.user ? req.user.id : null;
+    const { artist, genre, title } = req.query;
+
+    const related = await nextTrackService.getNextRecommendations(userId, {
+      currentTrack: { id: trackId, artist: artist || '', genre: genre || '', title: title || '' },
+    });
+    res.json({ status: 'success', tracks: related.tracks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/recommendations/next', '/recommendations/next'], optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const { currentTrack, playedTrackIds, currentQueueIds, mood, sessionSearches } = req.body;
+
+    const recommendations = await nextTrackService.getNextRecommendations(userId, {
+      currentTrack,
+      playedTrackIds,
+      currentQueueIds,
+      mood,
+      sessionSearches,
+    });
+
+    res.json({ status: 'success', ...recommendations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get(['/api/recommendations/mood/:mood', '/recommendations/mood/:mood'], optionalAuth, async (req, res) => {
   try {
     const moodId = req.params.mood;
@@ -192,7 +228,57 @@ app.get(['/api/recommendations/mood/:mood', '/recommendations/mood/:mood'], opti
   }
 });
 
-// 4. User Data Routes
+// 4. Search Suggestions & Search History
+app.get(['/api/music/suggestions', '/music/suggestions'], optionalAuth, async (req, res) => {
+  try {
+    const query = req.query.q || '';
+    const userId = req.user ? req.user.id : null;
+    const data = await searchSuggestionService.getSuggestions(query, userId);
+    res.json({ status: 'success', ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/user/search-history', '/user/search-history'], requireAuth, async (req, res) => {
+  try {
+    const history = await db.getSearchHistory(req.user.id);
+    res.json({ status: 'success', history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/user/search-history', '/user/search-history'], requireAuth, async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ error: 'Query is required' });
+    const history = await db.addSearchHistory(req.user.id, query);
+    res.json({ status: 'success', history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete(['/api/user/search-history/:query', '/user/search-history/:query'], requireAuth, async (req, res) => {
+  try {
+    const history = await db.removeSearchHistory(req.user.id, req.params.query);
+    res.json({ status: 'success', history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete(['/api/user/search-history', '/user/search-history'], requireAuth, async (req, res) => {
+  try {
+    await db.clearSearchHistory(req.user.id);
+    res.json({ status: 'success', history: [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. User Data Routes
 app.get(['/api/user/likes', '/user/likes'], requireAuth, async (req, res) => {
   try {
     const likes = await db.getLikedTracks(req.user.id);
@@ -311,7 +397,7 @@ app.post(['/api/user/migrate', '/user/migrate'], requireAuth, async (req, res) =
   }
 });
 
-// 5. Music Routes
+// 6. Music Routes
 app.get(['/api/music/charts', '/music/charts'], async (req, res) => {
   try {
     const charts = await chartService.getTrending('GLOBAL');
@@ -367,6 +453,9 @@ app.get(['/api/music/stream/:id', '/music/stream/:id'], async (req, res) => {
         mimeType: stream.mimeType,
         codec: stream.codec,
         bitrate: stream.bitrate || 'Quality information unavailable',
+        sampleRate: stream.sampleRate,
+        expiresAt: stream.expiresAt,
+        provider: stream.provider,
       });
     }
 
@@ -376,7 +465,7 @@ app.get(['/api/music/stream/:id', '/music/stream/:id'], async (req, res) => {
       streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
       mimeType: 'audio/webm',
       codec: 'opus',
-      bitrate: 'Standard',
+      bitrate: 'Quality information unavailable',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

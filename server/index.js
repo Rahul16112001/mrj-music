@@ -8,6 +8,8 @@ import { db } from './db/schema.js';
 import { dbClient } from './db/client.js';
 import { chartService } from './charts/chartService.js';
 import { cloudRecommendationService } from './recommendations/cloudRecommendationService.js';
+import { nextTrackService } from './recommendations/nextTrackService.js';
+import { searchSuggestionService } from './catalog/searchSuggestionService.js';
 import { musicProvider } from './providers/musicProvider.js';
 
 dotenv.config();
@@ -151,7 +153,7 @@ app.get('/api/charts/top-artists', async (req, res) => {
 });
 
 // ==========================================
-// 3. RECOMMENDATIONS & SEED RADIO
+// 3. RECOMMENDATIONS & AUTOPLAY ENGINE
 // ==========================================
 
 app.get('/api/recommendations/home', optionalAuth, async (req, res) => {
@@ -169,6 +171,32 @@ app.get('/api/recommendations/radio/:videoId', optionalAuth, async (req, res) =>
   res.json({ status: 'success', radio });
 });
 
+app.get('/api/recommendations/related/:trackId', optionalAuth, async (req, res) => {
+  const { trackId } = req.params;
+  const userId = req.user ? req.user.id : null;
+  const { artist, genre, title } = req.query;
+
+  const related = await nextTrackService.getNextRecommendations(userId, {
+    currentTrack: { id: trackId, artist: artist || '', genre: genre || '', title: title || '' },
+  });
+  res.json({ status: 'success', tracks: related.tracks });
+});
+
+app.post('/api/recommendations/next', optionalAuth, async (req, res) => {
+  const userId = req.user ? req.user.id : null;
+  const { currentTrack, playedTrackIds, currentQueueIds, mood, sessionSearches } = req.body;
+
+  const recommendations = await nextTrackService.getNextRecommendations(userId, {
+    currentTrack,
+    playedTrackIds,
+    currentQueueIds,
+    mood,
+    sessionSearches,
+  });
+
+  res.json({ status: 'success', ...recommendations });
+});
+
 app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {
   const moodId = req.params.mood;
   const userId = req.user ? req.user.id : null;
@@ -178,7 +206,40 @@ app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {
 });
 
 // ==========================================
-// 4. CLOUD USER DATA & SYNC ROUTES
+// 4. SEARCH SUGGESTIONS & SEARCH HISTORY
+// ==========================================
+
+app.get('/api/music/suggestions', optionalAuth, async (req, res) => {
+  const query = req.query.q || '';
+  const userId = req.user ? req.user.id : null;
+  const data = await searchSuggestionService.getSuggestions(query, userId);
+  res.json({ status: 'success', ...data });
+});
+
+app.get('/api/user/search-history', requireAuth, async (req, res) => {
+  const history = await db.getSearchHistory(req.user.id);
+  res.json({ status: 'success', history });
+});
+
+app.post('/api/user/search-history', requireAuth, async (req, res) => {
+  const { query } = req.body;
+  if (!query) return res.status(400).json({ error: 'Query is required' });
+  const history = await db.addSearchHistory(req.user.id, query);
+  res.json({ status: 'success', history });
+});
+
+app.delete('/api/user/search-history/:query', requireAuth, async (req, res) => {
+  const history = await db.removeSearchHistory(req.user.id, req.params.query);
+  res.json({ status: 'success', history });
+});
+
+app.delete('/api/user/search-history', requireAuth, async (req, res) => {
+  await db.clearSearchHistory(req.user.id);
+  res.json({ status: 'success', history: [] });
+});
+
+// ==========================================
+// 5. CLOUD USER DATA & SYNC ROUTES
 // ==========================================
 
 app.get('/api/user/likes', requireAuth, async (req, res) => {
@@ -260,7 +321,7 @@ app.post('/api/user/migrate', requireAuth, async (req, res) => {
 });
 
 // ==========================================
-// 5. MUSIC CATALOG & STREAM ROUTES
+// 6. MUSIC CATALOG & STREAM ROUTES
 // ==========================================
 
 app.get('/api/music/charts', async (req, res) => {
@@ -301,6 +362,9 @@ app.get('/api/music/stream/:id', async (req, res) => {
       mimeType: stream.mimeType,
       codec: stream.codec,
       bitrate: stream.bitrate || 'Quality information unavailable',
+      sampleRate: stream.sampleRate,
+      expiresAt: stream.expiresAt,
+      provider: stream.provider,
     });
   }
 
@@ -310,7 +374,7 @@ app.get('/api/music/stream/:id', async (req, res) => {
     streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
     mimeType: 'audio/webm',
     codec: 'opus',
-    bitrate: 'Standard',
+    bitrate: 'Quality information unavailable',
   });
 });
 

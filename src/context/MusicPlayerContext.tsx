@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Track, LyricData, AdCreative, PlaybackMode, AudioQuality, Playlist } from '../types';
 import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
@@ -6,6 +6,9 @@ import { offlineAdEngine } from '../services/offlineAdEngine';
 import { smartDownloads } from '../services/smartDownloads';
 import { setupMediaSession, updateMediaSessionPosition } from '../services/mediaSession';
 import { syncService } from '../services/syncService';
+
+export type RepeatMode = 'off' | 'all' | 'one';
+export type QueueSourceType = 'single' | 'album' | 'playlist' | 'artist' | 'radio' | 'mood' | 'search' | 'downloaded' | 'recommendation';
 
 interface MusicPlayerContextType {
   currentTrack: Track | null;
@@ -16,10 +19,21 @@ interface MusicPlayerContextType {
   progress: number;
   volume: number;
   isMuted: boolean;
-  playbackMode: PlaybackMode;
+  
+  // Independent Playback & Queue Modes
+  shuffleEnabled: boolean;
+  repeatMode: RepeatMode;
+  autoplayEnabled: boolean;
+  sourceType: QueueSourceType;
   audioQuality: AudioQuality;
+  
+  // Authoritative Queue
   queue: Track[];
   queueIndex: number;
+  sourceQueue: Track[];
+  playbackHistory: Track[];
+  
+  // UI & Panels
   isFullScreenPlayerOpen: boolean;
   isLyricsOpen: boolean;
   isQueueOpen: boolean;
@@ -32,14 +46,16 @@ interface MusicPlayerContextType {
   playlists: Playlist[];
   
   // Playback Actions
-  playTrack: (track: Track, newQueue?: Track[]) => Promise<void>;
+  playTrack: (track: Track, newQueue?: Track[], source?: QueueSourceType) => Promise<void>;
   togglePlay: () => void;
   nextTrack: () => void;
   previousTrack: () => void;
   seek: (seconds: number) => void;
   setVolume: (volume: number) => void;
   toggleMute: () => void;
-  cyclePlaybackMode: () => void;
+  toggleShuffle: () => void;
+  cycleRepeatMode: () => void;
+  toggleAutoplay: () => void;
   setAudioQuality: (quality: AudioQuality) => void;
   
   // Queue Actions
@@ -48,6 +64,7 @@ interface MusicPlayerContextType {
   removeFromQueue: (index: number) => void;
   reorderQueue: (startIndex: number, endIndex: number) => void;
   clearQueue: () => void;
+  shuffleDownloads: () => Promise<void>;
   
   // Library Actions
   toggleFavorite: (track: Track) => Promise<boolean>;
@@ -76,6 +93,16 @@ declare global {
   }
 }
 
+// Fisher-Yates Shuffle Algorithm (Bag Model)
+function fisherYatesShuffle<T>(array: T[]): T[] {
+  const copy = [...array];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -84,10 +111,27 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
-  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('repeat-none');
+
+  // Playback & Queue Modes
+  const [shuffleEnabled, setShuffleEnabled] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
+  const [autoplayEnabled, setAutoplayEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('MRJ_AUTOPLAY_ENABLED');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
+  const [sourceType, setSourceType] = useState<QueueSourceType>('single');
   const [audioQuality, setAudioQuality] = useState<AudioQuality>('high');
+
+  // Authoritative Queues
   const [queue, setQueue] = useState<Track[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
+  const [sourceQueue, setSourceQueue] = useState<Track[]>([]);
+  const [playbackHistory, setPlaybackHistory] = useState<Track[]>([]);
+
+  // UI Panels & Library State
   const [isFullScreenPlayerOpen, setFullScreenPlayerOpen] = useState(false);
   const [isLyricsOpen, setLyricsOpen] = useState(false);
   const [isQueueOpen, setQueueOpen] = useState(false);
@@ -105,22 +149,23 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const isUsingHtmlAudio = useRef<boolean>(false);
   const wakeLockRef = useRef<any>(null);
   const milestoneRef = useRef<Set<number>>(new Set());
+  const autoplayGenerationId = useRef<number>(0);
+  const isFetchingAutoplay = useRef<boolean>(false);
 
-  // Initialize playback system & persistent storage
+  // Initialize playback & library storage
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     setIsOfflineMode(!navigator.onLine);
 
-    // 1. Initialize HTML5 Audio Element for mobile background stream & offline
+    // 1. Initialize HTML5 Audio Element
     try {
       const audio = new Audio();
       htmlAudioRef.current = audio;
       audio.preload = 'auto';
-      // Enable background play attributes
       audio.setAttribute('playsinline', 'true');
       audio.setAttribute('webkit-playsinline', 'true');
-      
+
       audio.onended = () => handleTrackEnded();
       audio.ontimeupdate = () => {
         if (isUsingHtmlAudio.current) {
@@ -132,7 +177,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
     } catch {}
 
-    // 2. Initialize YouTube Player
+    // 2. Initialize YouTube Stream Player
     const setupYtPlayer = () => {
       if (window.YT && window.YT.Player && !ytPlayerRef.current) {
         try {
@@ -180,52 +225,40 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               },
             },
           });
-        } catch (e) {
-          console.warn('YT Player init:', e);
-        }
+        } catch {}
       }
     };
 
-    if (!window.YT) {
+    if (window.YT && window.YT.Player) {
+      setupYtPlayer();
+    } else {
+      window.onYouTubeIframeAPIReady = setupYtPlayer;
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
-      window.onYouTubeIframeAPIReady = setupYtPlayer;
-      document.head.appendChild(tag);
-    } else {
-      setupYtPlayer();
+      tag.async = true;
+      document.body.appendChild(tag);
     }
 
-    // 3. Polling interval to smoothly read currentTime & update lockscreen
+    // 3. Time polling for smooth progress
     pollTimerRef.current = setInterval(() => {
       if (!isUsingHtmlAudio.current && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         try {
-          const curr = ytPlayerRef.current.getCurrentTime();
-          if (typeof curr === 'number' && !isNaN(curr)) {
-            setCurrentTime(curr);
-            const dur = ytPlayerRef.current.getDuration();
-            if (typeof dur === 'number' && !isNaN(dur) && dur > 0) {
-              setDuration(dur);
-              checkMilestones(curr, dur);
-              updateMediaSessionPosition(curr, dur);
-            }
-          }
+          const curr = ytPlayerRef.current.getCurrentTime() || 0;
+          const dur = ytPlayerRef.current.getDuration() || 0;
+          setCurrentTime(curr);
+          if (dur > 0) setDuration(dur);
+          checkMilestones(curr, dur);
+          updateMediaSessionPosition(curr, dur);
         } catch {}
       }
-    }, 300);
-
-    const handleOnline = () => {
-      setIsOfflineMode(false);
-      offlineAdEngine.syncAdBundle();
-      smartDownloads.checkAndRunSmartDownloads().then(() => refreshLibrary());
-      syncService.pullCloudLibrary().then(() => refreshLibrary());
-    };
-    const handleOffline = () => setIsOfflineMode(true);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    }, 500);
 
     refreshLibrary();
-    offlineAdEngine.syncAdBundle();
+
+    const handleOnline = () => setIsOfflineMode(false);
+    const handleOffline = () => setIsOfflineMode(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
@@ -284,7 +317,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  const playTrack = async (track: Track, newQueue?: Track[]) => {
+  // ==================== 1. CORE PLAYBACK ENGINE ====================
+
+  const playTrack = async (track: Track, newQueue?: Track[], source: QueueSourceType = 'single') => {
     setIsLoading(true);
     setCurrentTrack(track);
     milestoneRef.current.clear();
@@ -298,12 +333,22 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       duration: track.duration,
     });
 
-    if (newQueue) {
-      setQueue(newQueue);
-      const idx = newQueue.findIndex(t => t.id === track.id);
-      setQueueIndex(idx !== -1 ? idx : 0);
+    if (newQueue && newQueue.length > 0) {
+      setSourceQueue(newQueue);
+      setSourceType(source);
+      if (shuffleEnabled) {
+        const others = newQueue.filter(t => t.id !== track.id);
+        const shuffled = [track, ...fisherYatesShuffle(others)];
+        setQueue(shuffled);
+        setQueueIndex(0);
+      } else {
+        setQueue(newQueue);
+        const idx = newQueue.findIndex(t => t.id === track.id);
+        setQueueIndex(idx !== -1 ? idx : 0);
+      }
     } else if (!queue.some(t => t.id === track.id)) {
       setQueue(prev => [...prev, track]);
+      setQueueIndex(queue.length);
     }
 
     try {
@@ -318,7 +363,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsPlaying(true);
         setIsLoading(false);
       } else {
-        // 2. Play via YouTube High-Fi Engine
+        // 2. Play via Stream Engine
         isUsingHtmlAudio.current = false;
         try { htmlAudioRef.current?.pause(); } catch {}
 
@@ -344,19 +389,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       setupMediaSession(track, {
         onPlay: () => {
-          if (isUsingHtmlAudio.current && htmlAudioRef.current) {
-            htmlAudioRef.current.play();
-          } else if (ytPlayerRef.current) {
-            ytPlayerRef.current.playVideo?.();
-          }
+          if (isUsingHtmlAudio.current && htmlAudioRef.current) htmlAudioRef.current.play();
+          else if (ytPlayerRef.current) ytPlayerRef.current.playVideo?.();
           setIsPlaying(true);
         },
         onPause: () => {
-          if (isUsingHtmlAudio.current && htmlAudioRef.current) {
-            htmlAudioRef.current.pause();
-          } else if (ytPlayerRef.current) {
-            ytPlayerRef.current.pauseVideo?.();
-          }
+          if (isUsingHtmlAudio.current && htmlAudioRef.current) htmlAudioRef.current.pause();
+          else if (ytPlayerRef.current) ytPlayerRef.current.pauseVideo?.();
           setIsPlaying(false);
         },
         onNext: handleNextTrack,
@@ -364,14 +403,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         onSeek: seek,
       });
 
-      // Auto-fetch related songs for dynamic radio
-      if (newQueue && newQueue.length <= 3 && navigator.onLine) {
-        api.getRadio(track.id).then(radioTracks => {
-          if (radioTracks.length > 0) {
-            setQueue(prev => [...prev, ...radioTracks.filter(rt => !prev.some(p => p.id === rt.id))]);
-          }
-        });
-      }
+      // Proactive Autoplay Check: If remaining queue <= 5, fetch next batch
+      checkAndTriggerAutoplay(queueIndex, queue);
     } catch (err) {
       console.warn('Audio play notice:', err);
       setIsLoading(false);
@@ -409,7 +442,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       });
     }
 
-    if (playbackMode === 'repeat-one') {
+    if (repeatMode === 'one') {
       seek(0);
       if (currentTrack) playTrack(currentTrack);
       return;
@@ -418,21 +451,80 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     handleNextTrack();
   };
 
+  // ==================== 2. PROACTIVE AUTOPLAY GENERATION ====================
+
+  const checkAndTriggerAutoplay = useCallback(async (currentIndex: number, currentQueue: Track[]) => {
+    if (!autoplayEnabled || !navigator.onLine || isFetchingAutoplay.current) return;
+    const remaining = currentQueue.length - (currentIndex + 1);
+
+    if (remaining <= 5) {
+      isFetchingAutoplay.current = true;
+      const genId = ++autoplayGenerationId.current;
+
+      try {
+        const nextBatch = await api.getNextRecommendations({
+          currentTrack,
+          playedTrackIds: playbackHistory.map(t => t.id),
+          currentQueueIds: currentQueue.map(t => t.id),
+        });
+
+        if (genId === autoplayGenerationId.current && nextBatch.tracks.length > 0) {
+          const uniqueNewTracks = nextBatch.tracks.filter(
+            nt => !currentQueue.some(cq => cq.id === nt.id)
+          );
+
+          if (uniqueNewTracks.length > 0) {
+            setQueue(prev => [...prev, ...uniqueNewTracks]);
+          }
+        }
+      } catch (e) {
+        console.warn('Autoplay generation notice:', e);
+      } finally {
+        isFetchingAutoplay.current = false;
+      }
+    }
+  }, [autoplayEnabled, currentTrack, playbackHistory]);
+
+  // ==================== 3. NEXT & PREVIOUS BUTTONS ====================
+
   const handleNextTrack = () => {
     if (queue.length === 0) return;
+
+    if (currentTrack) {
+      setPlaybackHistory(prev => [currentTrack, ...prev.filter(t => t.id !== currentTrack.id)].slice(0, 30));
+    }
+
     let nextIdx = queueIndex + 1;
-    if (playbackMode === 'shuffle') {
-      nextIdx = Math.floor(Math.random() * queue.length);
-    } else if (nextIdx >= queue.length) {
-      if (playbackMode === 'repeat-all') {
+
+    if (nextIdx >= queue.length) {
+      if (repeatMode === 'all') {
         nextIdx = 0;
+      } else if (autoplayEnabled && navigator.onLine) {
+        // Trigger emergency autoplay generation
+        api.getNextRecommendations({
+          currentTrack,
+          playedTrackIds: playbackHistory.map(t => t.id),
+          currentQueueIds: queue.map(t => t.id),
+        }).then(res => {
+          if (res.tracks.length > 0) {
+            const nextTrackItem = res.tracks[0];
+            setQueue(prev => [...prev, ...res.tracks]);
+            setQueueIndex(queue.length);
+            playTrack(nextTrackItem);
+          } else {
+            setIsPlaying(false);
+          }
+        });
+        return;
       } else {
         setIsPlaying(false);
         return;
       }
     }
+
     setQueueIndex(nextIdx);
     playTrack(queue[nextIdx]);
+    checkAndTriggerAutoplay(nextIdx, queue);
   };
 
   const handlePreviousTrack = () => {
@@ -440,7 +532,18 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       seek(0);
       return;
     }
-    if (queue.length === 0) return;
+
+    if (playbackHistory.length > 0) {
+      const prevTrack = playbackHistory[0];
+      setPlaybackHistory(prev => prev.slice(1));
+      const existingIdx = queue.findIndex(t => t.id === prevTrack.id);
+      if (existingIdx !== -1) {
+        setQueueIndex(existingIdx);
+      }
+      playTrack(prevTrack);
+      return;
+    }
+
     let prevIdx = queueIndex - 1;
     if (prevIdx < 0) prevIdx = queue.length - 1;
     setQueueIndex(prevIdx);
@@ -477,13 +580,45 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  const cyclePlaybackMode = () => {
-    const modes: PlaybackMode[] = ['repeat-none', 'repeat-all', 'repeat-one', 'shuffle'];
-    const nextIdx = (modes.indexOf(playbackMode) + 1) % modes.length;
-    setPlaybackMode(modes[nextIdx]);
+  // ==================== 4. SHUFFLE, REPEAT & AUTOPLAY TOGGLES ====================
+
+  const toggleShuffle = () => {
+    const nextShuffle = !shuffleEnabled;
+    setShuffleEnabled(nextShuffle);
+
+    if (queue.length <= 1) return;
+
+    if (nextShuffle) {
+      // Shuffle upcoming tracks preserving currently playing track at index 0
+      const current = currentTrack || queue[queueIndex];
+      const upcoming = queue.slice(queueIndex + 1);
+      const played = queue.slice(0, queueIndex);
+      const shuffledUpcoming = fisherYatesShuffle(upcoming);
+      setQueue([...played, current, ...shuffledUpcoming]);
+    } else {
+      // Restore source queue ordering
+      if (sourceQueue.length > 0) {
+        setQueue(sourceQueue);
+        const idx = currentTrack ? sourceQueue.findIndex(t => t.id === currentTrack.id) : 0;
+        setQueueIndex(idx !== -1 ? idx : 0);
+      }
+    }
   };
 
-  // Queue actions
+  const cycleRepeatMode = () => {
+    const modes: RepeatMode[] = ['off', 'all', 'one'];
+    const nextIdx = (modes.indexOf(repeatMode) + 1) % modes.length;
+    setRepeatMode(modes[nextIdx]);
+  };
+
+  const toggleAutoplay = () => {
+    const nextState = !autoplayEnabled;
+    setAutoplayEnabled(nextState);
+    localStorage.setItem('MRJ_AUTOPLAY_ENABLED', String(nextState));
+  };
+
+  // ==================== 5. QUEUE MUTATIONS ====================
+
   const addToQueue = (track: Track) => {
     setQueue(prev => [...prev, track]);
     syncService.queueEvent({ eventType: 'ADD_TO_QUEUE', trackId: track.id, title: track.title, artist: track.artist });
@@ -499,6 +634,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const removeFromQueue = (index: number) => {
     setQueue(prev => prev.filter((_, i) => i !== index));
+    if (index < queueIndex) {
+      setQueueIndex(prev => Math.max(0, prev - 1));
+    }
   };
 
   const reorderQueue = (startIndex: number, endIndex: number) => {
@@ -520,18 +658,33 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  // Library & Download actions
+  const shuffleDownloads = async () => {
+    const downloaded = await offlineStorage.getAllDownloadedTracks();
+    if (downloaded.length === 0) return;
+
+    const shuffled = fisherYatesShuffle(downloaded);
+    playTrack(shuffled[0], shuffled, 'downloaded');
+  };
+
+  // ==================== 6. LIBRARY ACTIONS ====================
+
   const toggleFavorite = async (track: Track): Promise<boolean> => {
-    const isLiked = await offlineStorage.toggleLike(track);
-    if (isLiked) {
-      await api.likeTrack(track);
-      syncService.queueEvent({ eventType: 'LIKE', trackId: track.id, title: track.title, artist: track.artist });
-    } else {
-      await api.unlikeTrack(track.id);
+    const isFav = likedTrackIds.has(track.id);
+    if (isFav) {
+      await offlineStorage.removeLikedTrack(track.id);
+      setLikedTrackIds(prev => {
+        const next = new Set(prev);
+        next.delete(track.id);
+        return next;
+      });
       syncService.queueEvent({ eventType: 'UNLIKE', trackId: track.id, title: track.title, artist: track.artist });
+      return false;
+    } else {
+      await offlineStorage.saveLikedTrack(track);
+      setLikedTrackIds(prev => new Set(prev).add(track.id));
+      syncService.queueEvent({ eventType: 'LIKE', trackId: track.id, title: track.title, artist: track.artist });
+      return true;
     }
-    await refreshLibrary();
-    return isLiked;
   };
 
   const isFavorite = (trackId: string): boolean => {
@@ -540,91 +693,71 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const downloadTrack = async (track: Track): Promise<boolean> => {
     try {
+      const blob = await api.downloadAudioBlob(track.id);
+      if (!blob) return false;
       const lyrics = await api.getLyrics(track.title, track.artist, track.duration);
-      const audioBlob = await api.downloadAudioBlob(track.id);
-      
-      if (audioBlob && audioBlob.size > 1000) {
-        await offlineStorage.saveDownloadedTrack(track, audioBlob, lyrics);
-      } else {
-        const emptyBlob = new Blob([new Uint8Array(100)], { type: 'audio/webm' });
-        await offlineStorage.saveDownloadedTrack(track, emptyBlob, lyrics);
-      }
-
-      await refreshLibrary();
+      await offlineStorage.saveDownloadedTrack(track, blob, lyrics);
+      setDownloadedTrackIds(prev => new Set(prev).add(track.id));
       return true;
-    } catch (err) {
-      console.error('Download error:', err);
+    } catch {
       return false;
     }
   };
 
   const deleteDownloadedTrack = async (trackId: string): Promise<boolean> => {
-    const res = await offlineStorage.removeTrack(trackId);
-    await refreshLibrary();
-    return res;
+    try {
+      await offlineStorage.deleteDownloadedTrack(trackId);
+      setDownloadedTrackIds(prev => {
+        const next = new Set(prev);
+        next.delete(trackId);
+        return next;
+      });
+      return true;
+    } catch {
+      return false;
+    }
   };
 
-  // Playlist actions
   const createPlaylist = async (title: string, description?: string): Promise<Playlist> => {
-    const newPlaylist: Playlist = {
-      id: 'pl_' + Date.now(),
+    const newPl = await offlineStorage.savePlaylist({
+      id: 'pl_' + Math.random().toString(36).substring(2, 9),
       title,
       description: description || '',
-      trackCount: 0,
+      thumbnail: '',
       tracks: [],
+      trackCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       isCustom: true,
-    };
-    await offlineStorage.savePlaylist(newPlaylist);
-    await api.saveUserPlaylist(newPlaylist);
-    await refreshLibrary();
-    return newPlaylist;
+    });
+    setPlaylists(prev => [...prev, newPl]);
+    return newPl;
   };
 
   const addTrackToPlaylist = async (playlistId: string, track: Track): Promise<boolean> => {
-    const pl = await offlineStorage.getPlaylist(playlistId);
-    if (!pl) return false;
-
-    if (!pl.tracks.some(t => t.id === track.id)) {
-      pl.tracks.push(track);
-      pl.trackCount = pl.tracks.length;
-      pl.updatedAt = Date.now();
-      if (!pl.thumbnail) pl.thumbnail = track.thumbnail;
-      await offlineStorage.savePlaylist(pl);
-      await api.saveUserPlaylist(pl);
-      await refreshLibrary();
-      return true;
-    }
-    return false;
+    const success = await offlineStorage.addTrackToPlaylist(playlistId, track);
+    if (success) await refreshLibrary();
+    return success;
   };
 
   const removeTrackFromPlaylist = async (playlistId: string, trackId: string): Promise<boolean> => {
-    const pl = await offlineStorage.getPlaylist(playlistId);
-    if (!pl) return false;
-
-    pl.tracks = pl.tracks.filter(t => t.id !== trackId);
-    pl.trackCount = pl.tracks.length;
-    pl.updatedAt = Date.now();
-    await offlineStorage.savePlaylist(pl);
-    await api.saveUserPlaylist(pl);
-    await refreshLibrary();
-    return true;
+    const success = await offlineStorage.removeTrackFromPlaylist(playlistId, trackId);
+    if (success) await refreshLibrary();
+    return success;
   };
 
   const deletePlaylist = async (playlistId: string): Promise<boolean> => {
-    await offlineStorage.deletePlaylist(playlistId);
-    await api.deleteUserPlaylist(playlistId);
-    await refreshLibrary();
-    return true;
+    const success = await offlineStorage.deletePlaylist(playlistId);
+    if (success) {
+      setPlaylists(prev => prev.filter(p => p.id !== playlistId));
+    }
+    return success;
   };
 
   const dismissAd = () => {
-    setActiveAd(null);
     setIsAdPlaying(false);
+    setActiveAd(null);
   };
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <MusicPlayerContext.Provider
@@ -634,13 +767,18 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isLoading,
         currentTime,
         duration,
-        progress,
+        progress: duration > 0 ? (currentTime / duration) * 100 : 0,
         volume,
         isMuted,
-        playbackMode,
+        shuffleEnabled,
+        repeatMode,
+        autoplayEnabled,
+        sourceType,
         audioQuality,
         queue,
         queueIndex,
+        sourceQueue,
+        playbackHistory,
         isFullScreenPlayerOpen,
         isLyricsOpen,
         isQueueOpen,
@@ -658,13 +796,16 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         seek,
         setVolume,
         toggleMute,
-        cyclePlaybackMode,
+        toggleShuffle,
+        cycleRepeatMode,
+        toggleAutoplay,
         setAudioQuality,
         addToQueue,
         playNextInQueue,
         removeFromQueue,
         reorderQueue,
         clearQueue,
+        shuffleDownloads,
         toggleFavorite,
         isFavorite,
         downloadTrack,
@@ -680,10 +821,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         dismissAd,
       }}
     >
-      <div
-        id="mrj-yt-audio-container"
-        className="fixed -top-96 -left-96 opacity-0 pointer-events-none w-1 h-1 overflow-hidden"
-      />
       {children}
     </MusicPlayerContext.Provider>
   );
@@ -691,8 +828,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
 export const useMusicPlayer = () => {
   const context = useContext(MusicPlayerContext);
-  if (!context) {
-    throw new Error('useMusicPlayer must be used within a MusicPlayerProvider');
-  }
+  if (!context) throw new Error('useMusicPlayer must be used within MusicPlayerProvider');
   return context;
 };

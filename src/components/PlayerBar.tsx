@@ -15,10 +15,7 @@ import {
   Download,
   Check,
   Heart,
-  Loader2,
-  MoreVertical,
-  ThumbsDown,
-  Sparkles
+  Loader2
 } from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 
@@ -32,8 +29,8 @@ export const PlayerBar: React.FC = () => {
     progress,
     volume,
     isMuted,
-    playbackMode,
-    audioQuality,
+    shuffleEnabled,
+    repeatMode,
     downloadedTrackIds,
     togglePlay,
     nextTrack,
@@ -41,7 +38,8 @@ export const PlayerBar: React.FC = () => {
     seek,
     setVolume,
     toggleMute,
-    cyclePlaybackMode,
+    toggleShuffle,
+    cycleRepeatMode,
     setFullScreenPlayerOpen,
     isLyricsOpen,
     setLyricsOpen,
@@ -155,7 +153,7 @@ export const PlayerBar: React.FC = () => {
             </p>
           </div>
 
-          {/* Like / Dislike / Download Actions */}
+          {/* Like / Download Actions */}
           <div className="flex items-center gap-1 shrink-0 ml-1">
             <button
               onClick={() => toggleFavorite(currentTrack)}
@@ -198,7 +196,7 @@ export const PlayerBar: React.FC = () => {
               <SkipBack className="w-5 h-5 fill-current" />
             </button>
 
-            {/* Play / Pause Circular Button */}
+            {/* Play / Pause Button */}
             <button
               onClick={togglePlay}
               className="w-10 h-10 rounded-full bg-white text-black hover:scale-105 active:scale-95 flex items-center justify-center shadow-lg transition-all"
@@ -230,17 +228,17 @@ export const PlayerBar: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Volume, Repeat, Shuffle, Lyrics, Fullscreen */}
+        {/* Right: Volume, Repeat, Shuffle, Lyrics, Queue, Fullscreen */}
         <div className="flex items-center gap-2 md:gap-3 shrink-0">
           {/* Repeat */}
           <button
-            onClick={cyclePlaybackMode}
+            onClick={cycleRepeatMode}
             className={`p-2 rounded-full hover:bg-[#212121] transition-colors hidden sm:block ${
-              playbackMode !== 'repeat-none' ? 'text-[#ff4e4e]' : 'text-[#aaaaaa] hover:text-white'
+              repeatMode !== 'off' ? 'text-[#ff4e4e]' : 'text-[#aaaaaa] hover:text-white'
             }`}
-            title={`Playback: ${playbackMode}`}
+            title={`Repeat: ${repeatMode}`}
           >
-            {playbackMode === 'repeat-one' ? (
+            {repeatMode === 'one' ? (
               <Repeat1 className="w-4 h-4" />
             ) : (
               <Repeat className="w-4 h-4" />
@@ -249,11 +247,11 @@ export const PlayerBar: React.FC = () => {
 
           {/* Shuffle */}
           <button
-            onClick={cyclePlaybackMode}
+            onClick={toggleShuffle}
             className={`p-2 rounded-full hover:bg-[#212121] transition-colors hidden sm:block ${
-              playbackMode === 'shuffle' ? 'text-[#ff4e4e]' : 'text-[#aaaaaa] hover:text-white'
+              shuffleEnabled ? 'text-[#ff4e4e]' : 'text-[#aaaaaa] hover:text-white'
             }`}
-            title="Shuffle"
+            title={`Shuffle: ${shuffleEnabled ? 'ON' : 'OFF'}`}
           >
             <Shuffle className="w-4 h-4" />
           </button>
@@ -281,13 +279,24 @@ export const PlayerBar: React.FC = () => {
             />
           </div>
 
+          {/* Queue Drawer Toggle */}
+          <button
+            onClick={() => setQueueOpen(!isQueueOpen)}
+            className={`p-2 rounded-full hover:bg-[#212121] transition-colors ${
+              isQueueOpen ? 'text-[#ff4e4e] bg-[#212121]' : 'text-[#aaaaaa] hover:text-white'
+            }`}
+            title="Up Next Queue"
+          >
+            <ListMusic className="w-4 h-4" />
+          </button>
+
           {/* Lyrics Toggle */}
           <button
             onClick={() => setLyricsOpen(!isLyricsOpen)}
             className={`p-2 rounded-full hover:bg-[#212121] transition-colors ${
               isLyricsOpen ? 'text-[#ff4e4e] bg-[#212121]' : 'text-[#aaaaaa] hover:text-white'
             }`}
-            title="Lyrics (Karaoke)"
+            title="Lyrics"
           >
             <Mic2 className="w-4 h-4" />
           </button>

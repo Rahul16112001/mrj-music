@@ -10,6 +10,17 @@ const getAuthHeaders = () => {
   };
 };
 
+export interface SearchSuggestionsResult {
+  query: string;
+  recent?: string[];
+  popular?: string[];
+  personalized?: string[];
+  suggestions: string[];
+  songs: Track[];
+  artists: any[];
+  albums: any[];
+}
+
 export const api = {
   // ==================== AUTH API ====================
   async register(name: string, email: string, password: string): Promise<{ user: User; token: string; refreshToken: string }> {
@@ -130,6 +141,80 @@ export const api = {
     return data;
   },
 
+  // ==================== SEARCH SUGGESTIONS & HISTORY ====================
+  async getSearchSuggestions(query: string = '', signal?: AbortSignal): Promise<SearchSuggestionsResult> {
+    try {
+      const res = await fetch(`${API_BASE}/music/suggestions?q=${encodeURIComponent(query)}`, {
+        headers: getAuthHeaders(),
+        signal,
+      });
+      if (!res.ok) throw new Error('Suggestions failed');
+      const data = await res.json();
+      return {
+        query: data.query || query,
+        recent: data.recent || [],
+        popular: data.popular || [],
+        personalized: data.personalized || [],
+        suggestions: data.suggestions || [],
+        songs: data.songs || [],
+        artists: data.artists || [],
+        albums: data.albums || [],
+      };
+    } catch {
+      return { query, suggestions: [], songs: [], artists: [], albums: [] };
+    }
+  },
+
+  async getSearchHistory(): Promise<string[]> {
+    try {
+      const res = await fetch(`${API_BASE}/user/search-history`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.history || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async addSearchHistory(query: string): Promise<string[]> {
+    try {
+      const res = await fetch(`${API_BASE}/user/search-history`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ query }),
+      });
+      const data = await res.json();
+      return data.history || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async removeSearchHistory(query: string): Promise<string[]> {
+    try {
+      const res = await fetch(`${API_BASE}/user/search-history/${encodeURIComponent(query)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      return data.history || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async clearSearchHistory(): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/user/search-history`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   // ==================== OFFICIAL CHARTS API ====================
   async getTrending(region: string = 'GLOBAL'): Promise<{ tracks: Track[]; region: string; updatedAt: number }> {
     try {
@@ -164,7 +249,7 @@ export const api = {
     }
   },
 
-  // ==================== RECOMMENDATION API ====================
+  // ==================== RECOMMENDATION & AUTOPLAY API ====================
   async getPersonalizedHome(region: string = 'IN'): Promise<{
     personalized: { quickPicks: Track[]; dailyMixes: any[]; listenAgain: Track[]; recommendedForYou: Track[]; becauseYouLike: any };
     discovery: { newReleases: Track[]; topArtists: any[] };
@@ -188,6 +273,41 @@ export const api = {
         charts: { trendingRegional: [], trendingWorldwide: [], topSongs: [], topArtists: [], region, updatedAt: Date.now() },
         moods: [],
       };
+    }
+  },
+
+  async getNextRecommendations(options: {
+    currentTrack?: Track | null;
+    playedTrackIds?: string[];
+    currentQueueIds?: string[];
+    mood?: string | null;
+    sessionSearches?: string[];
+  }): Promise<{ tracks: Track[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/next`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(options),
+      });
+      if (!res.ok) throw new Error('Next recommendations failed');
+      const data = await res.json();
+      return { tracks: data.tracks || [] };
+    } catch {
+      return { tracks: [] };
+    }
+  },
+
+  async getRelatedTracks(trackId: string, artist?: string, genre?: string, title?: string): Promise<Track[]> {
+    try {
+      const res = await fetch(
+        `${API_BASE}/recommendations/related/${encodeURIComponent(trackId)}?artist=${encodeURIComponent(artist || '')}&genre=${encodeURIComponent(genre || '')}&title=${encodeURIComponent(title || '')}`,
+        { headers: getAuthHeaders() }
+      );
+      if (!res.ok) throw new Error('Related fetch failed');
+      const data = await res.json();
+      return data.tracks || [];
+    } catch {
+      return [];
     }
   },
 

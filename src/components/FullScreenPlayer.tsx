@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ChevronDown,
   Play,
@@ -18,10 +18,15 @@ import {
   ListMusic,
   Radio,
   Disc3,
-  Share2
+  Share2,
+  Sparkles,
+  Trash2,
+  Plus
 } from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { SyncedLyrics } from './SyncedLyrics';
+import { api } from '../services/api';
+import { Track } from '../types';
 
 export const FullScreenPlayer: React.FC = () => {
   const {
@@ -30,10 +35,11 @@ export const FullScreenPlayer: React.FC = () => {
     isLoading,
     currentTime,
     duration,
-    progress,
     volume,
     isMuted,
-    playbackMode,
+    shuffleEnabled,
+    repeatMode,
+    autoplayEnabled,
     queue,
     queueIndex,
     isFullScreenPlayerOpen,
@@ -45,17 +51,35 @@ export const FullScreenPlayer: React.FC = () => {
     seek,
     setVolume,
     toggleMute,
-    cyclePlaybackMode,
+    toggleShuffle,
+    cycleRepeatMode,
+    toggleAutoplay,
     toggleFavorite,
     isFavorite,
     downloadTrack,
     deleteDownloadedTrack,
     downloadedTrackIds,
     playTrack,
+    playNextInQueue,
+    removeFromQueue,
+    clearQueue,
   } = useMusicPlayer();
 
   const [activeTab, setActiveTab] = useState<'queue' | 'lyrics' | 'related'>('lyrics');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [relatedTracks, setRelatedTracks] = useState<Track[]>([]);
+  const [isLoadingRelated, setIsLoadingRelated] = useState(false);
+
+  // Fetch related tracks when currentTrack changes
+  useEffect(() => {
+    if (currentTrack && activeTab === 'related') {
+      setIsLoadingRelated(true);
+      api.getRelatedTracks(currentTrack.id, currentTrack.artist, currentTrack.genre, currentTrack.title)
+        .then((tracks) => setRelatedTracks(tracks))
+        .catch(() => setRelatedTracks([]))
+        .finally(() => setIsLoadingRelated(false));
+    }
+  }, [currentTrack, activeTab]);
 
   if (!isFullScreenPlayerOpen || !currentTrack) return null;
 
@@ -81,6 +105,9 @@ export const FullScreenPlayer: React.FC = () => {
       setIsDownloading(false);
     }
   };
+
+  const nowPlayingTrack = currentTrack;
+  const upNextTracks = queue.slice(queueIndex + 1);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#030303] flex flex-col select-none overflow-hidden animate-in fade-in duration-200">
@@ -134,7 +161,7 @@ export const FullScreenPlayer: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 md:p-12 items-center overflow-y-auto max-w-7xl mx-auto w-full">
-        {/* Left Column: Vinyl / Album Artwork & Track Info */}
+        {/* Left Column: Album Artwork & Track Metadata */}
         <div className="flex flex-col items-center justify-center space-y-6 max-w-md mx-auto w-full">
           <div className="relative w-72 h-72 sm:w-88 sm:h-88 rounded-2xl overflow-hidden shadow-2xl shadow-black/80 border border-white/10 group">
             <img
@@ -144,102 +171,215 @@ export const FullScreenPlayer: React.FC = () => {
             />
           </div>
 
-          <div className="w-full text-center space-y-1.5">
-            <h2 className="text-2xl sm:text-3xl font-black text-white truncate px-4">
-              {currentTrack.title}
-            </h2>
-            <p className="text-base text-[#aaaaaa] font-medium truncate">
-              {currentTrack.artist}
-            </p>
-          </div>
+          <div className="flex items-center justify-between w-full px-2">
+            <div className="min-w-0 flex-1 mr-4">
+              <h2 className="text-xl md:text-2xl font-black text-white truncate">
+                {currentTrack.title}
+              </h2>
+              <p className="text-sm font-medium text-[#aaaaaa] truncate mt-0.5">
+                {currentTrack.artist}
+              </p>
+            </div>
 
-          {/* Quick Actions (Like, Download) */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => toggleFavorite(currentTrack)}
-              className={`p-3 rounded-full hover:bg-white/10 transition-colors ${
-                isLiked ? 'text-[#ff0000] bg-white/5' : 'text-[#aaaaaa] hover:text-white'
-              }`}
-              title="Like"
-            >
-              <Heart className={`w-6 h-6 ${isLiked ? 'fill-current' : ''}`} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => toggleFavorite(currentTrack)}
+                className={`p-3 rounded-full hover:bg-white/10 transition-colors ${
+                  isLiked ? 'text-[#ff0000]' : 'text-[#aaaaaa] hover:text-white'
+                }`}
+                title="Like track"
+              >
+                <Heart className={`w-6 h-6 ${isLiked ? 'fill-current' : ''}`} />
+              </button>
 
-            <button
-              onClick={handleDownloadToggle}
-              disabled={isDownloading}
-              className={`p-3 rounded-full hover:bg-white/10 transition-colors ${
-                isDownloaded ? 'text-emerald-400 bg-white/5' : 'text-[#aaaaaa] hover:text-white'
-              }`}
-              title={isDownloaded ? 'Saved Offline' : 'Download for Offline'}
-            >
-              {isDownloading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-[#ff0000]" />
-              ) : isDownloaded ? (
-                <Check className="w-6 h-6 text-emerald-400" />
-              ) : (
-                <Download className="w-6 h-6" />
-              )}
-            </button>
+              <button
+                onClick={handleDownloadToggle}
+                disabled={isDownloading}
+                className={`p-3 rounded-full hover:bg-white/10 transition-colors ${
+                  isDownloaded ? 'text-emerald-400' : 'text-[#aaaaaa] hover:text-white'
+                }`}
+                title={isDownloaded ? 'Saved Offline' : 'Download'}
+              >
+                {isDownloading ? (
+                  <Loader2 className="w-6 h-6 animate-spin text-[#ff0000]" />
+                ) : isDownloaded ? (
+                  <Check className="w-6 h-6 text-emerald-400" />
+                ) : (
+                  <Download className="w-6 h-6" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Right Column: Tab View (Lyrics, Up Next, Related) */}
-        <div className="h-full flex flex-col justify-center min-h-[380px] max-h-[550px] bg-[#121212]/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 overflow-hidden">
+        {/* Right Column: Tab View (Up Next | Lyrics | Related) */}
+        <div className="h-[480px] bg-[#121212]/80 backdrop-blur-md rounded-2xl border border-white/10 p-6 flex flex-col overflow-hidden">
+          {/* 1. LYRICS TAB */}
           {activeTab === 'lyrics' && (
-            <SyncedLyrics
-              lyricsData={activeLyrics}
-              currentTime={currentTime}
-              onLineClick={seek}
-            />
-          )}
-
-          {activeTab === 'queue' && (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#aaaaaa]">
-                  Playing From Queue ({queue.length} Tracks)
-                </span>
-                <span className="text-xs text-[#ff4e4e] font-bold flex items-center gap-1">
-                  <Radio className="w-3.5 h-3.5" />
-                  <span>Autoplay Radio</span>
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#aaaaaa] flex items-center gap-2">
+                  <Mic2 className="w-4 h-4 text-[#ff0000]" />
+                  <span>Synced Lyrics</span>
                 </span>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-2 pt-3 scrollbar-thin scrollbar-thumb-zinc-800">
-                {queue.map((track, idx) => (
-                  <div
-                    key={`modal-q-${track.id}-${idx}`}
-                    onClick={() => playTrack(track)}
-                    className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${
-                      track.id === currentTrack.id ? 'bg-[#262626]' : 'hover:bg-[#181818]'
-                    }`}
-                  >
-                    <img
-                      src={track.thumbnail}
-                      alt={track.title}
-                      className="w-10 h-10 rounded-lg object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-bold truncate ${
-                        track.id === currentTrack.id ? 'text-[#ff4e4e]' : 'text-white'
-                      }`}>
-                        {track.title}
-                      </p>
-                      <p className="text-xs text-[#aaaaaa] truncate">{track.artist}</p>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex-1 overflow-y-auto pt-4">
+                <SyncedLyrics
+                  lyricsData={activeLyrics}
+                  currentTime={currentTime}
+                  onLineClick={seek}
+                />
               </div>
             </div>
           )}
 
+          {/* 2. UP NEXT QUEUE TAB */}
+          {activeTab === 'queue' && (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#aaaaaa]">
+                  Up Next ({queue.length} Tracks)
+                </span>
+                {/* Autoplay Toggle Button */}
+                <button
+                  onClick={toggleAutoplay}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                    autoplayEnabled
+                      ? 'bg-[#ff0000]/20 text-[#ff4e4e] border-[#ff0000]/40'
+                      : 'bg-[#222222] text-[#888888] border-[#333333]'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Autoplay {autoplayEnabled ? 'ON' : 'OFF'}</span>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-4 pt-3 no-scrollbar">
+                {/* Now Playing */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#888888] px-1">
+                    Now Playing
+                  </span>
+                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-[#262626] border border-[#383838]">
+                    <img
+                      src={nowPlayingTrack.thumbnail}
+                      alt={nowPlayingTrack.title}
+                      className="w-10 h-10 rounded-lg object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-[#ff4e4e] truncate">{nowPlayingTrack.title}</p>
+                      <p className="text-xs text-[#aaaaaa] truncate">{nowPlayingTrack.artist}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Upcoming Queue */}
+                {upNextTracks.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#888888]">
+                        Upcoming Tracks
+                      </span>
+                      <button
+                        onClick={clearQueue}
+                        className="text-[10px] text-[#777777] hover:text-[#ff4e4e] font-semibold transition-colors"
+                      >
+                        Clear Upcoming
+                      </button>
+                    </div>
+                    {upNextTracks.map((track, idx) => (
+                      <div
+                        key={`modal-q-${track.id}-${idx}`}
+                        className="flex items-center justify-between p-2 rounded-xl hover:bg-[#1c1c1c] group transition-colors cursor-pointer"
+                        onClick={() => playTrack(track)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={track.thumbnail}
+                            alt={track.title}
+                            className="w-10 h-10 rounded-lg object-cover bg-[#222222]"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate transition-colors">
+                              {track.title}
+                            </p>
+                            <p className="text-xs text-[#aaaaaa] truncate">{track.artist}</p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFromQueue(queueIndex + 1 + idx);
+                          }}
+                          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 text-[#777777] hover:text-[#ff4e4e] transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 3. RELATED RECOMMENDATIONS TAB */}
           {activeTab === 'related' && (
-            <div className="flex-1 flex flex-col justify-center text-center p-6 space-y-4">
-              <Disc3 className="w-12 h-12 text-[#ff0000] mx-auto animate-spin-slow" />
-              <h3 className="text-lg font-bold text-white">About {currentTrack.artist}</h3>
-              <p className="text-sm text-[#aaaaaa] max-w-md mx-auto leading-relaxed">
-                Stream unlimited tracks, explore albums, and play high-quality music directly with zero restrictions.
-              </p>
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#aaaaaa] flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#ff0000]" />
+                  <span>Related to {currentTrack.artist}</span>
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pt-3 space-y-2 no-scrollbar">
+                {isLoadingRelated ? (
+                  <div className="flex items-center justify-center h-48">
+                    <Loader2 className="w-6 h-6 text-[#ff0000] animate-spin" />
+                  </div>
+                ) : relatedTracks.length === 0 ? (
+                  <div className="text-center py-16 text-[#777777]">
+                    <Disc3 className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm font-bold">No related tracks found</p>
+                  </div>
+                ) : (
+                  relatedTracks.map((track) => (
+                    <div
+                      key={`rel-${track.id}`}
+                      className="flex items-center justify-between p-2 rounded-xl hover:bg-[#1c1c1c] group transition-colors cursor-pointer"
+                      onClick={() => playTrack(track)}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={track.thumbnail}
+                          alt={track.title}
+                          className="w-10 h-10 rounded-lg object-cover bg-[#222222]"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate transition-colors">
+                            {track.title}
+                          </p>
+                          <p className="text-xs text-[#aaaaaa] truncate">{track.artist}</p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playNextInQueue(track);
+                        }}
+                        className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 text-[#aaaaaa] hover:text-white bg-[#222222] transition-all text-xs font-bold flex items-center gap-1"
+                        title="Play Next"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Play Next</span>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -267,10 +407,11 @@ export const FullScreenPlayer: React.FC = () => {
         {/* Playback Buttons */}
         <div className="flex items-center justify-between">
           <button
-            onClick={cyclePlaybackMode}
+            onClick={toggleShuffle}
             className={`p-2 rounded-full hover:bg-white/10 transition-colors ${
-              playbackMode === 'shuffle' ? 'text-[#ff4e4e]' : 'text-[#aaaaaa]'
+              shuffleEnabled ? 'text-[#ff4e4e]' : 'text-[#aaaaaa]'
             }`}
+            title={`Shuffle: ${shuffleEnabled ? 'ON' : 'OFF'}`}
           >
             <Shuffle className="w-5 h-5" />
           </button>
@@ -305,12 +446,13 @@ export const FullScreenPlayer: React.FC = () => {
           </div>
 
           <button
-            onClick={cyclePlaybackMode}
+            onClick={cycleRepeatMode}
             className={`p-2 rounded-full hover:bg-white/10 transition-colors ${
-              playbackMode !== 'repeat-none' ? 'text-[#ff4e4e]' : 'text-[#aaaaaa]'
+              repeatMode !== 'off' ? 'text-[#ff4e4e]' : 'text-[#aaaaaa]'
             }`}
+            title={`Repeat: ${repeatMode}`}
           >
-            {playbackMode === 'repeat-one' ? (
+            {repeatMode === 'one' ? (
               <Repeat1 className="w-5 h-5" />
             ) : (
               <Repeat className="w-5 h-5" />
