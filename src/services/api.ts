@@ -12,7 +12,7 @@ const getAuthHeaders = () => {
 
 export const api = {
   // ==================== AUTH API ====================
-  async register(name: string, email: string, password: string): Promise<{ user: User; token: string }> {
+  async register(name: string, email: string, password: string): Promise<{ user: User; token: string; refreshToken: string }> {
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -23,7 +23,7 @@ export const api = {
     return data;
   },
 
-  async login(email: string, password: string): Promise<{ user: User; token: string }> {
+  async login(email: string, password: string): Promise<{ user: User; token: string; refreshToken: string }> {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -34,15 +34,52 @@ export const api = {
     return data;
   },
 
-  async logout(): Promise<void> {
+  async refreshToken(): Promise<{ token: string; refreshToken: string; user: User } | null> {
+    const rfToken = typeof window !== 'undefined' ? localStorage.getItem('MRJ_REFRESH_TOKEN') : null;
+    if (!rfToken) return null;
+
     try {
-      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: rfToken }),
+      });
+      if (!res.ok) {
+        localStorage.removeItem('MRJ_AUTH_TOKEN');
+        localStorage.removeItem('MRJ_REFRESH_TOKEN');
+        return null;
+      }
+      const data = await res.json();
+      localStorage.setItem('MRJ_AUTH_TOKEN', data.token);
+      localStorage.setItem('MRJ_REFRESH_TOKEN', data.refreshToken);
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
+  async logout(): Promise<void> {
+    const rfToken = typeof window !== 'undefined' ? localStorage.getItem('MRJ_REFRESH_TOKEN') : null;
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ refreshToken: rfToken }),
+      });
     } catch {}
+    localStorage.removeItem('MRJ_AUTH_TOKEN');
+    localStorage.removeItem('MRJ_REFRESH_TOKEN');
   },
 
   async getMe(): Promise<User | null> {
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, { headers: getAuthHeaders() });
+      let res = await fetch(`${API_BASE}/auth/me`, { headers: getAuthHeaders() });
+      if (res.status === 401) {
+        const refreshed = await this.refreshToken();
+        if (refreshed) {
+          res = await fetch(`${API_BASE}/auth/me`, { headers: getAuthHeaders() });
+        }
+      }
       if (!res.ok) return null;
       const data = await res.json();
       return data.user || null;
@@ -73,7 +110,7 @@ export const api = {
     return data;
   },
 
-  async forgotPassword(email: string): Promise<{ success: boolean; message: string; resetToken?: string }> {
+  async forgotPassword(email: string): Promise<{ success: boolean; message: string; devToken?: string }> {
     const res = await fetch(`${API_BASE}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -295,7 +332,10 @@ export const api = {
       if (!res.ok) return null;
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) return null;
-      return await res.blob();
+      const blob = await res.blob();
+      // Ensure real audio blob
+      if (blob.size < 1000) return null;
+      return blob;
     } catch {
       return null;
     }

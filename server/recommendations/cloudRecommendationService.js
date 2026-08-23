@@ -31,50 +31,60 @@ export const cloudRecommendationService = {
       const genre = (evt.genre || '').trim();
 
       if (evt.eventType === 'PLAY_STARTED') {
-        profile.totalPlays++;
-        if (evt.trackId && !profile.recentSeeds.includes(evt.trackId)) {
-          profile.recentSeeds = [evt.trackId, ...profile.recentSeeds].slice(0, 30);
+        profile.total_plays = (profile.total_plays || 0) + 1;
+        if (evt.trackId) {
+          if (!profile.recent_seeds) profile.recent_seeds = [];
+          if (!profile.recent_seeds.includes(evt.trackId)) {
+            profile.recent_seeds = [evt.trackId, ...profile.recent_seeds].slice(0, 30);
+          }
         }
       }
 
       if (evt.eventType === 'PLAY_COMPLETED' || (evt.completionPercent && evt.completionPercent >= 75)) {
-        profile.totalCompletions++;
+        profile.total_completions = (profile.total_completions || 0) + 1;
         if (artist) {
-          profile.preferredArtists[artist] = (profile.preferredArtists[artist] || 0) + 2;
+          if (!profile.preferred_artists) profile.preferred_artists = {};
+          profile.preferred_artists[artist] = (profile.preferred_artists[artist] || 0) + 2;
         }
         if (genre) {
-          profile.preferredGenres[genre] = (profile.preferredGenres[genre] || 0) + 2;
+          if (!profile.preferred_genres) profile.preferred_genres = {};
+          profile.preferred_genres[genre] = (profile.preferred_genres[genre] || 0) + 2;
         }
       }
 
       if (evt.eventType === 'SKIP') {
-        profile.totalSkips++;
-        if (artist && profile.preferredArtists[artist]) {
-          profile.preferredArtists[artist] = Math.max(0, profile.preferredArtists[artist] - 1);
+        profile.total_skips = (profile.total_skips || 0) + 1;
+        if (artist && profile.preferred_artists?.[artist]) {
+          profile.preferred_artists[artist] = Math.max(0, profile.preferred_artists[artist] - 1);
         }
       }
 
       if (evt.eventType === 'LIKE') {
-        if (artist && !profile.likedArtists.includes(artist)) {
-          profile.likedArtists.push(artist);
-          profile.preferredArtists[artist] = (profile.preferredArtists[artist] || 0) + 5;
+        if (!profile.liked_artists) profile.liked_artists = [];
+        if (!profile.preferred_artists) profile.preferred_artists = {};
+        if (artist && !profile.liked_artists.includes(artist)) {
+          profile.liked_artists.push(artist);
+          profile.preferred_artists[artist] = (profile.preferred_artists[artist] || 0) + 5;
         }
       }
 
       if (evt.eventType === 'UNLIKE') {
-        profile.likedArtists = profile.likedArtists.filter(a => a !== artist);
+        if (profile.liked_artists) {
+          profile.liked_artists = profile.liked_artists.filter(a => a !== artist);
+        }
       }
 
       if (evt.eventType === 'DISLIKE' || evt.eventType === 'NOT_INTERESTED') {
-        if (artist && !profile.dislikedArtists.includes(artist)) {
-          profile.dislikedArtists.push(artist);
+        if (!profile.disliked_artists) profile.disliked_artists = [];
+        if (artist && !profile.disliked_artists.includes(artist)) {
+          profile.disliked_artists.push(artist);
         }
       }
     }
 
-    if (profile.totalPlays > 0) {
-      profile.skipRate = +(profile.totalSkips / profile.totalPlays).toFixed(2);
-      profile.completionRate = +(profile.totalCompletions / profile.totalPlays).toFixed(2);
+    if (profile.total_plays > 0) {
+      profile.skip_rate = +(profile.total_skips / profile.total_plays).toFixed(2);
+      profile.completion_rate = +(profile.total_completions / profile.total_plays).toFixed(2);
     }
 
     db.saveTasteProfile(userId, profile);
@@ -85,11 +95,10 @@ export const cloudRecommendationService = {
   getSeedRadio(userId, seedTrack, candidatePool = []) {
     const profile = userId ? db.getTasteProfile(userId) : null;
     const history = userId ? db.getUserHistory(userId) : [];
-    const recentTrackIds = new Set(history.slice(0, 20).map(h => h.trackId));
-    const dislikedArtists = new Set(profile?.dislikedArtists || []);
+    const recentTrackIds = new Set(history.slice(0, 20).map(h => h.track_id));
+    const dislikedArtists = new Set(profile?.disliked_artists || []);
 
     const seedArtist = (seedTrack?.artist || '').toLowerCase();
-    const seedTitle = (seedTrack?.title || '').toLowerCase();
     const seedGenre = (seedTrack?.genre || '').toLowerCase();
 
     const scored = candidatePool
@@ -97,18 +106,21 @@ export const cloudRecommendationService = {
       .map(track => {
         let score = 0;
         const trackArtist = (track.artist || '').toLowerCase();
-        const trackTitle = (track.title || '').toLowerCase();
         const trackGenre = (track.genre || '').toLowerCase();
 
         // 1. Metadata & Artist similarity
-        if (trackArtist === seedArtist) score += 45;
-        if (trackGenre && seedGenre && trackGenre === seedGenre) score += 35;
+        if (trackArtist && seedArtist && (trackArtist.includes(seedArtist) || seedArtist.includes(trackArtist))) {
+          score += 45;
+        }
+        if (trackGenre && seedGenre && trackGenre === seedGenre) {
+          score += 35;
+        }
 
         // 2. User taste affinity
-        if (profile?.preferredArtists?.[track.artist]) {
-          score += Math.min(30, profile.preferredArtists[track.artist] * 3);
+        if (profile?.preferred_artists?.[track.artist]) {
+          score += Math.min(30, profile.preferred_artists[track.artist] * 3);
         }
-        if (profile?.likedArtists?.includes(track.artist)) {
+        if (profile?.liked_artists?.includes(track.artist)) {
           score += 25;
         }
 
@@ -143,14 +155,14 @@ export const cloudRecommendationService = {
   getMoodStation(userId, moodId, candidatePool = []) {
     const moodMeta = MOOD_METADATA[moodId] || MOOD_METADATA.chill;
     const profile = userId ? db.getTasteProfile(userId) : null;
-    const dislikedArtists = new Set(profile?.dislikedArtists || []);
+    const dislikedArtists = new Set(profile?.disliked_artists || []);
 
     const filtered = candidatePool
       .filter(t => !dislikedArtists.has(t.artist))
       .map(track => {
         let score = 0;
-        if (profile?.preferredArtists?.[track.artist]) score += 20;
-        if (profile?.likedArtists?.includes(track.artist)) score += 25;
+        if (profile?.preferred_artists?.[track.artist]) score += 20;
+        if (profile?.liked_artists?.includes(track.artist)) score += 25;
         score += Math.random() * 10;
         return { track, score };
       })
@@ -170,11 +182,9 @@ export const cloudRecommendationService = {
     const liked = userId ? db.getLikedTracks(userId) : [];
     const history = userId ? db.getUserHistory(userId) : [];
 
-    // Quick Picks: Top frequent favorites & history
     const quickPicks = (liked.length > 0 ? liked : history.length > 0 ? history : globalTrending).slice(0, 16);
 
-    // Top artist & genre affinities
-    const sortedArtists = Object.entries(profile?.preferredArtists || {}).sort((a, b) => b[1] - a[1]);
+    const sortedArtists = Object.entries(profile?.preferred_artists || {}).sort((a, b) => b[1] - a[1]);
     const topArtist1 = sortedArtists[0]?.[0] || 'Popular Artists';
     const topArtist2 = sortedArtists[1]?.[0] || 'Global Hitmakers';
 

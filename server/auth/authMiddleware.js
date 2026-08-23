@@ -4,27 +4,22 @@ import { db } from '../db/schema.js';
 export const requireAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return res.status(401).json({ error: 'Authentication required. Please sign in.' });
   }
 
   const token = authHeader.split(' ')[1];
-  const payload = authService.verifyToken(token);
+  const decoded = authService.verifyAccessToken(token);
 
-  if (!payload || !payload.userId) {
-    return res.status(401).json({ error: 'Invalid or expired session token' });
+  if (!decoded || !decoded.userId) {
+    return res.status(401).json({ error: 'Invalid or expired access token. Please re-authenticate.' });
   }
 
-  const user = db.findUserById(payload.userId);
-  if (!user || !user.is_active) {
-    return res.status(401).json({ error: 'User account not found or inactive' });
+  const user = db.findUserById(decoded.userId);
+  if (!user) {
+    return res.status(401).json({ error: 'User account not found or deactivated.' });
   }
 
-  req.user = {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-  };
-
+  req.user = user;
   next();
 };
 
@@ -32,16 +27,9 @@ export const optionalAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
-    const payload = authService.verifyToken(token);
-    if (payload && payload.userId) {
-      const user = db.findUserById(payload.userId);
-      if (user && user.is_active) {
-        req.user = {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-        };
-      }
+    const decoded = authService.verifyAccessToken(token);
+    if (decoded && decoded.userId) {
+      req.user = db.findUserById(decoded.userId) || null;
     }
   }
   next();

@@ -23,8 +23,8 @@ export const ForgotPasswordPage: React.FC = () => {
     try {
       const res = await api.forgotPassword(email.trim());
       setMessage(res.message);
-      if (res.resetToken) {
-        setResetToken(res.resetToken);
+      if (res.devToken) {
+        setResetToken(res.devToken);
         setStep('reset');
       }
     } catch (err: any) {

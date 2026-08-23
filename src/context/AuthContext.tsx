@@ -31,6 +31,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(currentUser);
         } else {
           localStorage.removeItem('MRJ_AUTH_TOKEN');
+          localStorage.removeItem('MRJ_REFRESH_TOKEN');
           setUser(null);
         }
       }
@@ -47,7 +48,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handlePostAuthMigration = async () => {
     try {
-      // Check if local data exists to offer/perform automatic migration
       const localLikes = await offlineStorage.getLikedTracks();
       const localPlaylists = await offlineStorage.getAllPlaylists();
       const localHistory = await offlineStorage.getHistory();
@@ -69,6 +69,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const data = await api.login(email, password);
       localStorage.setItem('MRJ_AUTH_TOKEN', data.token);
+      if (data.refreshToken) {
+        localStorage.setItem('MRJ_REFRESH_TOKEN', data.refreshToken);
+      }
       setUser(data.user);
       await handlePostAuthMigration();
     } finally {
@@ -81,6 +84,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const data = await api.register(name, email, password);
       localStorage.setItem('MRJ_AUTH_TOKEN', data.token);
+      if (data.refreshToken) {
+        localStorage.setItem('MRJ_REFRESH_TOKEN', data.refreshToken);
+      }
       setUser(data.user);
       await handlePostAuthMigration();
     } finally {
@@ -93,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await api.logout();
       localStorage.removeItem('MRJ_AUTH_TOKEN');
+      localStorage.removeItem('MRJ_REFRESH_TOKEN');
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -106,6 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteAccount = async (password: string) => {
     const res = await api.deleteAccount(password);
     localStorage.removeItem('MRJ_AUTH_TOKEN');
+    localStorage.removeItem('MRJ_REFRESH_TOKEN');
     setUser(null);
     return res;
   };
