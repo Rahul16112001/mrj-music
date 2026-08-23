@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search as SearchIcon, Compass, Sparkles, Loader2, Music, User, Video, Disc, Mic } from 'lucide-react';
+import { Search as SearchIcon, Compass, Sparkles, Loader2, Music, User, Video, Disc, Mic, Info } from 'lucide-react';
 import { Track } from '../types';
 import { api } from '../services/api';
 import { TrackCard } from '../components/TrackCard';
@@ -45,12 +45,12 @@ export const Search: React.FC = () => {
     if (!term.trim()) return;
     setIsLoading(true);
     try {
-      const suggestions = await api.getSearchSuggestions(term.trim());
-      setSongs(suggestions.songs || []);
-      setArtists(suggestions.artists || []);
-      setAlbums(suggestions.albums || []);
-      setVideos(suggestions.videos || []);
-      setPodcasts(suggestions.podcasts || []);
+      const searchRes = await api.search(term.trim());
+      setSongs(searchRes.songs || []);
+      setVideos(searchRes.videos || []);
+      setArtists(searchRes.artists || []);
+      setAlbums(searchRes.albums || []);
+      setPodcasts(searchRes.podcasts || []);
     } catch (err) {
       console.error('Search error:', err);
     } finally {
@@ -73,6 +73,7 @@ export const Search: React.FC = () => {
   };
 
   const hasAnyResults = songs.length > 0 || artists.length > 0 || albums.length > 0 || videos.length > 0 || podcasts.length > 0;
+  const isVideoFallbackOnly = songs.length === 0 && videos.length > 0;
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto pb-40 select-none">
@@ -82,7 +83,7 @@ export const Search: React.FC = () => {
           Explore Music Catalog
         </h1>
         <p className="text-xs md:text-sm text-[#aaaaaa]">
-          Music-first search across verified audio tracks, albums, artists, and live performances
+          Music-first search across verified audio tracks, albums, artists, and music videos
         </p>
 
         <form onSubmit={handleSearchSubmit} className="relative">
@@ -143,9 +144,17 @@ export const Search: React.FC = () => {
         </div>
       )}
 
+      {/* Fallback Notice when only Video is found */}
+      {!isLoading && isVideoFallbackOnly && (
+        <div className="p-4 rounded-2xl bg-[#1c1c1c] border border-[#333333] flex items-center gap-3 text-sm text-[#cccccc]">
+          <Info className="w-5 h-5 text-[#ff4e4e] shrink-0" />
+          <span>No official music/audio version found for <strong>"{queryParam}"</strong>. Showing matching video results below.</span>
+        </div>
+      )}
+
       {!isLoading && hasAnyResults && (
         <div className="space-y-10">
-          {/* 1. MUSIC-FIRST SONGS */}
+          {/* 1. MUSIC-FIRST SONGS (TOP PRIORITY) */}
           {(activeFilter === 'all' || activeFilter === 'songs') && songs.length > 0 && (
             <section className="space-y-4">
               <div className="flex items-center justify-between">
@@ -156,7 +165,7 @@ export const Search: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {songs.map((track) => (
-                  <TrackCard key={track.id} track={track} queueContext={songs} />
+                  <TrackCard key={track.id} track={{ ...track, playbackFormat: 'audio' }} queueContext={songs} />
                 ))}
               </div>
             </section>

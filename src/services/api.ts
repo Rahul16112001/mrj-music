@@ -488,14 +488,32 @@ export const api = {
     }
   },
 
-  async search(query: string, type: string = 'all'): Promise<{ results: Track[]; artists: any[] }> {
+  async search(query: string, type: string = 'all'): Promise<{
+    query: string;
+    intent?: string;
+    songs: Track[];
+    videos: Track[];
+    artists: any[];
+    albums: any[];
+    podcasts: any[];
+    results: Track[];
+  }> {
     try {
       const res = await fetch(`${API_BASE}/music/search?q=${encodeURIComponent(query)}&type=${type}`);
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
-      return { results: data.results || [], artists: data.artists || [] };
+      return {
+        query: data.query || query,
+        intent: data.intent || 'SONG',
+        songs: data.songs || [],
+        videos: data.videos || [],
+        artists: data.artists || [],
+        albums: data.albums || [],
+        podcasts: data.podcasts || [],
+        results: data.results || data.songs || [],
+      };
     } catch {
-      return { results: [], artists: [] };
+      return { query, songs: [], videos: [], artists: [], albums: [], podcasts: [], results: [] };
     }
   },
 
