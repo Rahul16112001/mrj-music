@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { authService } from './auth/authService.js';
 import { requireAuth, optionalAuth } from './auth/authMiddleware.js';
 import { db } from './db/schema.js';
+import { dbClient } from './db/client.js';
 import { cloudRecommendationService } from './recommendations/cloudRecommendationService.js';
 import { musicProvider } from './providers/musicProvider.js';
 
@@ -16,11 +17,20 @@ const PORT = process.env.PORT || 5005;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Database Health Check Endpoint
+app.get('/api/health/db', async (req, res) => {
+  const health = await dbClient.healthCheck();
+  res.json({
+    status: health.status === 'connected' ? 'ok' : 'error',
+    database: health,
+    timestamp: Date.now(),
+  });
+});
+
 // ==========================================
 // 1. AUTHENTICATION ROUTES
 // ==========================================
 
-// Register (Email + Password only)
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -33,7 +43,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login (Email + Password only)
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -46,7 +55,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Refresh Access Token
 app.post('/api/auth/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -57,7 +65,6 @@ app.post('/api/auth/refresh', async (req, res) => {
   }
 });
 
-// Logout (Revoke Session)
 app.post('/api/auth/logout', optionalAuth, async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -68,7 +75,6 @@ app.post('/api/auth/logout', optionalAuth, async (req, res) => {
   }
 });
 
-// Get Current User Profile
 app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({
     status: 'success',
@@ -76,12 +82,11 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
       id: req.user.id,
       name: req.user.name,
       email: req.user.email,
-      createdAt: req.user.created_at,
+      createdAt: Number(req.user.created_at),
     },
   });
 });
 
-// Change Password
 app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -92,7 +97,6 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   }
 });
 
-// Delete Account
 app.delete('/api/auth/account', requireAuth, async (req, res) => {
   try {
     const { password } = req.body;
@@ -103,7 +107,6 @@ app.delete('/api/auth/account', requireAuth, async (req, res) => {
   }
 });
 
-// Forgot Password
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -114,7 +117,6 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-// Reset Password
 app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -129,69 +131,69 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // 2. CLOUD USER DATA & SYNC ROUTES
 // ==========================================
 
-app.get('/api/user/likes', requireAuth, (req, res) => {
-  const likes = db.getLikedTracks(req.user.id);
+app.get('/api/user/likes', requireAuth, async (req, res) => {
+  const likes = await db.getLikedTracks(req.user.id);
   res.json({ status: 'success', likes });
 });
 
-app.post('/api/user/likes', requireAuth, (req, res) => {
+app.post('/api/user/likes', requireAuth, async (req, res) => {
   const { track } = req.body;
   if (!track || !track.id) return res.status(400).json({ error: 'Track is required' });
-  const likes = db.addLikedTrack(req.user.id, track);
+  const likes = await db.addLikedTrack(req.user.id, track);
   res.json({ status: 'success', likes });
 });
 
-app.delete('/api/user/likes/:trackId', requireAuth, (req, res) => {
+app.delete('/api/user/likes/:trackId', requireAuth, async (req, res) => {
   const { trackId } = req.params;
-  const likes = db.removeLikedTrack(req.user.id, trackId);
+  const likes = await db.removeLikedTrack(req.user.id, trackId);
   res.json({ status: 'success', likes });
 });
 
-app.get('/api/user/playlists', requireAuth, (req, res) => {
-  const playlists = db.getPlaylists(req.user.id);
+app.get('/api/user/playlists', requireAuth, async (req, res) => {
+  const playlists = await db.getPlaylists(req.user.id);
   res.json({ status: 'success', playlists });
 });
 
-app.post('/api/user/playlists', requireAuth, (req, res) => {
+app.post('/api/user/playlists', requireAuth, async (req, res) => {
   const playlist = req.body;
   if (!playlist || !playlist.title) return res.status(400).json({ error: 'Playlist title is required' });
-  const saved = db.savePlaylist(req.user.id, playlist);
+  const saved = await db.savePlaylist(req.user.id, playlist);
   res.json({ status: 'success', playlist: saved });
 });
 
-app.delete('/api/user/playlists/:id', requireAuth, (req, res) => {
-  const deleted = db.deletePlaylist(req.user.id, req.params.id);
+app.delete('/api/user/playlists/:id', requireAuth, async (req, res) => {
+  const deleted = await db.deletePlaylist(req.user.id, req.params.id);
   res.json({ status: 'success', success: deleted });
 });
 
-app.get('/api/user/history', requireAuth, (req, res) => {
-  const history = db.getUserHistory(req.user.id);
+app.get('/api/user/history', requireAuth, async (req, res) => {
+  const history = await db.getUserHistory(req.user.id);
   res.json({ status: 'success', history });
 });
 
-app.delete('/api/user/history', requireAuth, (req, res) => {
-  db.clearUserHistory(req.user.id);
+app.delete('/api/user/history', requireAuth, async (req, res) => {
+  await db.clearUserHistory(req.user.id);
   res.json({ status: 'success', message: 'History cleared' });
 });
 
-app.post('/api/user/events', optionalAuth, (req, res) => {
+app.post('/api/user/events', optionalAuth, async (req, res) => {
   const { events } = req.body;
   const userId = req.user ? req.user.id : 'anon_' + (req.ip || 'client');
   if (Array.isArray(events)) {
-    cloudRecommendationService.processEvents(userId, events);
+    await cloudRecommendationService.processEvents(userId, events);
   }
   res.json({ status: 'success', processed: events?.length || 0 });
 });
 
-app.post('/api/user/migrate', requireAuth, (req, res) => {
+app.post('/api/user/migrate', requireAuth, async (req, res) => {
   const { likedTracks, playlists, history } = req.body;
   const userId = req.user.id;
 
   if (Array.isArray(likedTracks)) {
-    for (const t of likedTracks) db.addLikedTrack(userId, t);
+    for (const t of likedTracks) await db.addLikedTrack(userId, t);
   }
   if (Array.isArray(playlists)) {
-    for (const p of playlists) db.savePlaylist(userId, p);
+    for (const p of playlists) await db.savePlaylist(userId, p);
   }
   if (Array.isArray(history)) {
     const formatted = history.map((h) => ({
@@ -201,20 +203,20 @@ app.post('/api/user/migrate', requireAuth, (req, res) => {
       artist: h.artist,
       duration: h.duration,
     }));
-    cloudRecommendationService.processEvents(userId, formatted);
+    await cloudRecommendationService.processEvents(userId, formatted);
   }
 
   res.json({ status: 'success', message: 'Local data migrated to cloud account successfully.' });
 });
 
 // ==========================================
-// 3. RECOMMENDATIONS & SEED RADIO (100+ CANDIDATES)
+// 3. RECOMMENDATIONS & SEED RADIO
 // ==========================================
 
 app.get('/api/recommendations/home', optionalAuth, async (req, res) => {
   const userId = req.user ? req.user.id : null;
   const charts = await musicProvider.getCharts();
-  const homeData = cloudRecommendationService.getPersonalizedHome(userId, charts.trending);
+  const homeData = await cloudRecommendationService.getPersonalizedHome(userId, charts.trending);
   res.json({ status: 'success', ...homeData });
 });
 
@@ -223,7 +225,7 @@ app.get('/api/recommendations/radio/:videoId', optionalAuth, async (req, res) =>
   const userId = req.user ? req.user.id : null;
 
   const candidatePool = await musicProvider.getCandidatePool({ id: videoId, artist: '', title: '' });
-  const radio = cloudRecommendationService.getSeedRadio(userId, { id: videoId }, candidatePool);
+  const radio = await cloudRecommendationService.getSeedRadio(userId, { id: videoId }, candidatePool);
   res.json({ status: 'success', radio });
 });
 
@@ -232,7 +234,7 @@ app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {
   const userId = req.user ? req.user.id : null;
 
   const candidatePool = await musicProvider.getCandidatePool({ id: moodId, genre: moodId });
-  const station = cloudRecommendationService.getMoodStation(userId, moodId, candidatePool);
+  const station = await cloudRecommendationService.getMoodStation(userId, moodId, candidatePool);
   res.json({ status: 'success', ...station });
 });
 
@@ -266,7 +268,6 @@ app.get('/api/music/album/:id', async (req, res) => {
   res.json({ status: 'success', album: albumData });
 });
 
-// Stream Resolution (SSRF-Protected)
 app.get('/api/music/stream/:id', async (req, res) => {
   const videoId = req.params.id;
   const stream = await musicProvider.resolveAudioStream(videoId);
@@ -292,7 +293,6 @@ app.get('/api/music/stream/:id', async (req, res) => {
   });
 });
 
-// Direct Audio Pipe for Offline Downloads (Validates audio stream)
 app.get('/api/music/download/:id', async (req, res) => {
   const videoId = req.params.id;
   const stream = await musicProvider.resolveAudioStream(videoId);
@@ -321,7 +321,6 @@ app.get('/api/music/download/:id', async (req, res) => {
   });
 });
 
-// Synced Lyrics
 app.get('/api/music/lyrics', async (req, res) => {
   const { track, artist, duration } = req.query;
   if (!track || !artist) return res.status(400).json({ error: 'track and artist required' });
@@ -330,7 +329,6 @@ app.get('/api/music/lyrics', async (req, res) => {
   res.json({ status: 'success', ...lyrics });
 });
 
-// Ad Bundle
 app.get('/api/ads/bundle', (req, res) => {
   res.json({ status: 'success', version: '1.0', audioAds: [], displayBanners: [] });
 });

@@ -20,11 +20,11 @@ const MOOD_METADATA = {
 
 export const cloudRecommendationService = {
   // 1. Process Event Batch & Update Taste Profile
-  processEvents(userId, events) {
+  async processEvents(userId, events) {
     if (!Array.isArray(events) || events.length === 0) return;
 
-    db.addEvents(userId, events);
-    const profile = db.getTasteProfile(userId);
+    await db.addEvents(userId, events);
+    const profile = await db.getTasteProfile(userId);
 
     for (const evt of events) {
       const artist = (evt.artist || '').trim();
@@ -87,14 +87,14 @@ export const cloudRecommendationService = {
       profile.completion_rate = +(profile.total_completions / profile.total_plays).toFixed(2);
     }
 
-    db.saveTasteProfile(userId, profile);
+    await db.saveTasteProfile(userId, profile);
     return profile;
   },
 
   // 2. Generate Seed-Based Radio from Large Candidate Pool
-  getSeedRadio(userId, seedTrack, candidatePool = []) {
-    const profile = userId ? db.getTasteProfile(userId) : null;
-    const history = userId ? db.getUserHistory(userId) : [];
+  async getSeedRadio(userId, seedTrack, candidatePool = []) {
+    const profile = userId ? await db.getTasteProfile(userId) : null;
+    const history = userId ? await db.getUserHistory(userId) : [];
     const recentTrackIds = new Set(history.slice(0, 20).map(h => h.track_id));
     const dislikedArtists = new Set(profile?.disliked_artists || []);
 
@@ -152,9 +152,9 @@ export const cloudRecommendationService = {
   },
 
   // 3. Generate Mood Station
-  getMoodStation(userId, moodId, candidatePool = []) {
+  async getMoodStation(userId, moodId, candidatePool = []) {
     const moodMeta = MOOD_METADATA[moodId] || MOOD_METADATA.chill;
-    const profile = userId ? db.getTasteProfile(userId) : null;
+    const profile = userId ? await db.getTasteProfile(userId) : null;
     const dislikedArtists = new Set(profile?.disliked_artists || []);
 
     const filtered = candidatePool
@@ -177,10 +177,10 @@ export const cloudRecommendationService = {
   },
 
   // 4. Generate Personalized Home Sections with Distinct Daily Mixes
-  getPersonalizedHome(userId, globalTrending = []) {
-    const profile = userId ? db.getTasteProfile(userId) : null;
-    const liked = userId ? db.getLikedTracks(userId) : [];
-    const history = userId ? db.getUserHistory(userId) : [];
+  async getPersonalizedHome(userId, globalTrending = []) {
+    const profile = userId ? await db.getTasteProfile(userId) : null;
+    const liked = userId ? await db.getLikedTracks(userId) : [];
+    const history = userId ? await db.getUserHistory(userId) : [];
 
     const quickPicks = (liked.length > 0 ? liked : history.length > 0 ? history : globalTrending).slice(0, 16);
 

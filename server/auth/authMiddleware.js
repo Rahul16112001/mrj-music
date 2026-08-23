@@ -1,7 +1,7 @@
 import { authService } from './authService.js';
 import { db } from '../db/schema.js';
 
-export const requireAuth = (req, res, next) => {
+export const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Authentication required. Please sign in.' });
@@ -14,22 +14,27 @@ export const requireAuth = (req, res, next) => {
     return res.status(401).json({ error: 'Invalid or expired access token. Please re-authenticate.' });
   }
 
-  const user = db.findUserById(decoded.userId);
-  if (!user) {
-    return res.status(401).json({ error: 'User account not found or deactivated.' });
+  try {
+    const user = await db.findUserById(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ error: 'User account not found or deactivated.' });
+    }
+    req.user = user;
+    next();
+  } catch (err) {
+    res.status(500).json({ error: 'Authentication database check failed.' });
   }
-
-  req.user = user;
-  next();
 };
 
-export const optionalAuth = (req, res, next) => {
+export const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     const decoded = authService.verifyAccessToken(token);
     if (decoded && decoded.userId) {
-      req.user = db.findUserById(decoded.userId) || null;
+      try {
+        req.user = await db.findUserById(decoded.userId);
+      } catch {}
     }
   }
   next();

@@ -33,7 +33,7 @@ async function runTests() {
     await authService.register('Duplicate', testEmail.toUpperCase(), 'OtherPassword123!');
     assert(false, 'Duplicate registration should throw');
   } catch (err) {
-    assert(err.message.includes('already exists'), 'Duplicate email rejected by DB constraint');
+    assert(err.message.includes('already exists') || err.code === '23505', 'Duplicate email rejected by DB constraint');
   }
 
   // TEST 3: User Login
@@ -98,11 +98,11 @@ async function runTests() {
   const userBEmail = 'user_b_' + Date.now() + '@example.com';
   const userB = await authService.register('User B', userBEmail, 'PasswordB123!');
   
-  db.addLikedTrack(newLogin.user.id, { id: 'trk_a1', title: 'Song A1', artist: 'Artist A' });
-  db.addLikedTrack(userB.user.id, { id: 'trk_b1', title: 'Song B1', artist: 'Artist B' });
+  await db.addLikedTrack(newLogin.user.id, { id: 'trk_a1', title: 'Song A1', artist: 'Artist A' });
+  await db.addLikedTrack(userB.user.id, { id: 'trk_b1', title: 'Song B1', artist: 'Artist B' });
 
-  const likesA = db.getLikedTracks(newLogin.user.id);
-  const likesB = db.getLikedTracks(userB.user.id);
+  const likesA = await db.getLikedTracks(newLogin.user.id);
+  const likesB = await db.getLikedTracks(userB.user.id);
 
   assert(likesA.some(t => t.id === 'trk_a1') && !likesA.some(t => t.id === 'trk_b1'), "User A only sees User A's likes");
   assert(likesB.some(t => t.id === 'trk_b1') && !likesB.some(t => t.id === 'trk_a1'), "User B only sees User B's likes");
@@ -110,14 +110,14 @@ async function runTests() {
   // TEST 10: Behavioral Event Streaming & Taste Profile
   console.log('\n10. Testing Behavioral Event Streaming & Taste Profile...');
   const userId = newLogin.user.id;
-  cloudRecommendationService.processEvents(userId, [
+  await cloudRecommendationService.processEvents(userId, [
     { eventType: 'PLAY_STARTED', trackId: 'trk_arijit_1', artist: 'Arijit Singh', genre: 'Bollywood' },
     { eventType: 'PLAY_COMPLETED', trackId: 'trk_arijit_1', artist: 'Arijit Singh', genre: 'Bollywood', completionPercent: 100 },
     { eventType: 'LIKE', trackId: 'trk_arijit_1', artist: 'Arijit Singh', genre: 'Bollywood' },
     { eventType: 'SKIP', trackId: 'trk_other', artist: 'Random Band', genre: 'Noise' },
   ]);
 
-  const profile = db.getTasteProfile(userId);
+  const profile = await db.getTasteProfile(userId);
   assert(profile.preferred_artists['Arijit Singh'] >= 7, 'Artist affinity increased on completion + like');
   assert(profile.liked_artists.includes('Arijit Singh'), 'Artist added to liked_artists list');
   assert(profile.total_plays >= 1, 'Total plays recorded in DB');
@@ -132,7 +132,7 @@ async function runTests() {
     candidatePool.push({ id: `c_other_${i}`, title: `Other Song ${i}`, artist: `Artist ${i}`, genre: 'Rock' });
   }
 
-  const radio = cloudRecommendationService.getSeedRadio(userId, { id: 'seed_1', artist: 'Arijit Singh', genre: 'Bollywood' }, candidatePool);
+  const radio = await cloudRecommendationService.getSeedRadio(userId, { id: 'seed_1', artist: 'Arijit Singh', genre: 'Bollywood' }, candidatePool);
   assert(radio.length >= 10, 'Seed radio returns populated queue');
   assert(radio[0].artist === 'Arijit Singh', 'Top ranked tracks match seed artist similarity');
   
@@ -148,7 +148,7 @@ async function runTests() {
   console.log('\n12. Testing Permanent Account Deletion...');
   const delResult = await authService.deleteAccount(userId, 'BrandNewPassword456!');
   assert(delResult.success === true, 'Account deletion reported success');
-  const userCheck = db.findUserById(userId);
+  const userCheck = await db.findUserById(userId);
   assert(userCheck === null, 'User record completely purged from database');
 
   console.log(`\n========================================`);

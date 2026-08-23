@@ -27,7 +27,7 @@ export const authService = {
     if (!password || password.length < 6) throw new Error('Password must be at least 6 characters');
 
     const normalizedEmail = email.trim().toLowerCase();
-    const existing = db.findUserByEmail(normalizedEmail);
+    const existing = await db.findUserByEmail(normalizedEmail);
     if (existing) {
       throw new Error('An account with this email address already exists.');
     }
@@ -35,7 +35,7 @@ export const authService = {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const user = db.createUser({
+    const user = await db.createUser({
       name: name.trim(),
       email: normalizedEmail,
       password_hash: passwordHash,
@@ -43,10 +43,10 @@ export const authService = {
 
     const tokens = this.generateTokenPair(user);
     const tokenHash = hashToken(tokens.refreshToken);
-    db.createSession(user.id, tokenHash, userAgent, ip);
+    await db.createSession(user.id, tokenHash, userAgent, ip);
 
     return {
-      user: { id: user.id, name: user.name, email: user.email, createdAt: user.created_at },
+      user: { id: user.id, name: user.name, email: user.email, createdAt: Number(user.created_at) },
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
@@ -57,20 +57,20 @@ export const authService = {
     if (!email || !password) throw new Error('Email and password are required');
 
     const normalizedEmail = email.trim().toLowerCase();
-    const user = db.findUserByEmail(normalizedEmail);
+    const user = await db.findUserByEmail(normalizedEmail);
     if (!user) throw new Error('Invalid email or password');
 
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) throw new Error('Invalid email or password');
 
-    db.updateUser(user.id, { last_login_at: Date.now() });
+    await db.updateUser(user.id, { last_login_at: Date.now() });
 
     const tokens = this.generateTokenPair(user);
     const tokenHash = hashToken(tokens.refreshToken);
-    db.createSession(user.id, tokenHash, userAgent, ip);
+    await db.createSession(user.id, tokenHash, userAgent, ip);
 
     return {
-      user: { id: user.id, name: user.name, email: user.email, createdAt: user.created_at },
+      user: { id: user.id, name: user.name, email: user.email, createdAt: Number(user.created_at) },
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
@@ -83,25 +83,25 @@ export const authService = {
     try {
       const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
       const tokenHash = hashToken(refreshToken);
-      const session = db.findSessionByTokenHash(tokenHash);
+      const session = await db.findSessionByTokenHash(tokenHash);
 
-      if (!session || session.revoked_at || session.expires_at < Date.now()) {
+      if (!session || session.revoked_at || Number(session.expires_at) < Date.now()) {
         throw new Error('Invalid or revoked session');
       }
 
-      const user = db.findUserById(session.user_id);
+      const user = await db.findUserById(session.user_id);
       if (!user) throw new Error('User not found');
 
       // Rotate tokens
-      db.revokeSession(session.id);
+      await db.revokeSession(session.id);
       const newTokens = this.generateTokenPair(user);
       const newHash = hashToken(newTokens.refreshToken);
-      db.createSession(user.id, newHash, session.user_agent, session.ip);
+      await db.createSession(user.id, newHash, session.user_agent, session.ip);
 
       return {
         token: newTokens.accessToken,
         refreshToken: newTokens.refreshToken,
-        user: { id: user.id, name: user.name, email: user.email, createdAt: user.created_at },
+        user: { id: user.id, name: user.name, email: user.email, createdAt: Number(user.created_at) },
       };
     } catch (err) {
       throw new Error(err.message || 'Invalid or expired refresh token');
@@ -112,14 +112,14 @@ export const authService = {
   async logout(refreshToken) {
     if (refreshToken) {
       const tokenHash = hashToken(refreshToken);
-      db.revokeSessionByTokenHash(tokenHash);
+      await db.revokeSessionByTokenHash(tokenHash);
     }
     return { success: true, message: 'Logged out and session revoked successfully' };
   },
 
   // 5. Change Password
   async changePassword(userId, currentPassword, newPassword) {
-    const user = db.findUserById(userId);
+    const user = await db.findUserById(userId);
     if (!user) throw new Error('User not found');
 
     const isValid = await bcrypt.compare(currentPassword, user.password_hash);
@@ -132,31 +132,31 @@ export const authService = {
     const salt = await bcrypt.genSalt(10);
     const newHash = await bcrypt.hash(newPassword, salt);
 
-    db.updateUser(userId, { password_hash: newHash });
-    db.revokeAllUserSessions(userId);
+    await db.updateUser(userId, { password_hash: newHash });
+    await db.revokeAllUserSessions(userId);
 
     return { success: true, message: 'Password updated successfully. All other sessions logged out.' };
   },
 
   // 6. Delete Account
   async deleteAccount(userId, password) {
-    const user = db.findUserById(userId);
+    const user = await db.findUserById(userId);
     if (!user) throw new Error('User not found');
 
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) throw new Error('Incorrect password');
 
-    db.deleteUser(userId);
+    await db.deleteUser(userId);
     return { success: true, message: 'Account and associated cloud data permanently deleted.' };
   },
 
   // 7. Request Password Reset (Secure Token)
   async forgotPassword(email) {
     const normalizedEmail = (email || '').trim().toLowerCase();
-    const user = db.findUserByEmail(normalizedEmail);
+    const user = await db.findUserByEmail(normalizedEmail);
 
     if (user) {
-      const { token } = db.createPasswordResetToken(user.id);
+      const { token } = await db.createPasswordResetToken(user.id);
       if (process.env.NODE_ENV !== 'production') {
         return {
           success: true,
@@ -178,14 +178,14 @@ export const authService = {
       throw new Error('Valid token and new password (min 6 characters) are required');
     }
 
-    const userId = db.validateAndUseResetToken(token);
+    const userId = await db.validateAndUseResetToken(token);
     if (!userId) throw new Error('Invalid or expired reset token');
 
     const salt = await bcrypt.genSalt(10);
     const newHash = await bcrypt.hash(newPassword, salt);
 
-    db.updateUser(userId, { password_hash: newHash });
-    db.revokeAllUserSessions(userId);
+    await db.updateUser(userId, { password_hash: newHash });
+    await db.revokeAllUserSessions(userId);
 
     return { success: true, message: 'Password reset successfully. You may now log in with your new password.' };
   },
