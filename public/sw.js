@@ -1,15 +1,7 @@
-const CACHE_NAME = 'mrj-music-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon.svg',
-];
+// Service Worker for MRJ Music - Network-First Strategy with Cache Fallback
+const CACHE_NAME = 'mrj-music-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
   self.skipWaiting();
 });
 
@@ -29,21 +21,45 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Let audio stream requests pass through or handle via IndexedDB
-  if (event.request.url.includes('/api/music/stream') || event.request.url.includes('googlevideo.com')) {
+  // Always use Network-First for HTML, JS, CSS, and API to prevent stale caching
+  if (
+    event.request.mode === 'navigate' ||
+    event.request.url.includes('/assets/') ||
+    event.request.url.includes('/api/')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Clone and cache the response
+          if (response && response.status === 200 && response.type === 'basic') {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+            if (event.request.mode === 'navigate') {
+              return caches.match('/index.html');
+            }
+          });
+        })
+    );
     return;
   }
 
+  // Pass through audio streams directly
+  if (event.request.url.includes('.mp3') || event.request.url.includes('.webm') || event.request.url.includes('googlevideo')) {
+    return;
+  }
+
+  // For other static assets, cache with network fallback
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      });
+      return cachedResponse || fetch(event.request);
     })
   );
 });

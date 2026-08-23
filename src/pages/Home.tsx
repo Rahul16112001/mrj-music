@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Sparkles,
   TrendingUp,
   Play,
   Download,
@@ -12,9 +11,10 @@ import {
   Coffee,
   Brain,
   PartyPopper,
-  Moon,
+  Sparkles,
   ChevronRight,
   Music2,
+  Headphones
 } from 'lucide-react';
 import { Track, MoodStation } from '../types';
 import { api } from '../services/api';
@@ -34,7 +34,18 @@ export const Home: React.FC = () => {
   const [selectedPill, setSelectedPill] = useState<string>('All');
   const [loading, setLoading] = useState(true);
 
-  const filterPills = ['All', 'Energize', 'Workout', 'Relax', 'Commute', 'Focus', 'Party', 'Romance'];
+  const filterPills = [
+    'All',
+    'Relax',
+    'Energize',
+    'Workout',
+    'Commute',
+    'Focus',
+    'Party',
+    'Romance',
+    'Feel Good',
+    'Podcasts'
+  ];
 
   useEffect(() => {
     const loadData = async () => {
@@ -71,22 +82,22 @@ export const Home: React.FC = () => {
   ];
 
   return (
-    <div className="p-4 md:p-8 space-y-10 max-w-7xl mx-auto pb-36">
+    <div className="p-4 md:p-8 space-y-12 max-w-7xl mx-auto pb-40 select-none">
       {/* Offline/Online Ad Trigger Modal */}
       {isAdPlaying && activeAd && (
         <AdBanner ad={activeAd} onDismiss={dismissAd} type="modal" />
       )}
 
-      {/* 1. YouTube Music Horizontal Category Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none select-none">
+      {/* 1. YouTube Music Horizontal Category Filter Chips */}
+      <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-none">
         {filterPills.map((pill) => (
           <button
             key={pill}
             onClick={() => handlePillClick(pill)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+            className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
               selectedPill === pill
-                ? 'bg-white text-dark-950 shadow-md'
-                : 'bg-dark-850 hover:bg-dark-750 text-gray-300 border border-dark-750'
+                ? 'bg-white text-black font-bold shadow-md'
+                : 'bg-[#212121] hover:bg-[#2e2e2e] text-white border border-transparent hover:border-[#383838]'
             }`}
           >
             {pill}
@@ -96,23 +107,25 @@ export const Home: React.FC = () => {
 
       {/* 2. Quick Picks Section (YouTube Music 4-row Column Grid) */}
       {quickPicks.length > 0 && (
-        <section className="space-y-3.5">
-          <div className="flex items-center justify-between">
+        <section className="space-y-4">
+          <div className="flex items-end justify-between">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Start Radio From A Song</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#aaaaaa]">
+                Start Radio From A Song
+              </span>
               <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
                 <span>Quick Picks</span>
               </h2>
             </div>
             <button
               onClick={() => playTrack(quickPicks[0], quickPicks)}
-              className="px-4 py-1.5 rounded-full bg-dark-850 hover:bg-dark-750 border border-dark-750 text-xs font-bold text-gray-200 transition-colors"
+              className="px-4 py-1.5 rounded-full bg-[#212121] hover:bg-[#2e2e2e] border border-[#333333] text-xs font-bold text-white transition-colors"
             >
               Play all
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {quickPicks.map((track) => (
               <TrackCard key={`quick-${track.id}`} track={track} queueContext={quickPicks} />
             ))}
@@ -120,19 +133,21 @@ export const Home: React.FC = () => {
         </section>
       )}
 
-      {/* 3. Global Trending Hits */}
-      <section className="space-y-3.5">
-        <div className="flex items-center justify-between">
+      {/* 3. Global Trending Ranked Hits */}
+      <section className="space-y-4">
+        <div className="flex items-end justify-between">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Global Hits & Videos</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#aaaaaa]">
+              Global Charts & Videos
+            </span>
             <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-mrj-500" />
+              <TrendingUp className="w-5 h-5 text-[#ff0000]" />
               <span>Trending Worldwide</span>
             </h2>
           </div>
           <button
             onClick={() => playTrack(trending[0], trending)}
-            className="px-4 py-1.5 rounded-full bg-dark-850 hover:bg-dark-750 border border-dark-750 text-xs font-bold text-gray-200 transition-colors"
+            className="px-4 py-1.5 rounded-full bg-[#212121] hover:bg-[#2e2e2e] border border-[#333333] text-xs font-bold text-white transition-colors"
           >
             Play all ({trending.length})
           </button>
@@ -149,7 +164,9 @@ export const Home: React.FC = () => {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Popular Worldwide</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#aaaaaa]">
+              Popular Worldwide
+            </span>
             <h2 className="text-2xl font-black text-white tracking-tight">Featured Artists</h2>
           </div>
         </div>
@@ -159,25 +176,52 @@ export const Home: React.FC = () => {
             <div
               key={artist.name}
               onClick={() => navigate(`/search?q=${encodeURIComponent(artist.name)}`)}
-              className="flex flex-col items-center text-center p-3 rounded-2xl bg-dark-850/60 hover:bg-dark-850 border border-dark-800/80 cursor-pointer transition-all hover:scale-105 group"
+              className="flex flex-col items-center text-center p-3.5 rounded-2xl bg-[#181818] hover:bg-[#212121] border border-[#262626] cursor-pointer transition-all hover:scale-105 group"
             >
-              <div className="w-24 h-24 rounded-full overflow-hidden mb-3 shadow-lg border-2 border-dark-700 group-hover:border-mrj-500 transition-colors">
+              <div className="w-24 h-24 rounded-full overflow-hidden mb-3 shadow-lg border-2 border-[#333333] group-hover:border-[#ff0000] transition-colors">
                 <img src={artist.img} alt={artist.name} className="w-full h-full object-cover" />
               </div>
-              <h4 className="text-sm font-bold text-gray-100 group-hover:text-mrj-400 truncate w-full">
+              <h4 className="text-sm font-bold text-white group-hover:text-[#ff4e4e] truncate w-full">
                 {artist.name}
               </h4>
-              <p className="text-[10px] text-gray-400 mt-0.5">{artist.listeners}</p>
+              <p className="text-[10px] text-[#aaaaaa] mt-0.5">{artist.listeners}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* 5. Recently Played & History */}
+      {/* 5. Moods & Activity Stations */}
+      {moods.length > 0 && (
+        <section className="space-y-4">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#aaaaaa]">
+              Curated For Every Moment
+            </span>
+            <h2 className="text-2xl font-black text-white tracking-tight">Moods & Genres</h2>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
+            {moods.map((mood) => (
+              <div
+                key={mood.id}
+                onClick={() => navigate(`/search?q=${encodeURIComponent(mood.name + ' playlist')}`)}
+                className={`p-4 rounded-xl bg-gradient-to-br ${mood.color} cursor-pointer hover:scale-105 transition-all shadow-lg flex flex-col justify-between h-28 border border-white/10 group`}
+              >
+                <span className="text-xs font-black text-white group-hover:underline">
+                  {mood.name}
+                </span>
+                <span className="text-[10px] text-white/80 font-bold">{mood.count}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 6. Recently Played & History */}
       {recentlyPlayed.length > 0 && (
-        <section className="space-y-3.5">
+        <section className="space-y-4">
           <h2 className="text-2xl font-black text-white tracking-tight">Listen Again</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {recentlyPlayed.slice(0, 8).map((track) => (
               <TrackCard key={`rec-${track.id}`} track={track} queueContext={recentlyPlayed} />
             ))}

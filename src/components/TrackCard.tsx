@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, Download, Check, Heart, MoreVertical, Plus } from 'lucide-react';
+import { Play, Pause, Download, Check, Heart, Plus, Loader2, MoreVertical, Disc3 } from 'lucide-react';
 import { Track } from '../types';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 
@@ -15,19 +15,22 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
     isPlaying,
     playTrack,
     togglePlay,
+    addToQueue,
     toggleFavorite,
     isFavorite,
     downloadTrack,
+    deleteDownloadedTrack,
     downloadedTrackIds,
-    addToQueue,
   } = useMusicPlayer();
 
   const [isDownloading, setIsDownloading] = useState(false);
+
   const isCurrent = currentTrack?.id === track.id;
-  const isFav = isFavorite(track.id);
+  const isLiked = isFavorite(track.id);
   const isDownloaded = downloadedTrackIds.has(track.id);
 
-  const handlePlayClick = () => {
+  const handlePlayClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (isCurrent) {
       togglePlay();
     } else {
@@ -35,112 +38,113 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
     }
   };
 
-  const handleDownload = async (e: React.MouseEvent) => {
+  const handleDownloadToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isDownloaded || isDownloading) return;
     setIsDownloading(true);
-    await downloadTrack(track);
-    setIsDownloading(false);
+    try {
+      if (isDownloaded) {
+        await deleteDownloadedTrack(track.id);
+      } else {
+        await downloadTrack(track);
+      }
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
-  const formatDuration = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const remainingSec = sec % 60;
-    return `${mins}:${remainingSec < 10 ? '0' : ''}${remainingSec}`;
+  const formatDuration = (secs: number) => {
+    const min = Math.floor(secs / 60);
+    const sec = Math.floor(secs % 60);
+    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
   return (
     <div
       onClick={handlePlayClick}
-      className={`group relative flex items-center justify-between p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
-        isCurrent
-          ? 'bg-mrj-600/15 border border-mrj-500/40 shadow-lg shadow-mrj-500/10'
-          : 'hover:bg-dark-850 border border-transparent hover:border-dark-750'
+      className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
+        isCurrent ? 'bg-[#262626]' : 'hover:bg-[#181818]'
       }`}
     >
-      <div className="flex items-center gap-3.5 min-w-0">
-        {/* Optional Index */}
+      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+        {/* Optional Ranked Index Number */}
         {showIndex !== undefined && (
-          <span className="w-5 text-center text-xs font-bold text-gray-500 group-hover:hidden">
+          <span className={`w-5 text-center font-bold text-sm shrink-0 ${
+            isCurrent ? 'text-[#ff0000]' : 'text-[#717171]'
+          }`}>
             {showIndex + 1}
           </span>
         )}
 
-        {/* Thumbnail & Hover Play Overlay */}
-        <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-dark-800 shadow-md">
+        {/* Thumbnail with Circular Play Overlay */}
+        <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-[#212121] shadow-md">
           <img
             src={track.thumbnail}
             alt={track.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
           />
+
           <div
-            className={`absolute inset-0 bg-dark-950/60 backdrop-blur-xs flex items-center justify-center transition-opacity ${
+            className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${
               isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
           >
             {isCurrent && isPlaying ? (
-              <Pause className="w-6 h-6 text-white drop-shadow" />
+              <div className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
+                <Pause className="w-3.5 h-3.5 fill-current text-black" />
+              </div>
             ) : (
-              <Play className="w-6 h-6 text-white fill-white drop-shadow ml-0.5" />
+              <div className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
+                <Play className="w-3.5 h-3.5 fill-current text-black ml-0.5" />
+              </div>
             )}
           </div>
         </div>
 
-        {/* Title & Artist */}
-        <div className="min-w-0">
-          <h3
-            className={`text-sm font-bold truncate leading-snug ${
-              isCurrent ? 'text-mrj-400' : 'text-gray-100 group-hover:text-white'
+        {/* Track Title and Artist */}
+        <div className="min-w-0 flex-1">
+          <h4
+            className={`text-sm font-bold truncate ${
+              isCurrent ? 'text-[#ff4e4e]' : 'text-white'
             }`}
           >
             {track.title}
-          </h3>
-          <p className="text-xs text-gray-400 truncate mt-0.5">{track.artist}</p>
-          {track.views && (
-            <span className="text-[10px] text-gray-500 mt-0.5 block">{track.views} views</span>
-          )}
+          </h4>
+          <p className="text-xs text-[#aaaaaa] truncate mt-0.5">
+            {track.artist}
+            {track.views && <span className="text-[#717171]"> • {track.views}</span>}
+          </p>
         </div>
       </div>
 
-      {/* Right Actions */}
-      <div className="flex items-center gap-2 shrink-0">
-        {/* Duration */}
-        <span className="text-xs text-gray-400 font-medium hidden sm:block">
-          {formatDuration(track.duration || 210)}
-        </span>
-
-        {/* Favorite */}
+      {/* Right Hover Actions */}
+      <div className="flex items-center gap-1 shrink-0 ml-2">
+        {/* Like */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             toggleFavorite(track);
           }}
-          className={`p-2 rounded-full hover:bg-dark-750 transition-colors ${
-            isFav ? 'text-mrj-500' : 'text-gray-400 hover:text-gray-200'
+          className={`p-1.5 rounded-full hover:bg-[#282828] transition-colors ${
+            isLiked ? 'text-[#ff0000]' : 'opacity-0 group-hover:opacity-100 text-[#aaaaaa] hover:text-white'
           }`}
-          title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+          title="Like"
         >
-          <Heart className={`w-4 h-4 ${isFav ? 'fill-mrj-500' : ''}`} />
+          <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
         </button>
 
-        {/* Offline Download Button */}
+        {/* Download */}
         <button
-          onClick={handleDownload}
+          onClick={handleDownloadToggle}
           disabled={isDownloading}
-          className={`p-2 rounded-full hover:bg-dark-750 transition-colors ${
-            isDownloaded
-              ? 'text-emerald-400'
-              : isDownloading
-              ? 'text-amber-400 animate-spin'
-              : 'text-gray-400 hover:text-gray-200 opacity-0 group-hover:opacity-100'
+          className={`p-1.5 rounded-full hover:bg-[#282828] transition-colors ${
+            isDownloaded ? 'text-emerald-400' : 'opacity-0 group-hover:opacity-100 text-[#aaaaaa] hover:text-white'
           }`}
-          title={isDownloaded ? 'Downloaded Offline' : 'Download for Zero-Data Offline Playback'}
+          title={isDownloaded ? 'Downloaded Offline' : 'Download'}
         >
-          {isDownloaded ? (
-            <Check className="w-4 h-4" />
-          ) : isDownloading ? (
-            <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          {isDownloading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-[#ff0000]" />
+          ) : isDownloaded ? (
+            <Check className="w-4 h-4 text-emerald-400" />
           ) : (
             <Download className="w-4 h-4" />
           )}
@@ -152,11 +156,16 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
             e.stopPropagation();
             addToQueue(track);
           }}
-          className="p-2 rounded-full hover:bg-dark-750 text-gray-400 hover:text-gray-200 opacity-0 group-hover:opacity-100 transition-all"
+          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-[#282828] text-[#aaaaaa] hover:text-white transition-colors"
           title="Add to queue"
         >
           <Plus className="w-4 h-4" />
         </button>
+
+        {/* Duration */}
+        <span className="text-xs font-semibold text-[#717171] w-10 text-right group-hover:hidden">
+          {formatDuration(track.duration)}
+        </span>
       </div>
     </div>
   );

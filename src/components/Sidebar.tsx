@@ -1,104 +1,116 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { Home, Compass, Download, Heart, Disc, Radio, Sparkles } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import {
+  Home,
+  Compass,
+  Library,
+  PlusCircle,
+  Heart,
+  Download,
+  Flame,
+  Radio,
+  Sparkles,
+  Disc3,
+  PlaySquare,
+  ListMusic
+} from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 
 export const Sidebar: React.FC = () => {
+  const navigate = useNavigate();
   const { downloadedTrackIds } = useMusicPlayer();
 
-  const links = [
+  const mainLinks = [
     { to: '/', label: 'Home', icon: Home },
-    { to: '/search', label: 'Explore & Search', icon: Compass },
-    { to: '/library', label: 'Liked & Playlists', icon: Heart },
-    { to: '/downloads', label: 'Offline Vault', icon: Download, badge: downloadedTrackIds.size },
+    { to: '/search', label: 'Explore', icon: Compass },
+    { to: '/library', label: 'Library', icon: Library },
   ];
 
-  const moodShortcuts = [
-    { name: 'Chill Hits', color: 'bg-blue-500/20 text-blue-400' },
-    { name: 'Workout Beast', color: 'bg-red-500/20 text-red-400' },
-    { name: 'Deep Focus', color: 'bg-emerald-500/20 text-emerald-400' },
-    { name: 'Party Anthems', color: 'bg-pink-500/20 text-pink-400' },
+  const quickPlaylists = [
+    { label: 'Liked Music', icon: Heart, count: 'Auto Playlist', to: '/library' },
+    { label: 'Offline Vault', icon: Download, count: `${downloadedTrackIds.size} saved`, to: '/downloads' },
   ];
 
   return (
-    <aside className="w-64 hidden lg:flex flex-col bg-dark-950/95 border-r border-dark-800/60 p-4 select-none shrink-0 h-screen sticky top-0">
-      {/* Brand Header */}
-      <div className="flex items-center gap-3 px-2 py-4 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-mrj-600 to-rose-400 flex items-center justify-center shadow-lg shadow-mrj-500/20">
-          <Disc className="w-6 h-6 text-white animate-spin-slow" />
+    <aside className="w-64 bg-[#030303] border-r border-[#1f1f1f] h-screen flex flex-col shrink-0 select-none hidden lg:flex">
+      {/* YouTube Music Logo Header */}
+      <div className="h-16 px-6 flex items-center gap-2.5 cursor-pointer" onClick={() => navigate('/')}>
+        <div className="w-8 h-8 rounded-full bg-[#ff0000] flex items-center justify-center shadow-lg shadow-red-600/30">
+          <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[9px] border-l-white border-b-[5px] border-b-transparent ml-0.5" />
         </div>
-        <div>
-          <h1 className="text-lg font-black tracking-tight bg-gradient-to-r from-white via-gray-200 to-mrj-400 bg-clip-text text-transparent">
-            MRJ Music
-          </h1>
-          <p className="text-[10px] uppercase font-bold tracking-widest text-mrj-400">
-            Global High-Fi
-          </p>
+        <div className="flex items-center gap-1">
+          <span className="font-bold text-lg tracking-tight text-white font-sans">Music</span>
+          <span className="text-[9px] font-black uppercase tracking-wider bg-[#ff0000]/20 text-[#ff4e4e] px-1.5 py-0.5 rounded border border-[#ff0000]/30 ml-1">
+            Free
+          </span>
         </div>
       </div>
 
       {/* Main Navigation */}
-      <nav className="space-y-1">
-        {links.map((link) => (
+      <div className="px-3 py-4 space-y-1">
+        {mainLinks.map(({ to, label, icon: Icon }) => (
           <NavLink
-            key={link.to}
-            to={link.to}
+            key={to}
+            to={to}
             className={({ isActive }) =>
-              `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              `flex items-center gap-5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${
                 isActive
-                  ? 'bg-mrj-600/15 text-mrj-400 border border-mrj-500/30'
-                  : 'text-gray-400 hover:text-gray-100 hover:bg-dark-850'
+                  ? 'bg-[#212121] text-white font-bold'
+                  : 'text-[#aaaaaa] hover:text-white hover:bg-[#181818]'
               }`
             }
           >
-            <div className="flex items-center gap-3">
-              <link.icon className="w-5 h-5" />
-              <span>{link.label}</span>
-            </div>
-            {link.badge !== undefined && link.badge > 0 && (
-              <span className="px-2 py-0.5 text-[10px] font-bold bg-mrj-500 text-white rounded-full">
-                {link.badge}
-              </span>
-            )}
+            <Icon className="w-5 h-5" />
+            <span>{label}</span>
           </NavLink>
         ))}
-      </nav>
-
-      {/* Quick Mood Stations */}
-      <div className="mt-8 pt-6 border-t border-dark-800/60">
-        <div className="flex items-center justify-between px-3 mb-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
-            Quick Stations
-          </span>
-          <Radio className="w-3.5 h-3.5 text-mrj-400" />
-        </div>
-        <div className="space-y-1.5">
-          {moodShortcuts.map((mood) => (
-            <NavLink
-              key={mood.name}
-              to={`/search?q=${encodeURIComponent(mood.name)}`}
-              className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-gray-300 hover:bg-dark-850 transition-colors"
-            >
-              <span>{mood.name}</span>
-              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${mood.color}`}>
-                Live
-              </span>
-            </NavLink>
-          ))}
-        </div>
       </div>
 
-      {/* VIP & Offline Banner */}
-      <div className="mt-auto p-4 rounded-2xl bg-gradient-to-br from-dark-850 to-dark-900 border border-dark-750/80 shadow-md">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="w-4 h-4 text-mrj-400" />
-          <span className="text-xs font-bold text-gray-200">100% Free Listening</span>
+      <div className="mx-4 my-2 border-t border-[#1f1f1f]" />
+
+      {/* Library & Playlists */}
+      <div className="flex-1 px-3 py-2 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
+        <div className="px-4 py-2 flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-[#717171]">Playlists</span>
+          <button
+            onClick={() => navigate('/library')}
+            className="p-1 rounded-full hover:bg-[#212121] text-[#aaaaaa] hover:text-white transition-colors"
+            title="New Playlist"
+          >
+            <PlusCircle className="w-4 h-4" />
+          </button>
         </div>
-        <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
-          Zero subscriptions. Download songs for airplane mode anytime.
-        </p>
-        <div className="text-[10px] font-semibold text-mrj-400 flex items-center gap-1">
-          <span>● High-Definition Opus 160k</span>
+
+        {quickPlaylists.map(({ label, icon: Icon, count, to }) => (
+          <NavLink
+            key={label}
+            to={to}
+            className={({ isActive }) =>
+              `flex items-center justify-between px-4 py-2.5 rounded-xl text-sm transition-colors group ${
+                isActive
+                  ? 'bg-[#212121] text-white font-bold'
+                  : 'text-[#aaaaaa] hover:text-white hover:bg-[#181818]'
+              }`
+            }
+          >
+            <div className="flex items-center gap-4 truncate">
+              <Icon className="w-4 h-4 text-[#ff4e4e] group-hover:scale-110 transition-transform" />
+              <span className="truncate">{label}</span>
+            </div>
+            <span className="text-[10px] text-[#717171]">{count}</span>
+          </NavLink>
+        ))}
+
+        <div className="pt-4 px-4">
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-[#181818] to-[#121212] border border-[#262626] space-y-2">
+            <div className="flex items-center gap-2 text-[#ff4e4e] text-xs font-black">
+              <Sparkles className="w-4 h-4" />
+              <span>Unlimited High-Fi</span>
+            </div>
+            <p className="text-[11px] text-[#aaaaaa] leading-relaxed">
+              No subscription or login needed. Stream unlimited high-quality audio with offline support.
+            </p>
+          </div>
         </div>
       </div>
     </aside>
