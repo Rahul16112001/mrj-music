@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Home,
@@ -7,28 +7,24 @@ import {
   PlusCircle,
   Heart,
   Download,
-  Flame,
-  Radio,
-  Sparkles,
+  Settings,
   Disc3,
-  PlaySquare,
-  ListMusic
+  ListMusic,
+  Sparkles
 } from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
+import { CreatePlaylistModal } from './CreatePlaylistModal';
 
 export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
-  const { downloadedTrackIds } = useMusicPlayer();
+  const { downloadedTrackIds, likedTrackIds, playlists } = useMusicPlayer();
+  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
 
   const mainLinks = [
     { to: '/', label: 'Home', icon: Home },
     { to: '/search', label: 'Explore', icon: Compass },
     { to: '/library', label: 'Library', icon: Library },
-  ];
-
-  const quickPlaylists = [
-    { label: 'Liked Music', icon: Heart, count: 'Auto Playlist', to: '/library' },
-    { label: 'Offline Vault', icon: Download, count: `${downloadedTrackIds.size} saved`, to: '/downloads' },
+    { to: '/settings', label: 'Settings', icon: Settings },
   ];
 
   return (
@@ -46,7 +42,7 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Navigation */}
+      {/* Main Navigation Links */}
       <div className="px-3 py-4 space-y-1">
         {mainLinks.map(({ to, label, icon: Icon }) => (
           <NavLink
@@ -68,12 +64,12 @@ export const Sidebar: React.FC = () => {
 
       <div className="mx-4 my-2 border-t border-[#1f1f1f]" />
 
-      {/* Library & Playlists */}
+      {/* Playlists & Vault Header */}
       <div className="flex-1 px-3 py-2 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
         <div className="px-4 py-2 flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#717171]">Playlists</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-[#717171]">Library & Mixes</span>
           <button
-            onClick={() => navigate('/library')}
+            onClick={() => setIsPlaylistModalOpen(true)}
             className="p-1 rounded-full hover:bg-[#212121] text-[#aaaaaa] hover:text-white transition-colors"
             title="New Playlist"
           >
@@ -81,10 +77,47 @@ export const Sidebar: React.FC = () => {
           </button>
         </div>
 
-        {quickPlaylists.map(({ label, icon: Icon, count, to }) => (
+        {/* Liked Songs */}
+        <NavLink
+          to="/library"
+          className={({ isActive }) =>
+            `flex items-center justify-between px-4 py-2.5 rounded-xl text-sm transition-colors group ${
+              isActive
+                ? 'bg-[#212121] text-white font-bold'
+                : 'text-[#aaaaaa] hover:text-white hover:bg-[#181818]'
+            }`
+          }
+        >
+          <div className="flex items-center gap-4 truncate">
+            <Heart className="w-4 h-4 text-[#ff4e4e] group-hover:scale-110 transition-transform" />
+            <span className="truncate">Liked Songs</span>
+          </div>
+          <span className="text-[10px] text-[#717171]">{likedTrackIds.size}</span>
+        </NavLink>
+
+        {/* Offline Vault */}
+        <NavLink
+          to="/downloads"
+          className={({ isActive }) =>
+            `flex items-center justify-between px-4 py-2.5 rounded-xl text-sm transition-colors group ${
+              isActive
+                ? 'bg-[#212121] text-white font-bold'
+                : 'text-[#aaaaaa] hover:text-white hover:bg-[#181818]'
+            }`
+          }
+        >
+          <div className="flex items-center gap-4 truncate">
+            <Download className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+            <span className="truncate">Offline Vault</span>
+          </div>
+          <span className="text-[10px] text-emerald-400 font-bold">{downloadedTrackIds.size}</span>
+        </NavLink>
+
+        {/* User Custom Playlists */}
+        {playlists.map((pl) => (
           <NavLink
-            key={label}
-            to={to}
+            key={pl.id}
+            to={`/playlist/${pl.id}`}
             className={({ isActive }) =>
               `flex items-center justify-between px-4 py-2.5 rounded-xl text-sm transition-colors group ${
                 isActive
@@ -94,25 +127,28 @@ export const Sidebar: React.FC = () => {
             }
           >
             <div className="flex items-center gap-4 truncate">
-              <Icon className="w-4 h-4 text-[#ff4e4e] group-hover:scale-110 transition-transform" />
-              <span className="truncate">{label}</span>
+              <ListMusic className="w-4 h-4 text-[#aaaaaa] group-hover:text-white transition-colors" />
+              <span className="truncate">{pl.title}</span>
             </div>
-            <span className="text-[10px] text-[#717171]">{count}</span>
+            <span className="text-[10px] text-[#717171]">{pl.trackCount}</span>
           </NavLink>
         ))}
 
-        <div className="pt-4 px-4">
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-[#181818] to-[#121212] border border-[#262626] space-y-2">
-            <div className="flex items-center gap-2 text-[#ff4e4e] text-xs font-black">
-              <Sparkles className="w-4 h-4" />
-              <span>Unlimited High-Fi</span>
-            </div>
-            <p className="text-[11px] text-[#aaaaaa] leading-relaxed">
-              No subscription or login needed. Stream unlimited high-quality audio with offline support.
-            </p>
-          </div>
+        <div className="pt-4 px-2">
+          <button
+            onClick={() => setIsPlaylistModalOpen(true)}
+            className="w-full p-2.5 rounded-xl border border-dashed border-[#333333] hover:border-white text-[#aaaaaa] hover:text-white text-xs font-semibold flex items-center justify-center gap-2 hover:bg-[#181818] transition-all"
+          >
+            <PlusCircle className="w-4 h-4 text-[#ff0000]" />
+            <span>New Playlist</span>
+          </button>
         </div>
       </div>
+
+      <CreatePlaylistModal
+        isOpen={isPlaylistModalOpen}
+        onClose={() => setIsPlaylistModalOpen(false)}
+      />
     </aside>
   );
 };
