@@ -22,6 +22,10 @@ export const db = {
     return res.rows[0] || null;
   },
 
+  async getUserById(id) {
+    return this.findUserById(id);
+  },
+
   async createUser(userData) {
     const normalizedEmail = userData.email.trim().toLowerCase();
     const now = Date.now();

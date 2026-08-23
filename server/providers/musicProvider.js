@@ -1,6 +1,14 @@
 import axios from 'axios';
 import { contentClassifier } from '../catalog/contentClassifier.js';
 
+// Multiple resilient multi-region stream endpoints
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://api.piped.privacydev.net',
+  'https://pipedapi.leptons.xyz',
+  'https://piped-api.lunar.icu',
+];
+
 const INVIDIOUS_INSTANCES = [
   'https://yt.artemislena.eu',
   'https://invidious.jing.rocks',
@@ -8,11 +16,20 @@ const INVIDIOUS_INSTANCES = [
   'https://inv.nadeko.net',
 ];
 
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://api.piped.privacydev.net',
-  'https://pipedapi.leptons.xyz',
-];
+// Instance health and latency tracking
+const instanceHealth = new Map();
+
+function recordInstanceMetric(url, success, latencyMs) {
+  const current = instanceHealth.get(url) || { successCount: 0, failCount: 0, avgLatency: 0, lastCheck: Date.now() };
+  if (success) {
+    current.successCount += 1;
+    current.avgLatency = Math.round((current.avgLatency * 0.7) + (latencyMs * 0.3));
+  } else {
+    current.failCount += 1;
+  }
+  current.lastCheck = Date.now();
+  instanceHealth.set(url, current);
+}
 
 export const musicProvider = {
   // 1. Search Music Catalog (Live Scraper)
@@ -24,6 +41,7 @@ export const musicProvider = {
         query.trim() + (type === 'songs' ? ' official audio song' : '')
       )}`;
 
+      const startTime = Date.now();
       const response = await axios.get(searchUrl, {
         headers: {
           'User-Agent':
@@ -48,8 +66,8 @@ export const musicProvider = {
             if (item.videoRenderer) {
               const v = item.videoRenderer;
               const videoId = v.videoId;
-              const title = v.title?.runs?.[0]?.text || 'Untitled';
-              const artist = v.ownerText?.runs?.[0]?.text || 'Artist';
+              const rawTitle = v.title?.runs?.[0]?.text || 'Untitled';
+              const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
               const lengthText = v.lengthText?.simpleText || '3:30';
 
               const parts = lengthText.split(':').map(Number);
@@ -60,16 +78,19 @@ export const musicProvider = {
                   ? parts[0] * 3600 + parts[1] * 60 + parts[2]
                   : 210;
 
-              results.push({
-                id: videoId,
-                title: contentClassifier.cleanTitle(title),
-                artist,
-                album: 'Single',
-                thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                duration: durationSec,
-                views: v.viewCountText?.simpleText || null,
-                provider: 'youtube',
-              });
+              // Filter out compilations
+              if (!contentClassifier.isCompilation(rawTitle, artist, durationSec)) {
+                results.push({
+                  id: videoId,
+                  title: contentClassifier.cleanTitle(rawTitle),
+                  artist,
+                  album: 'Single',
+                  thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                  duration: durationSec,
+                  views: v.viewCountText?.simpleText || null,
+                  provider: 'youtube',
+                });
+              }
             }
 
             if (item.channelRenderer) {
@@ -101,17 +122,16 @@ export const musicProvider = {
   async getCharts() {
     const defaultTracks = [
       { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen', duration: 359 },
-      { id: '4NRXx6U8ABQ', title: 'Blinding Lights', artist: 'The Weeknd', duration: 200 },
-      { id: '0V3wHalROFU', title: 'Cruel Summer', artist: 'Taylor Swift', duration: 178 },
-      { id: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran', duration: 233 },
-      { id: 'k2qgadSvNyU', title: 'Levitating', artist: 'Dua Lipa', duration: 203 },
-      { id: 'gNi_6U5Pm_o', title: 'As It Was', artist: 'Harry Styles', duration: 167 },
-      { id: 'H5v3k_57c8g', title: 'Flowers', artist: 'Miley Cyrus', duration: 200 },
-      { id: 'DYed5whEf4g', title: 'Stay', artist: 'The Kid LAROI & Justin Bieber', duration: 141 },
-      { id: 'L7_jYl8A060', title: 'Save Your Tears', artist: 'The Weeknd', duration: 215 },
-      { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', duration: 270 },
-      { id: '7wtfhZwyrcc', title: 'Believer', artist: 'Imagine Dragons', duration: 204 },
-      { id: '2Vv-BfVoq4g', title: 'Perfect', artist: 'Ed Sheeran', duration: 263 },
+      { id: 'fHI8X4OXluQ', title: 'Blinding Lights', artist: 'The Weeknd', duration: 204 },
+      { id: 'ic8j13piAhQ', title: 'Cruel Summer', artist: 'Taylor Swift', duration: 180 },
+      { id: '_dK2tDK9grQ', title: 'Shape of You', artist: 'Ed Sheeran', duration: 235 },
+      { id: 'WHuBW3qKm9g', title: 'Levitating', artist: 'Dua Lipa', duration: 221 },
+      { id: 'V1Z586zoeeE', title: 'As It Was', artist: 'Harry Styles', duration: 166 },
+      { id: 'G7KNmW9a75Y', title: 'Flowers', artist: 'Miley Cyrus', duration: 202 },
+      { id: 'u6lihZAcy4s', title: 'Save Your Tears', artist: 'The Weeknd', duration: 217 },
+      { id: '7Ya2U8XN_Zw', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', duration: 271 },
+      { id: 'IhP3J0j9JmY', title: 'Believer', artist: 'Imagine Dragons', duration: 203 },
+      { id: 'iKzRIweSBLA', title: 'Perfect', artist: 'Ed Sheeran', duration: 264 },
     ];
 
     return {
@@ -146,7 +166,7 @@ export const musicProvider = {
           trackCount: searchRes.results.length,
         },
       ],
-      singles: searchRes.results.slice(0, 8).map((t, idx) => ({
+      singles: searchRes.results.slice(0, 8).map((t) => ({
         id: `sgl_${t.id}`,
         title: t.title,
         year: '2024',
@@ -225,50 +245,66 @@ export const musicProvider = {
     return Array.from(trackMap.values());
   },
 
-  // 6. Resolve Audio Stream with SSRF Protection
+  // 6. AudioSourceResolver with SSRF Protection & Stream Validation
   async resolveAudioStream(videoId) {
     if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
       return null;
     }
 
-    // Try Piped instances
+    // 1. Try Piped instances
     for (const instance of PIPED_INSTANCES) {
+      const t0 = Date.now();
       try {
         const resp = await axios.get(`${instance}/streams/${videoId}`, { timeout: 3500 });
         if (resp.data && resp.data.audioStreams && resp.data.audioStreams.length > 0) {
           const stream = resp.data.audioStreams[0];
           if (stream.url && (stream.url.startsWith('https://') || stream.url.startsWith('http://'))) {
+            recordInstanceMetric(instance, true, Date.now() - t0);
             return {
               url: stream.url,
               mimeType: stream.mimeType || 'audio/webm',
               codec: stream.codec || 'opus',
               bitrate: stream.bitrate || 160000,
+              sampleRate: stream.sampleRate || 48000,
+              duration: resp.data.duration || null,
+              seekable: true,
+              expiresAt: Date.now() + 6 * 3600 * 1000,
+              provider: 'piped_audio_stream',
             };
           }
         }
+        recordInstanceMetric(instance, false, Date.now() - t0);
       } catch (e) {
-        // Fallback to next instance
+        recordInstanceMetric(instance, false, Date.now() - t0);
       }
     }
 
-    // Try Invidious instances
+    // 2. Try Invidious instances
     for (const instance of INVIDIOUS_INSTANCES) {
+      const t0 = Date.now();
       try {
         const resp = await axios.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 3500 });
         if (resp.data && resp.data.adaptiveFormats) {
           const audioFormats = resp.data.adaptiveFormats.filter((f) => f.type && f.type.startsWith('audio/'));
           if (audioFormats.length > 0) {
             const stream = audioFormats[0];
+            recordInstanceMetric(instance, true, Date.now() - t0);
             return {
               url: stream.url,
               mimeType: stream.type || 'audio/webm',
               codec: stream.encoding || 'opus',
               bitrate: stream.bitrate || 128000,
+              sampleRate: stream.audioSampleRate || 44100,
+              duration: resp.data.lengthSeconds || null,
+              seekable: true,
+              expiresAt: Date.now() + 6 * 3600 * 1000,
+              provider: 'invidious_audio_stream',
             };
           }
         }
+        recordInstanceMetric(instance, false, Date.now() - t0);
       } catch (e) {
-        // Fallback to next instance
+        recordInstanceMetric(instance, false, Date.now() - t0);
       }
     }
 
@@ -297,7 +333,7 @@ export const musicProvider = {
         };
       }
     } catch (e) {
-      // LRCLIB fallback
+      // Fallback
     }
 
     return {

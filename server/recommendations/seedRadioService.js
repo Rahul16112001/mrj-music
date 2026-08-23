@@ -1,61 +1,48 @@
 import { db } from '../db/schema.js';
 import { contentClassifier } from '../catalog/contentClassifier.js';
 import { musicProvider } from '../providers/musicProvider.js';
+import { chartService } from '../charts/chartService.js';
 
 export const seedRadioService = {
+  // 1. Generate Deterministic Seed Radio with Multi-Signal Scoring & Diversity
   async generateRadio(userId, seedTrack, customPool = null) {
-    if (!seedTrack || !seedTrack.id) return [];
-
+    const seedArtist = (seedTrack.artist || '').toLowerCase();
+    const seedGenre = (seedTrack.genre || '').toLowerCase();
     const seedId = seedTrack.id;
-    const seedArtist = (seedTrack.artist || '').trim().toLowerCase();
-    const seedTitle = (seedTrack.title || '').trim().toLowerCase();
-    const seedGenre = (seedTrack.genre || '').trim().toLowerCase();
 
-    // 1. Gather Candidate Pool (>= 50 candidates)
-    let candidatePool = customPool;
-    if (!candidatePool || candidatePool.length < 20) {
-      candidatePool = await musicProvider.getCandidatePool({
-        id: seedId,
-        artist: seedTrack.artist || '',
-        title: seedTrack.title || '',
-        genre: seedTrack.genre || '',
-      });
+    // 1. Gather Candidate Pool (Logged during development)
+    let candidates = customPool;
+    if (!candidates || candidates.length < 20) {
+      candidates = await musicProvider.getCandidatePool(seedTrack);
     }
 
-    console.log(`[SeedRadio] Candidate pool size: ${candidatePool.length} for seed: "${seedTrack.title || seedId}"`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[SeedRadio] Candidate pool size: ${candidates.length} for seed: "${seedTrack.title || seedTrack.id}"`);
+    }
 
-    // 2. Fetch User Profile for Affinity & Penalties
+    // 2. Fetch User Taste Profile & Listening History
     const profile = userId ? await db.getTasteProfile(userId) : null;
     const history = userId ? await db.getUserHistory(userId) : [];
-    const recentTrackIds = new Set(history.slice(0, 25).map(h => h.track_id));
     const dislikedArtists = new Set(profile?.disliked_artists || []);
+    const recentTrackIds = new Set(history.slice(0, 15).map(h => h.id));
 
-    // 3. Filter and Score Candidates
-    const scored = candidatePool
-      .filter(t => {
-        if (!t || !t.id) return false;
-        if (t.id === seedId) return false;
-        if (dislikedArtists.has(t.artist)) return false;
-        if (contentClassifier.isCompilation(t.title, t.artist, t.duration)) return false;
-        return true;
-      })
+    // 3. Multi-Signal Scoring
+    const scored = candidates
+      .filter(t => t.id !== seedId && !dislikedArtists.has(t.artist) && !contentClassifier.isCompilation(t.title, t.artist, t.duration))
       .map(track => {
         let score = 0;
         const trackArtist = (track.artist || '').toLowerCase();
         const trackGenre = (track.genre || '').toLowerCase();
-        const trackTitle = (track.title || '').toLowerCase();
 
-        // Metadata similarity to seed
-        if (seedArtist && trackArtist) {
-          if (trackArtist === seedArtist || trackArtist.includes(seedArtist) || seedArtist.includes(trackArtist)) {
-            score += 50;
-          }
+        // Seed Similarity Signal (0 - 40 pts)
+        if (trackArtist && (trackArtist.includes(seedArtist) || seedArtist.includes(trackArtist))) {
+          score += 35;
         }
-        if (seedGenre && trackGenre && seedGenre === trackGenre) {
-          score += 30;
+        if (trackGenre && seedGenre && trackGenre === seedGenre) {
+          score += 20;
         }
 
-        // User taste profile affinity
+        // User Taste Affinity Signal (0 - 30 pts)
         if (profile?.preferred_artists?.[track.artist]) {
           score += Math.min(25, profile.preferred_artists[track.artist] * 3);
         }
@@ -88,6 +75,21 @@ export const seedRadioService = {
         radioQueue.push(item.track);
       }
       if (radioQueue.length >= 35) break;
+    }
+
+    // 5. Backfill if needed to ensure at least 15 tracks
+    if (radioQueue.length < 15) {
+      const charts = await chartService.getTrending('GLOBAL');
+      for (const track of charts.tracks) {
+        if (track.id !== seedId && !radioQueue.some(r => r.id === track.id)) {
+          const art = track.artist || 'Unknown';
+          if ((artistCounts[art] || 0) < 2) {
+            artistCounts[art] = (artistCounts[art] || 0) + 1;
+            radioQueue.push(track);
+          }
+        }
+        if (radioQueue.length >= 25) break;
+      }
     }
 
     return radioQueue;
