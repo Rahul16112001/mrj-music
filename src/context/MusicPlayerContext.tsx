@@ -201,13 +201,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           if (!container) {
             container = document.createElement('div');
             container.id = 'mrj-yt-audio-container';
-            container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+            container.style.cssText = 'position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.01;pointer-events:none;z-index:-1;';
             document.body.appendChild(container);
           }
 
           ytPlayerRef.current = new window.YT.Player('mrj-yt-audio-container', {
-            height: '1',
-            width: '1',
+            height: '200',
+            width: '200',
             playerVars: {
               autoplay: 1,
               controls: 0,
@@ -382,20 +382,50 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsPlaying(true);
         setIsLoading(false);
       } else {
-        // 2. Play via Stream Engine
+        // 2. Play via Stream Engine (Decoupled Playback Source)
         isUsingHtmlAudio.current = false;
         try { htmlAudioRef.current?.pause(); } catch {}
 
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-          ytPlayerRef.current.loadVideoById(track.id);
-          ytPlayerRef.current.playVideo();
-        } else {
-          setTimeout(() => {
-            if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-              ytPlayerRef.current.loadVideoById(track.id);
-              ytPlayerRef.current.playVideo();
+        let playableId: string | null = (format === 'video' ? track.videoSource?.providerTrackId : null) ||
+          track.providerTrackId ||
+          track.audioSource?.providerTrackId ||
+          track.id;
+
+        // Clean ID check (YouTube ID must not contain '|' or spaces)
+        if (!playableId || playableId.includes('|') || playableId.length < 5) {
+          if (track.providerTrackId && !track.providerTrackId.includes('|')) {
+            playableId = track.providerTrackId;
+          } else if (track.id && !track.id.includes('|')) {
+            playableId = track.id;
+          }
+        }
+
+        // On-the-fly resolution if track.id was a composite slug and providerTrackId was missing
+        if (!playableId || playableId.includes('|')) {
+          try {
+            const res = await api.search(`${track.title} ${track.artist}`);
+            const found = res.songs[0]?.providerTrackId || res.videos[0]?.id || res.results[0]?.id;
+            if (found && !found.includes('|')) {
+              playableId = found;
             }
-          }, 600);
+          } catch (err) {
+            console.warn('Playback ID on-the-fly resolution notice:', err);
+          }
+        }
+
+        if (playableId) {
+          const streamId = playableId;
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+            ytPlayerRef.current.loadVideoById(streamId);
+            ytPlayerRef.current.playVideo();
+          } else {
+            setTimeout(() => {
+              if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+                ytPlayerRef.current.loadVideoById(streamId);
+                ytPlayerRef.current.playVideo();
+              }
+            }, 500);
+          }
         }
 
         api.getLyrics(track.title, track.artist, track.duration).then(l => {
@@ -431,6 +461,17 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const togglePlaybackFormat = () => {
     const nextFormat = playbackFormat === 'audio' ? 'video' : 'audio';
     setPlaybackFormat(nextFormat);
+    if (currentTrack) {
+      const nextPlayableId = nextFormat === 'video'
+        ? (currentTrack.videoSource?.providerTrackId || currentTrack.providerTrackId || currentTrack.id)
+        : (currentTrack.audioSource?.providerTrackId || currentTrack.providerTrackId || currentTrack.id);
+
+      if (nextPlayableId && !nextPlayableId.includes('|') && ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+        const curr = ytPlayerRef.current.getCurrentTime() || 0;
+        ytPlayerRef.current.loadVideoById({ videoId: nextPlayableId, startSeconds: curr });
+        ytPlayerRef.current.playVideo();
+      }
+    }
   };
 
   const togglePlay = () => {
