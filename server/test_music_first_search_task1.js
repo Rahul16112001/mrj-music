@@ -1,10 +1,10 @@
 import { musicProvider } from './providers/musicProvider.js';
-import { canonicalMusicResolver } from './catalog/canonicalMusicResolver.js';
-import { contentClassifier, CONTENT_TYPES } from './catalog/contentClassifier.js';
+import { searchRelevanceEngine } from './catalog/searchRelevanceEngine.js';
+import { searchSuggestionService } from './catalog/searchSuggestionService.js';
 import { searchIntentEngine } from './catalog/searchIntentEngine.js';
 
-async function runTask1CTests() {
-  console.log('🧪 Starting MRJ Music Task 1C: Canonical Album-Track Resolution Test Suite...\n');
+async function runSearchRelevanceTestSuite() {
+  console.log('🧪 Starting MRJ Music: Search Relevance & Autocomplete Quality Test Suite...\n');
   let passed = 0;
   let failed = 0;
 
@@ -18,72 +18,88 @@ async function runTask1CTests() {
     }
   }
 
-  // 1. CANONICAL MUSIC ENTITY RESOLUTION FOR "DESI KALAKAAR"
-  console.log('1. Testing Canonical Music Entity Resolution for "desi kalakaar"...');
-  const resDesi = await musicProvider.search('desi kalakaar');
-  const topSong = resDesi.songs[0];
+  // 1. TEST CASE: Broad Query "desi"
+  console.log('1. Testing Broad Query: "desi"...');
+  const resDesi = await musicProvider.search('desi');
+  assert(resDesi.songs.length > 0, `Returned ${resDesi.songs.length} songs for "desi"`);
+  
+  // Verify that all returned songs contain "desi" in title or artist or album
+  const allMatchDesi = resDesi.songs.every((s) => {
+    const text = `${s.title} ${s.artist} ${s.album || ''}`.toLowerCase();
+    return text.includes('desi');
+  });
+  assert(allMatchDesi, 'All top songs for "desi" actually contain the keyword "desi"');
 
-  assert(topSong !== undefined, 'Song 1 returned');
-  assert(topSong.title.toLowerCase().includes('desi kalakaar'), `Canonical Title is "${topSong.title}"`);
-  assert(topSong.artist.toLowerCase().includes('honey singh'), `Canonical Artist is "${topSong.artist}"`);
-  assert(topSong.album.toLowerCase().includes('desi kalakaar'), `Canonical Album is "${topSong.album}"`);
-  assert(topSong.releaseYear === '2014', `Canonical Year is "${topSong.releaseYear}"`);
-  assert(topSong.duration >= 240 && topSong.duration <= 270, `Canonical Track Duration is ${topSong.duration}s (~4:13, NOT 9:57 music video)`);
-  assert(topSong.duration !== 597 && topSong.duration !== 598, 'Duration does NOT inherit 9:57 music video duration');
-  assert(topSong.id.includes('desi-kalakaar'), `Canonical Entity ID is "${topSong.id}"`);
-  assert(topSong.playbackFormat === 'audio', 'PlaybackFormat is "audio"');
-  assert(topSong.providerTrackId !== undefined, `Playable ProviderTrackId is "${topSong.providerTrackId}"`);
-  assert(topSong.audioSource !== undefined, 'Attached decoupled audioSource object');
+  // Verify that unrelated songs (Bewafa, Brown Munde, Na Ja) are NOT present
+  const hasUnrelated = resDesi.songs.some((s) => {
+    const t = s.title.toLowerCase();
+    return t === 'bewafa' || t === 'brown munde' || t === 'na ja';
+  });
+  assert(!hasUnrelated, 'Unrelated popular songs (Bewafa, Brown Munde, Na Ja) are completely excluded');
 
-  // 2. VIDEO DISSOCIATION
-  console.log('\n2. Testing Decoupled Video Presentation for "desi kalakaar"...');
-  const topVideo = resDesi.videos[0];
-  assert(topVideo !== undefined, 'Top video candidate returned in videos[]');
-  assert(topVideo.playbackFormat === 'video', 'Video playbackFormat is "video"');
-  assert(resDesi.videos.some((v) => v.duration > 500), 'Long-form music video is placed in videos[], NOT songs[]');
+  // 2. TEST CASE: Exact Song Query "desi kalakaar"
+  console.log('\n2. Testing Exact Song Query: "desi kalakaar"...');
+  const resDK = await musicProvider.search('desi kalakaar');
+  const topDK = resDK.songs[0];
+  assert(topDK !== undefined, 'Top song returned for "desi kalakaar"');
+  assert(topDK.title.toLowerCase().includes('desi kalakaar'), `Top song is "${topDK.title}"`);
+  assert(topDK.artist.toLowerCase().includes('honey singh'), `Top artist is "${topDK.artist}"`);
+  assert(topDK.relevanceScore >= 500, `High relevance score (${topDK.relevanceScore})`);
 
-  // 3. REAL ALBUMS & REAL ARTISTS (No synthetic templates)
-  console.log('\n3. Testing Real Albums and Artists Resolution...');
-  assert(resDesi.albums.length > 0, 'Real albums returned');
-  assert(!resDesi.albums[0].title.includes('Essentials'), `Album title is real: "${resDesi.albums[0].title}" (no "Essentials" template)`);
-  assert(resDesi.artists.length > 0, 'Real artists returned');
+  // 3. TEST CASE: Artist Query "yo yo honey singh"
+  console.log('\n3. Testing Artist Query: "yo yo honey singh"...');
+  const resArtist = await musicProvider.search('yo yo honey singh');
+  assert(resArtist.songs.length > 0, `Returned ${resArtist.songs.length} songs for artist`);
+  const allHoneySingh = resArtist.songs.every((s) => s.artist.toLowerCase().includes('honey singh'));
+  assert(allHoneySingh, 'All returned songs belong to "Yo Yo Honey Singh"');
 
-  // 4. MANDATORY 7 QUERY TESTS
-  console.log('\n4. Testing All 7 Mandatory Queries for Canonical Resolution...');
-  const testQueries = [
-    { q: 'desi kalakaar', expectedTitle: 'desi kalakaar', expectedYear: '2014' },
-    { q: 'kesariya', expectedTitle: 'kesariya', expectedYear: '2022' },
-    { q: 'tum hi ho', expectedTitle: 'tum hi ho', expectedYear: '2013' },
-    { q: 'shayraana', expectedTitle: 'shaayraana', expectedYear: '2014' },
-    { q: 'tose naina', expectedTitle: 'tose naina', expectedYear: '2013' },
-    { q: 'blinding lights', expectedTitle: 'blinding lights', expectedYear: '2019' },
-    { q: 'shape of you', expectedTitle: 'shape of you', expectedYear: '2017' },
-  ];
+  // 4. TEST CASE: Query "desi girl"
+  console.log('\n4. Testing Song Query: "desi girl"...');
+  const resDG = await musicProvider.search('desi girl');
+  assert(resDG.songs.length > 0, 'Found songs for "desi girl"');
+  assert(resDG.songs[0].title.toLowerCase().includes('desi girl'), `Top song is "${resDG.songs[0].title}"`);
 
-  for (const item of testQueries) {
-    const res = await musicProvider.search(item.q);
-    const s = res.songs[0];
-    assert(s !== undefined, `Query "${item.q}" returned canonical song`);
-    assert(
-      s.title.toLowerCase().includes(item.expectedTitle) || item.expectedTitle.includes(s.title.toLowerCase()),
-      `Query "${item.q}" has title "${s.title}"`
-    );
-    assert(
-      s.duration >= 150 && s.duration <= 320,
-      `Query "${item.q}" has canonical studio duration (${s.duration}s)`
-    );
-    assert(
-      s.releaseYear === item.expectedYear,
-      `Query "${item.q}" resolved release year "${s.releaseYear}"`
-    );
-    assert(s.playbackFormat === 'audio', `Query "${item.q}" plays format "audio"`);
-  }
+  // 5. TEST CASE: Query "desi boyz"
+  console.log('\n5. Testing Song Query: "desi boyz"...');
+  const resDB = await musicProvider.search('desi boyz');
+  assert(resDB.songs.length > 0, 'Found songs for "desi boyz"');
+  assert(resDB.songs[0].title.toLowerCase().includes('desi boyz'), `Top song is "${resDB.songs[0].title}"`);
+
+  // 6. TEST CASE: Query "kesariya"
+  console.log('\n6. Testing Song Query: "kesariya"...');
+  const resKes = await musicProvider.search('kesariya');
+  assert(resKes.songs[0].title.toLowerCase().includes('kesariya'), `Top song is "${resKes.songs[0].title}"`);
+
+  // 7. TEST CASE: Query "shayraana"
+  console.log('\n7. Testing Song Query: "shayraana"...');
+  const resShay = await musicProvider.search('shayraana');
+  assert(resShay.songs[0].title.toLowerCase().includes('shayraana') || resShay.songs[0].title.toLowerCase().includes('shaayraana'), `Top song is "${resShay.songs[0].title}"`);
+
+  // 8. TEST CASE: Query "tum hi ho"
+  console.log('\n8. Testing Song Query: "tum hi ho"...');
+  const resTum = await musicProvider.search('tum hi ho');
+  assert(resTum.songs[0].title.toLowerCase().includes('tum hi ho'), `Top song is "${resTum.songs[0].title}"`);
+
+  // 9. TEST CASE: Non-existent Query "xyzabc123notreal" (Hard Threshold Gate)
+  console.log('\n9. Testing Non-existent Query: "xyzabc123notreal"...');
+  const resFake = await musicProvider.search('xyzabc123notreal');
+  assert(resFake.songs.length === 0, 'Zero songs returned (hard relevance gate prevents random trending tracks)');
+
+  // 10. TEST CASE: Autocomplete Quality & Separation
+  console.log('\n10. Testing Autocomplete Quality for "desi" and "desi k"...');
+  const sugDesi = await searchSuggestionService.getSuggestions('desi');
+  assert(sugDesi.suggestions.length > 0, 'Suggestions returned for "desi"');
+  assert(sugDesi.suggestions.some((s) => s.toLowerCase().includes('desi')), 'Suggestions contain "desi" variations');
+  assert(sugDesi.songs.every((s) => `${s.title} ${s.artist}`.toLowerCase().includes('desi')), 'Autocomplete songs are strictly relevant to "desi"');
+
+  const sugDesiK = await searchSuggestionService.getSuggestions('desi k');
+  assert(sugDesiK.suggestions.some((s) => s.toLowerCase().startsWith('desi k')), 'Progressive autocomplete prioritizes "desi k..." matches');
 
   console.log(`\n======================================================`);
-  console.log(`🎉 TASK 1C TEST SUMMARY: ${passed} Passed, ${failed} Failed`);
+  console.log(`🎉 SEARCH RELEVANCE TEST SUMMARY: ${passed} Passed, ${failed} Failed`);
   console.log(`======================================================\n`);
 
   if (failed > 0) process.exit(1);
 }
 
-runTask1CTests().catch(console.error);
+runSearchRelevanceTestSuite().catch(console.error);

@@ -2,6 +2,7 @@ import axios from 'axios';
 import { contentClassifier, CONTENT_TYPES } from '../catalog/contentClassifier.js';
 import { searchIntentEngine, INTENT_TYPES } from '../catalog/searchIntentEngine.js';
 import { canonicalMusicResolver } from '../catalog/canonicalMusicResolver.js';
+import { searchRelevanceEngine } from '../catalog/searchRelevanceEngine.js';
 
 // Multiple resilient multi-region stream endpoints
 const PIPED_INSTANCES = [
@@ -34,13 +35,14 @@ function recordInstanceMetric(url, success, latencyMs) {
 }
 
 export const musicProvider = {
-  // 1. Search Music Catalog with Canonical Music Resolution & Playable Stream Alignment
+  // 1. Search Music Catalog with Dedicated Search Relevance Engine
   async search(query, type = 'all', limit = 30) {
     if (!query || !query.trim()) {
       return { songs: [], videos: [], artists: [], albums: [], podcasts: [], results: [] };
     }
 
     const intent = searchIntentEngine.parse(query);
+    const normQuery = searchRelevanceEngine.normalize(query);
 
     try {
       const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query.trim())}`;
@@ -119,9 +121,6 @@ export const musicProvider = {
       for (const raw of rawCandidates) {
         const track = contentClassifier.normalizeTrack(raw);
         if (track.isCompilation || track.isReaction || track.isShort) continue;
-
-        track.musicScore = contentClassifier.scoreCandidate(track, intent);
-        track.videoScore = contentClassifier.scoreVideoCandidate(track, intent);
         allClassifiedYt.push(track);
       }
 
@@ -130,29 +129,29 @@ export const musicProvider = {
       const realAlbums = canonicalData.albums || [];
       const realArtists = canonicalData.artists.length > 0 ? canonicalData.artists : ytArtists;
 
-      const songs = [];
-      const videos = [];
+      const candidateSongs = [];
+      const candidateVideos = [];
       const podcasts = [];
 
       const isExplicitVariant = intent.wantsSlowed || intent.wantsRemix || intent.wantsCover || intent.wantsLive || intent.wantsLyrics;
 
       if (!isExplicitVariant && canonicalSongs.length > 0) {
-        // A. CANONICAL MUSIC ENTITY FIRST (Album-First Architecture)
-        for (const canonical of canonicalSongs.slice(0, 10)) {
+        // A. CANONICAL MUSIC ENTITY FIRST
+        for (const canonical of canonicalSongs.slice(0, 15)) {
           const bound = await canonicalMusicResolver.bindPlaybackSources(canonical, allClassifiedYt);
-          songs.push(bound);
+          candidateSongs.push(bound);
         }
 
-        // Separate and rank Videos
+        // Separate Videos
         for (const track of allClassifiedYt) {
           if (track.isPodcast) {
             podcasts.push(track);
           } else if (track.contentType === CONTENT_TYPES.VIDEO || track.isMusicVideo || track.isLyricsVideo || track.isLive) {
-            videos.push({ ...track, playbackFormat: 'video' });
+            candidateVideos.push({ ...track, playbackFormat: 'video' });
           }
         }
       } else {
-        // B. EXPLICIT VARIANT OR FALLBACK TO CLASSIFIED STREAMS
+        // B. EXPLICIT VARIANT OR FALLBACK
         for (const track of allClassifiedYt) {
           if (track.isPodcast) {
             podcasts.push(track);
@@ -160,37 +159,43 @@ export const musicProvider = {
           }
 
           if (isExplicitVariant) {
-            if (track.musicScore > 100) {
-              songs.push({ ...track, playbackFormat: 'audio' });
-            } else {
-              videos.push({ ...track, playbackFormat: 'video' });
-            }
+            candidateSongs.push({ ...track, playbackFormat: 'audio' });
           } else {
             const isTrueMusic = (track.contentType === CONTENT_TYPES.MUSIC || track.isOfficialMusic) &&
               !track.isSlowed && !track.isRemix && !track.isCover && !track.isLive && !track.isLyricsVideo;
 
             if (isTrueMusic) {
-              songs.push({ ...track, playbackFormat: 'audio' });
+              candidateSongs.push({ ...track, playbackFormat: 'audio' });
             } else {
-              videos.push({ ...track, playbackFormat: 'video' });
+              candidateVideos.push({ ...track, playbackFormat: 'video' });
             }
           }
         }
       }
 
-      songs.sort((a, b) => (b.musicScore || 0) - (a.musicScore || 0));
-      videos.sort((a, b) => (b.videoScore || 0) - (a.videoScore || 0));
+      // 2. APPLY SEARCH RELEVANCE ENGINE (Hard filter & ranking)
+      const finalSongs = searchRelevanceEngine.filterAndRank(candidateSongs, query, intent, limit);
+      const finalVideos = searchRelevanceEngine.filterAndRank(candidateVideos, query, intent, limit);
 
-      const finalSongs = songs.slice(0, limit);
-      const finalVideos = videos.slice(0, limit);
+      // Filter matching Albums
+      const matchingAlbums = realAlbums.filter((a) => {
+        const normAlb = searchRelevanceEngine.normalize(a.title + ' ' + a.artist);
+        return normAlb.includes(normQuery) || normQuery.includes(normAlb);
+      });
+
+      // Filter matching Artists
+      const matchingArtists = realArtists.filter((a) => {
+        const normArt = searchRelevanceEngine.normalize(a.name);
+        return normArt.includes(normQuery) || normQuery.includes(normArt);
+      });
 
       return {
         query: query.trim(),
         intent: intent.primaryIntent,
         songs: finalSongs,
         videos: finalVideos,
-        artists: realArtists.slice(0, 6),
-        albums: realAlbums.slice(0, 6),
+        artists: matchingArtists.slice(0, 6),
+        albums: matchingAlbums.slice(0, 6),
         podcasts: podcasts.slice(0, 4),
         results: finalSongs.length > 0 ? finalSongs : finalVideos,
       };
