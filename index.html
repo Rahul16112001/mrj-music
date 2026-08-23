@@ -13,22 +13,41 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <title>MRJ Music — YouTube Music Web</title>
-  </head>
-  <body class="bg-[#030303] text-[#ffffff] antialiased selection:bg-[#ff0000] selection:text-white overflow-x-hidden">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    
+    <style>
+      html, body, #root {
+        background-color: #030303 !important;
+        color: #ffffff !important;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        width: 100%;
+        overflow-x: hidden;
+        font-family: 'Roboto', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      }
+    </style>
+
     <script>
-      // Clear stale service worker caches on version bump
+      // 1. Force unregister any stale service workers from earlier builds
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(registrations) {
           for (var registration of registrations) {
-            registration.update();
+            registration.unregister();
           }
         });
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js?v=2');
+      }
+      // 2. Clear old caches
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (var name of names) {
+            caches.delete(name);
+          }
         });
       }
     </script>
+  </head>
+  <body class="bg-[#030303] text-[#ffffff] antialiased selection:bg-[#ff0000] selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
