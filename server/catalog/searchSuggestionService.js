@@ -1,6 +1,5 @@
 import { db } from '../db/schema.js';
 import { musicProvider } from '../providers/musicProvider.js';
-import { contentClassifier, CONTENT_TYPES } from './contentClassifier.js';
 import { searchIntentEngine } from './searchIntentEngine.js';
 
 // Popular trending search seeds for instant fallback
@@ -52,12 +51,7 @@ export const searchSuggestionService = {
       };
     }
 
-    // 2. Fetch User Profile for Personalized Ranking
-    const profile = userId ? await db.getTasteProfile(userId) : null;
-    const likedArtists = new Set(profile?.liked_artists || []);
-    const preferredArtists = profile?.preferred_artists || {};
-
-    // 3. Generate Matching Query Suggestions
+    // 2. Generate Matching Query Suggestions from seeds and history
     const querySuggestions = new Set();
 
     if (userId) {
@@ -75,77 +69,36 @@ export const searchSuggestionService = {
       }
     }
 
-    // 4. Query Music Provider Catalog
-    let searchResults = { results: [], artists: [] };
+    // Contextual query variations
+    querySuggestions.add(cleanQuery);
+    querySuggestions.add(`${cleanQuery} lyrics`);
+    querySuggestions.add(`${cleanQuery} live`);
+    querySuggestions.add(`${cleanQuery} slowed reverb`);
+
+    // 3. Query Music Provider Catalog (using strict content classification & deduplication)
+    let searchResults = { songs: [], videos: [], artists: [], albums: [], podcasts: [] };
     try {
       searchResults = await musicProvider.search(cleanQuery, 'all', 25);
     } catch (e) {
       console.warn('Search suggestion provider fallback:', e.message);
     }
 
-    // 5. Categorize into Music-First Groups: Songs, Videos, Podcasts, Artists, Albums
-    const songs = [];
-    const videos = [];
-    const podcasts = [];
-    const artists = [];
-    const albums = [];
-
-    for (const rawTrack of searchResults.results || []) {
-      const track = contentClassifier.normalizeTrack(rawTrack);
-      if (track.isCompilation || track.isReaction) continue;
-
-      let score = contentClassifier.scoreCandidate(track, intent);
-
-      // User taste boost (preserves text relevance as primary)
-      if (preferredArtists[track.artist]) {
-        score += Math.min(25, preferredArtists[track.artist] * 2.5);
-      }
-      if (likedArtists.has(track.artist)) {
-        score += 20;
-      }
-
-      track.searchScore = score;
-      querySuggestions.add(track.title);
-
-      if (track.isPodcast) {
-        podcasts.push(track);
-      } else if (track.isMusicVideo || track.contentType === CONTENT_TYPES.VIDEO) {
-        videos.push(track);
-      } else {
-        songs.push(track);
-      }
+    for (const song of searchResults.songs || []) {
+      querySuggestions.add(song.title);
     }
-
-    // Sort songs and videos by calculated music score
-    songs.sort((a, b) => (b.searchScore || 0) - (a.searchScore || 0));
-    videos.sort((a, b) => (b.searchScore || 0) - (a.searchScore || 0));
-
-    // Extract Artists
     for (const artist of searchResults.artists || []) {
-      artists.push(artist);
       querySuggestions.add(artist.name);
-    }
-
-    // Generate Contextual Albums
-    if (cleanQuery.length >= 3) {
-      albums.push({
-        id: `alb_essentials_${cleanQuery.toLowerCase().replace(/\s+/g, '_')}`,
-        title: `${cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1)} Essentials`,
-        artist: searchResults.artists?.[0]?.name || cleanQuery,
-        thumbnail: songs[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
-        trackCount: 12,
-      });
     }
 
     return {
       query: cleanQuery,
       intent: intent.primaryIntent,
       suggestions: Array.from(querySuggestions).slice(0, 8),
-      songs: songs.slice(0, 6).map(({ searchScore, ...rest }) => rest),
-      artists: artists.slice(0, 4),
-      albums: albums.slice(0, 2),
-      videos: videos.slice(0, 3).map(({ searchScore, ...rest }) => rest),
-      podcasts: podcasts.slice(0, 2).map(({ searchScore, ...rest }) => rest),
+      songs: (searchResults.songs || []).slice(0, 6),
+      artists: (searchResults.artists || []).slice(0, 4),
+      albums: (searchResults.albums || []).slice(0, 2),
+      videos: (searchResults.videos || []).slice(0, 3),
+      podcasts: (searchResults.podcasts || []).slice(0, 2),
     };
   },
 };

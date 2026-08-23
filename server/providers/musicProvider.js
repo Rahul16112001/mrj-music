@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { contentClassifier, CONTENT_TYPES } from '../catalog/contentClassifier.js';
-import { searchIntentEngine } from '../catalog/searchIntentEngine.js';
+import { searchIntentEngine, INTENT_TYPES } from '../catalog/searchIntentEngine.js';
 
 // Multiple resilient multi-region stream endpoints
 const PIPED_INSTANCES = [
@@ -33,7 +33,7 @@ function recordInstanceMetric(url, success, latencyMs) {
 }
 
 export const musicProvider = {
-  // 1. Search Music Catalog (Music-First Live Search Engine)
+  // 1. Search Music Catalog with Music-First Classification and Entity Deduplication
   async search(query, type = 'all', limit = 30) {
     if (!query || !query.trim()) {
       return { songs: [], videos: [], artists: [], albums: [], podcasts: [], results: [] };
@@ -107,32 +107,72 @@ export const musicProvider = {
         }
       }
 
-      // 2. Classify and Score Candidates
-      const songs = [];
-      const videos = [];
-      const podcasts = [];
-
+      // 2. Classify and Score All Candidates
+      const allClassified = [];
       for (const raw of rawCandidates) {
         const track = contentClassifier.normalizeTrack(raw);
         if (track.isCompilation || track.isReaction || track.isShort) continue;
 
         track.musicScore = contentClassifier.scoreCandidate(track, intent);
         track.videoScore = contentClassifier.scoreVideoCandidate(track, intent);
+        allClassified.push(track);
+      }
 
-        if (track.isPodcast) {
+      // 3. Music Entity Deduplication & Bucketing
+      const songs = [];
+      const videos = [];
+      const podcasts = [];
+
+      const entityBestMap = new Map();
+
+      for (const track of allClassified) {
+        if (track.isPodcast || track.contentType === CONTENT_TYPES.PODCAST) {
           podcasts.push(track);
-        } else {
-          // If candidate meets music criteria: official music, audio-only, or topic/label audio
-          if (track.contentType === CONTENT_TYPES.MUSIC && (track.isOfficialMusic || track.isAudioOnly) && !track.isMusicVideo) {
+          continue;
+        }
+
+        // Check if track qualifies as a canonical song for the query intent
+        const isExplicitVariant = intent.wantsSlowed || intent.wantsRemix || intent.wantsCover || intent.wantsLive || intent.wantsLyrics;
+
+        if (isExplicitVariant) {
+          // Explicit query (e.g. slowed, remix, cover): highest scoring candidate enters songs
+          if (track.musicScore > 100) {
             songs.push({ ...track, playbackFormat: 'audio' });
           } else {
-            // Place in video / visual section
+            videos.push({ ...track, playbackFormat: 'video' });
+          }
+        } else {
+          // Normal Query (ORIGINAL_MUSIC):
+          // ONLY true music audio recordings / official artist music releases enter songs
+          const isTrueMusicTrack = (track.contentType === CONTENT_TYPES.MUSIC || track.isOfficialMusic) &&
+            !track.isSlowed &&
+            !track.isRemix &&
+            !track.isCover &&
+            !track.isLive &&
+            !track.isLyricsVideo;
+
+          if (isTrueMusicTrack) {
+            // Deduplicate across same entity (e.g. topic audio vs label audio vs official artist channel)
+            const key = track.musicEntityKey;
+            const existing = entityBestMap.get(key);
+            if (!existing || track.musicScore > existing.musicScore) {
+              entityBestMap.set(key, track);
+            }
+          } else {
+            // Video / Variant candidate
             videos.push({ ...track, playbackFormat: 'video' });
           }
         }
       }
 
-      // 3. Music-First Ranking: Sort songs by musicScore, videos by videoScore
+      // Populate deduplicated canonical songs
+      if (!intent.wantsSlowed && !intent.wantsRemix && !intent.wantsCover && !intent.wantsLive && !intent.wantsLyrics) {
+        for (const track of entityBestMap.values()) {
+          songs.push({ ...track, playbackFormat: 'audio' });
+        }
+      }
+
+      // Sort songs by musicScore, videos by videoScore
       songs.sort((a, b) => (b.musicScore || 0) - (a.musicScore || 0));
       videos.sort((a, b) => (b.videoScore || 0) - (a.videoScore || 0));
       podcasts.sort((a, b) => (b.musicScore || 0) - (a.musicScore || 0));
