@@ -14,17 +14,21 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // Database Health Check Endpoint
-app.get('/api/health/db', async (req, res) => {
-  const health = await dbClient.healthCheck();
-  res.json({
-    status: health.status === 'connected' ? 'ok' : 'error',
-    database: health,
-    timestamp: Date.now(),
-  });
+app.get(['/api/health/db', '/health/db'], async (req, res) => {
+  try {
+    const health = await dbClient.healthCheck();
+    res.json({
+      status: health.status === 'connected' ? 'ok' : 'error',
+      database: health,
+      timestamp: Date.now(),
+    });
+  } catch (e) {
+    res.status(500).json({ status: 'error', message: e.message });
+  }
 });
 
 // 1. Auth Routes
-app.post('/api/auth/register', async (req, res) => {
+app.post(['/api/auth/register', '/auth/register'], async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const userAgent = req.headers['user-agent'] || '';
@@ -36,7 +40,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post(['/api/auth/login', '/auth/login'], async (req, res) => {
   try {
     const { email, password } = req.body;
     const userAgent = req.headers['user-agent'] || '';
@@ -48,7 +52,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/refresh', async (req, res) => {
+app.post(['/api/auth/refresh', '/auth/refresh'], async (req, res) => {
   try {
     const { refreshToken } = req.body;
     const result = await authService.refreshAccessToken(refreshToken);
@@ -58,7 +62,7 @@ app.post('/api/auth/refresh', async (req, res) => {
   }
 });
 
-app.post('/api/auth/logout', optionalAuth, async (req, res) => {
+app.post(['/api/auth/logout', '/auth/logout'], optionalAuth, async (req, res) => {
   try {
     const { refreshToken } = req.body;
     const result = await authService.logout(refreshToken);
@@ -68,7 +72,7 @@ app.post('/api/auth/logout', optionalAuth, async (req, res) => {
   }
 });
 
-app.get('/api/auth/me', requireAuth, (req, res) => {
+app.get(['/api/auth/me', '/auth/me'], requireAuth, (req, res) => {
   res.json({
     status: 'success',
     user: {
@@ -80,7 +84,7 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
   });
 });
 
-app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+app.post(['/api/auth/change-password', '/auth/change-password'], requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
@@ -90,7 +94,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/auth/account', requireAuth, async (req, res) => {
+app.delete(['/api/auth/account', '/auth/account'], requireAuth, async (req, res) => {
   try {
     const { password } = req.body;
     const result = await authService.deleteAccount(req.user.id, password);
@@ -100,7 +104,7 @@ app.delete('/api/auth/account', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post(['/api/auth/forgot-password', '/auth/forgot-password'], async (req, res) => {
   try {
     const { email } = req.body;
     const result = await authService.forgotPassword(email);
@@ -110,7 +114,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post(['/api/auth/reset-password', '/auth/reset-password'], async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     const result = await authService.resetPassword(token, newPassword);
@@ -121,200 +125,282 @@ app.post('/api/auth/reset-password', async (req, res) => {
 });
 
 // 2. User Data Routes
-app.get('/api/user/likes', requireAuth, async (req, res) => {
-  const likes = await db.getLikedTracks(req.user.id);
-  res.json({ status: 'success', likes });
-});
-
-app.post('/api/user/likes', requireAuth, async (req, res) => {
-  const { track } = req.body;
-  if (!track || !track.id) return res.status(400).json({ error: 'Track is required' });
-  const likes = await db.addLikedTrack(req.user.id, track);
-  res.json({ status: 'success', likes });
-});
-
-app.delete('/api/user/likes/:trackId', requireAuth, async (req, res) => {
-  const { trackId } = req.params;
-  const likes = await db.removeLikedTrack(req.user.id, trackId);
-  res.json({ status: 'success', likes });
-});
-
-app.get('/api/user/playlists', requireAuth, async (req, res) => {
-  const playlists = await db.getPlaylists(req.user.id);
-  res.json({ status: 'success', playlists });
-});
-
-app.post('/api/user/playlists', requireAuth, async (req, res) => {
-  const playlist = req.body;
-  if (!playlist || !playlist.title) return res.status(400).json({ error: 'Playlist title is required' });
-  const saved = await db.savePlaylist(req.user.id, playlist);
-  res.json({ status: 'success', playlist: saved });
-});
-
-app.delete('/api/user/playlists/:id', requireAuth, async (req, res) => {
-  const deleted = await db.deletePlaylist(req.user.id, req.params.id);
-  res.json({ status: 'success', success: deleted });
-});
-
-app.get('/api/user/history', requireAuth, async (req, res) => {
-  const history = await db.getUserHistory(req.user.id);
-  res.json({ status: 'success', history });
-});
-
-app.delete('/api/user/history', requireAuth, async (req, res) => {
-  await db.clearUserHistory(req.user.id);
-  res.json({ status: 'success', message: 'History cleared' });
-});
-
-app.post('/api/user/events', optionalAuth, async (req, res) => {
-  const { events } = req.body;
-  const userId = req.user ? req.user.id : 'anon_' + (req.ip || 'client');
-  if (Array.isArray(events)) {
-    await cloudRecommendationService.processEvents(userId, events);
+app.get(['/api/user/likes', '/user/likes'], requireAuth, async (req, res) => {
+  try {
+    const likes = await db.getLikedTracks(req.user.id);
+    res.json({ status: 'success', likes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ status: 'success', processed: events?.length || 0 });
 });
 
-app.post('/api/user/migrate', requireAuth, async (req, res) => {
-  const { likedTracks, playlists, history } = req.body;
-  const userId = req.user.id;
+app.post(['/api/user/likes', '/user/likes'], requireAuth, async (req, res) => {
+  try {
+    const { track } = req.body;
+    if (!track || !track.id) return res.status(400).json({ error: 'Track is required' });
+    const likes = await db.addLikedTrack(req.user.id, track);
+    res.json({ status: 'success', likes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  if (Array.isArray(likedTracks)) {
-    for (const t of likedTracks) await db.addLikedTrack(userId, t);
+app.delete(['/api/user/likes/:trackId', '/user/likes/:trackId'], requireAuth, async (req, res) => {
+  try {
+    const { trackId } = req.params;
+    const likes = await db.removeLikedTrack(req.user.id, trackId);
+    res.json({ status: 'success', likes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  if (Array.isArray(playlists)) {
-    for (const p of playlists) await db.savePlaylist(userId, p);
-  }
-  if (Array.isArray(history)) {
-    const formatted = history.map((h) => ({
-      eventType: 'PLAY_COMPLETED',
-      trackId: h.id,
-      title: h.title,
-      artist: h.artist,
-      duration: h.duration,
-    }));
-    await cloudRecommendationService.processEvents(userId, formatted);
-  }
+});
 
-  res.json({ status: 'success', message: 'Local data migrated to cloud account successfully.' });
+app.get(['/api/user/playlists', '/user/playlists'], requireAuth, async (req, res) => {
+  try {
+    const playlists = await db.getPlaylists(req.user.id);
+    res.json({ status: 'success', playlists });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/user/playlists', '/user/playlists'], requireAuth, async (req, res) => {
+  try {
+    const playlist = req.body;
+    if (!playlist || !playlist.title) return res.status(400).json({ error: 'Playlist title is required' });
+    const saved = await db.savePlaylist(req.user.id, playlist);
+    res.json({ status: 'success', playlist: saved });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete(['/api/user/playlists/:id', '/user/playlists/:id'], requireAuth, async (req, res) => {
+  try {
+    const deleted = await db.deletePlaylist(req.user.id, req.params.id);
+    res.json({ status: 'success', success: deleted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/user/history', '/user/history'], requireAuth, async (req, res) => {
+  try {
+    const history = await db.getUserHistory(req.user.id);
+    res.json({ status: 'success', history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete(['/api/user/history', '/user/history'], requireAuth, async (req, res) => {
+  try {
+    await db.clearUserHistory(req.user.id);
+    res.json({ status: 'success', message: 'History cleared' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/user/events', '/user/events'], optionalAuth, async (req, res) => {
+  try {
+    const { events } = req.body;
+    const userId = req.user ? req.user.id : 'anon_' + (req.ip || 'client');
+    if (Array.isArray(events)) {
+      await cloudRecommendationService.processEvents(userId, events);
+    }
+    res.json({ status: 'success', processed: events?.length || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/user/migrate', '/user/migrate'], requireAuth, async (req, res) => {
+  try {
+    const { likedTracks, playlists, history } = req.body;
+    const userId = req.user.id;
+
+    if (Array.isArray(likedTracks)) {
+      for (const t of likedTracks) await db.addLikedTrack(userId, t);
+    }
+    if (Array.isArray(playlists)) {
+      for (const p of playlists) await db.savePlaylist(userId, p);
+    }
+    if (Array.isArray(history)) {
+      const formatted = history.map((h) => ({
+        eventType: 'PLAY_COMPLETED',
+        trackId: h.id,
+        title: h.title,
+        artist: h.artist,
+        duration: h.duration,
+      }));
+      await cloudRecommendationService.processEvents(userId, formatted);
+    }
+
+    res.json({ status: 'success', message: 'Local data migrated to cloud account successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 3. Recommendations Routes
-app.get('/api/recommendations/home', optionalAuth, async (req, res) => {
-  const userId = req.user ? req.user.id : null;
-  const charts = await musicProvider.getCharts();
-  const homeData = await cloudRecommendationService.getPersonalizedHome(userId, charts.trending);
-  res.json({ status: 'success', ...homeData });
+app.get(['/api/recommendations/home', '/recommendations/home'], optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const charts = await musicProvider.getCharts();
+    const homeData = await cloudRecommendationService.getPersonalizedHome(userId, charts.trending);
+    res.json({ status: 'success', ...homeData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get('/api/recommendations/radio/:videoId', optionalAuth, async (req, res) => {
-  const { videoId } = req.params;
-  const userId = req.user ? req.user.id : null;
+app.get(['/api/recommendations/radio/:videoId', '/recommendations/radio/:videoId'], optionalAuth, async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    const userId = req.user ? req.user.id : null;
 
-  const candidatePool = await musicProvider.getCandidatePool({ id: videoId, artist: '', title: '' });
-  const radio = await cloudRecommendationService.getSeedRadio(userId, { id: videoId }, candidatePool);
-  res.json({ status: 'success', radio });
+    const candidatePool = await musicProvider.getCandidatePool({ id: videoId, artist: '', title: '' });
+    const radio = await cloudRecommendationService.getSeedRadio(userId, { id: videoId }, candidatePool);
+    res.json({ status: 'success', radio });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {
-  const moodId = req.params.mood;
-  const userId = req.user ? req.user.id : null;
+app.get(['/api/recommendations/mood/:mood', '/recommendations/mood/:mood'], optionalAuth, async (req, res) => {
+  try {
+    const moodId = req.params.mood;
+    const userId = req.user ? req.user.id : null;
 
-  const candidatePool = await musicProvider.getCandidatePool({ id: moodId, genre: moodId });
-  const station = await cloudRecommendationService.getMoodStation(userId, moodId, candidatePool);
-  res.json({ status: 'success', ...station });
+    const candidatePool = await musicProvider.getCandidatePool({ id: moodId, genre: moodId });
+    const station = await cloudRecommendationService.getMoodStation(userId, moodId, candidatePool);
+    res.json({ status: 'success', ...station });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // 4. Music Routes
-app.get('/api/music/charts', async (req, res) => {
-  const charts = await musicProvider.getCharts();
-  res.json({ status: 'success', ...charts });
-});
-
-app.get('/api/music/search', async (req, res) => {
-  const query = req.query.q;
-  const type = req.query.type || 'all';
-  if (!query) return res.status(400).json({ error: 'Query parameter q is required' });
-
-  const results = await musicProvider.search(query, type, 30);
-  res.json({ status: 'success', query, ...results });
-});
-
-app.get('/api/music/artist/:name', async (req, res) => {
-  const artistName = decodeURIComponent(req.params.name);
-  const artistData = await musicProvider.getArtist(artistName);
-  if (!artistData) return res.status(404).json({ error: 'Artist not found' });
-  res.json({ status: 'success', artist: artistData });
-});
-
-app.get('/api/music/album/:id', async (req, res) => {
-  const albumData = await musicProvider.getAlbum(req.params.id);
-  res.json({ status: 'success', album: albumData });
-});
-
-app.get('/api/music/stream/:id', async (req, res) => {
-  const videoId = req.params.id;
-  const stream = await musicProvider.resolveAudioStream(videoId);
-
-  if (stream) {
-    return res.json({
-      status: 'success',
-      videoId,
-      streamUrl: stream.url,
-      mimeType: stream.mimeType,
-      codec: stream.codec,
-      bitrate: stream.bitrate || 'Quality information unavailable',
-    });
+app.get(['/api/music/charts', '/music/charts'], async (req, res) => {
+  try {
+    const charts = await musicProvider.getCharts();
+    res.json({ status: 'success', ...charts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json({
-    status: 'online_only',
-    videoId,
-    streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
-    mimeType: 'audio/webm',
-    codec: 'opus',
-    bitrate: 'Standard',
-  });
 });
 
-app.get('/api/music/download/:id', async (req, res) => {
-  const videoId = req.params.id;
-  const stream = await musicProvider.resolveAudioStream(videoId);
+app.get(['/api/music/search', '/music/search'], async (req, res) => {
+  try {
+    const query = req.query.q;
+    const type = req.query.type || 'all';
+    if (!query) return res.status(400).json({ error: 'Query parameter q is required' });
 
-  if (stream && stream.url) {
-    try {
-      const streamResp = await axios({
-        method: 'get',
-        url: stream.url,
-        responseType: 'stream',
-        timeout: 10000,
+    const results = await musicProvider.search(query, type, 30);
+    res.json({ status: 'success', query, ...results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/music/artist/:name', '/music/artist/:name'], async (req, res) => {
+  try {
+    const artistName = decodeURIComponent(req.params.name);
+    const artistData = await musicProvider.getArtist(artistName);
+    if (!artistData) return res.status(404).json({ error: 'Artist not found' });
+    res.json({ status: 'success', artist: artistData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/music/album/:id', '/music/album/:id'], async (req, res) => {
+  try {
+    const albumData = await musicProvider.getAlbum(req.params.id);
+    res.json({ status: 'success', album: albumData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/music/stream/:id', '/music/stream/:id'], async (req, res) => {
+  try {
+    const videoId = req.params.id;
+    const stream = await musicProvider.resolveAudioStream(videoId);
+
+    if (stream) {
+      return res.json({
+        status: 'success',
+        videoId,
+        streamUrl: stream.url,
+        mimeType: stream.mimeType,
+        codec: stream.codec,
+        bitrate: stream.bitrate || 'Quality information unavailable',
       });
-
-      res.setHeader('Content-Type', stream.mimeType || 'audio/webm');
-      res.setHeader('Content-Disposition', `attachment; filename="${videoId}.webm"`);
-      return streamResp.data.pipe(res);
-    } catch (e) {
-      console.warn('Audio pipe stream error:', e.message);
     }
+
+    res.json({
+      status: 'online_only',
+      videoId,
+      streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      mimeType: 'audio/webm',
+      codec: 'opus',
+      bitrate: 'Standard',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.status(404).json({
-    status: 'unavailable',
-    message: 'Direct audio stream unavailable for offline download.',
-    videoId,
-  });
 });
 
-app.get('/api/music/lyrics', async (req, res) => {
-  const { track, artist, duration } = req.query;
-  if (!track || !artist) return res.status(400).json({ error: 'track and artist required' });
+app.get(['/api/music/download/:id', '/music/download/:id'], async (req, res) => {
+  try {
+    const videoId = req.params.id;
+    const stream = await musicProvider.resolveAudioStream(videoId);
 
-  const lyrics = await musicProvider.getLyrics(track, artist, duration);
-  res.json({ status: 'success', ...lyrics });
+    if (stream && stream.url) {
+      try {
+        const streamResp = await axios({
+          method: 'get',
+          url: stream.url,
+          responseType: 'stream',
+          timeout: 10000,
+        });
+
+        res.setHeader('Content-Type', stream.mimeType || 'audio/webm');
+        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.webm"`);
+        return streamResp.data.pipe(res);
+      } catch (e) {
+        console.warn('Audio pipe stream error:', e.message);
+      }
+    }
+
+    res.status(404).json({
+      status: 'unavailable',
+      message: 'Direct audio stream unavailable for offline download.',
+      videoId,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get('/api/ads/bundle', (req, res) => {
+app.get(['/api/music/lyrics', '/music/lyrics'], async (req, res) => {
+  try {
+    const { track, artist, duration } = req.query;
+    if (!track || !artist) return res.status(400).json({ error: 'track and artist required' });
+
+    const lyrics = await musicProvider.getLyrics(track, artist, duration);
+    res.json({ status: 'success', ...lyrics });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/ads/bundle', '/ads/bundle'], (req, res) => {
   res.json({ status: 'success', version: '1.0', audioAds: [], displayBanners: [] });
 });
 
-export default app;
+export default function handler(req, res) {
+  return app(req, res);
+}
