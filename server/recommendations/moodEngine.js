@@ -9,11 +9,11 @@ export const MOOD_DEFINITIONS = {
     color: 'from-red-600 to-orange-900',
     count: '50+ Songs',
     fallbackTracks: [
-      { id: '7wtfhZwyrcc', title: 'Believer', artist: 'Imagine Dragons', genre: 'Workout', duration: 204 },
-      { id: '4NRXx6U8ABQ', title: 'Blinding Lights', artist: 'The Weeknd', genre: 'Workout', duration: 200 },
-      { id: 'TUVcZfQe-Kw', title: 'Starboy', artist: 'The Weeknd ft. Daft Punk', genre: 'Workout', duration: 230 },
-      { id: 'Xz7e_eW9B0U', title: 'Badass', artist: 'Anirudh Ravichander', genre: 'Workout', duration: 231 },
-      { id: 'T94PHkuydcw', title: 'Hukum - Thalaivar Alappara', artist: 'Anirudh Ravichander', genre: 'Workout', duration: 238 },
+      { id: 'IhP3J0j9JmY', title: 'Believer', artist: 'Imagine Dragons', genre: 'Workout', duration: 203, thumbnail: 'https://i.ytimg.com/vi/IhP3J0j9JmY/hqdefault.jpg' },
+      { id: 'fHI8X4OXluQ', title: 'Blinding Lights', artist: 'The Weeknd', genre: 'Workout', duration: 204, thumbnail: 'https://i.ytimg.com/vi/fHI8X4OXluQ/hqdefault.jpg' },
+      { id: 'Rif-RTvmmss', title: 'Starboy', artist: 'The Weeknd ft. Daft Punk', genre: 'Workout', duration: 231, thumbnail: 'https://i.ytimg.com/vi/Rif-RTvmmss/hqdefault.jpg' },
+      { id: 'IqwIOlhfCak', title: 'Badass', artist: 'Anirudh Ravichander', genre: 'Workout', duration: 236, thumbnail: 'https://i.ytimg.com/vi/IqwIOlhfCak/hqdefault.jpg' },
+      { id: 'DsjRNPrvq6U', title: 'Hukum - Thalaivar Alappara', artist: 'Anirudh Ravichander', genre: 'Workout', duration: 208, thumbnail: 'https://i.ytimg.com/vi/DsjRNPrvq6U/hqdefault.jpg' },
     ],
   },
   chill: {
@@ -22,10 +22,10 @@ export const MOOD_DEFINITIONS = {
     color: 'from-blue-600 to-indigo-900',
     count: '45+ Songs',
     fallbackTracks: [
-      { id: 'hHuG7FIKgtc', title: 'Heeriye', artist: 'Jasleen Royal & Arijit Singh', genre: 'Chill', duration: 194 },
-      { id: 'JFcgOboQZ08', title: 'Maan Meri Jaan', artist: 'King', genre: 'Chill', duration: 194 },
-      { id: 'gNi_6U5Pm_o', title: 'As It Was', artist: 'Harry Styles', genre: 'Chill', duration: 167 },
-      { id: 'L7_jYl8A060', title: 'Save Your Tears', artist: 'The Weeknd', genre: 'Chill', duration: 215 },
+      { id: 'RLzC55ai0eo', title: 'Heeriye', artist: 'Jasleen Royal & Arijit Singh', genre: 'Chill', duration: 199, thumbnail: 'https://i.ytimg.com/vi/RLzC55ai0eo/hqdefault.jpg' },
+      { id: '73vZDNKa_Wg', title: 'Maan Meri Jaan', artist: 'King', genre: 'Chill', duration: 196, thumbnail: 'https://i.ytimg.com/vi/73vZDNKa_Wg/hqdefault.jpg' },
+      { id: 'V1Z586zoeeE', title: 'As It Was', artist: 'Harry Styles', genre: 'Chill', duration: 166, thumbnail: 'https://i.ytimg.com/vi/V1Z586zoeeE/hqdefault.jpg' },
+      { id: 'u6lihZAcy4s', title: 'Save Your Tears', artist: 'The Weeknd', genre: 'Chill', duration: 217, thumbnail: 'https://i.ytimg.com/vi/u6lihZAcy4s/hqdefault.jpg' },
     ],
   },
   romance: {
@@ -34,10 +34,10 @@ export const MOOD_DEFINITIONS = {
     color: 'from-rose-600 to-pink-900',
     count: '60+ Songs',
     fallbackTracks: [
-      { id: '4tyep_qZ-2w', title: 'Kesariya', artist: 'Arijit Singh & Pritam', genre: 'Romance', duration: 268 },
-      { id: 'K4DyBUG242c', title: 'Apna Bana Le', artist: 'Arijit Singh & Sachin-Jigar', genre: 'Romance', duration: 261 },
-      { id: '6vYn7dJb5u0', title: 'Chaleya', artist: 'Arijit Singh & Anirudh Ravichander', genre: 'Romance', duration: 200 },
-      { id: '2Vv-BfVoq4g', title: 'Perfect', artist: 'Ed Sheeran', genre: 'Romance', duration: 263 },
+      { id: '6RdS6wLu7RY', title: 'Kesariya', artist: 'Arijit Singh & Pritam', genre: 'Romance', duration: 271, thumbnail: 'https://i.ytimg.com/vi/6RdS6wLu7RY/hqdefault.jpg' },
+      { id: 'u2NAuswnTKs', title: 'Apna Bana Le', artist: 'Arijit Singh & Sachin-Jigar', genre: 'Romance', duration: 273, thumbnail: 'https://i.ytimg.com/vi/u2NAuswnTKs/hqdefault.jpg' },
+      { id: 'VAdGW7QDJiU', title: 'Chaleya', artist: 'Arijit Singh & Anirudh Ravichander', genre: 'Romance', duration: 188, thumbnail: 'https://i.ytimg.com/vi/VAdGW7QDJiU/hqdefault.jpg' },
+      { id: 'iKzRIweSBLA', title: 'Perfect', artist: 'Ed Sheeran', genre: 'Romance', duration: 264, thumbnail: 'https://i.ytimg.com/vi/iKzRIweSBLA/hqdefault.jpg' },
     ],
   },
   focus: {
@@ -46,8 +46,8 @@ export const MOOD_DEFINITIONS = {
     color: 'from-emerald-600 to-teal-900',
     count: '40+ Songs',
     fallbackTracks: [
-      { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen', genre: 'Focus', duration: 359 },
-      { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele', genre: 'Focus', duration: 295 },
+      { id: 'fJ9rUzIMcZQ', title: 'Bohemian Rhapsody', artist: 'Queen', genre: 'Focus', duration: 359, thumbnail: 'https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg' },
+      { id: 'T1tl66trXTQ', title: 'Hello', artist: 'Adele', genre: 'Focus', duration: 296, thumbnail: 'https://i.ytimg.com/vi/T1tl66trXTQ/hqdefault.jpg' },
     ],
   },
   energy: { name: 'Pure Energy', query: 'energy dance edm electronic club hits', color: 'from-amber-600 to-yellow-800', count: '50+ Songs' },
