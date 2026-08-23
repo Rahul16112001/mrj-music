@@ -365,9 +365,28 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const idx = newQueue.findIndex(t => t.id === track.id);
         setQueueIndex(idx !== -1 ? idx : 0);
       }
-    } else if (!queue.some(t => t.id === track.id)) {
-      setQueue(prev => [...prev, track]);
-      setQueueIndex(queue.length);
+    } else {
+      setQueue([track]);
+      setQueueIndex(0);
+      setSourceQueue([track]);
+      setSourceType(source || 'single');
+
+      // Auto-populate seed radio / autoplay queue immediately
+      api.getNextRecommendations({
+        currentTrack: track,
+        playedTrackIds: [track.id],
+        currentQueueIds: [track.id],
+      }).then(rec => {
+        if (rec.tracks && rec.tracks.length > 0) {
+          setQueue(prev => {
+            const currentHead = prev[0] || track;
+            const fresh = rec.tracks.filter(t => t.id !== currentHead.id && (t.providerTrackId || t.id) !== (currentHead.providerTrackId || currentHead.id));
+            return [currentHead, ...fresh];
+          });
+        }
+      }).catch(err => {
+        console.warn('Initial autoplay queue seeding notice:', err);
+      });
     }
 
     try {

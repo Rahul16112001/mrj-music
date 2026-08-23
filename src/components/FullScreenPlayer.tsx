@@ -76,7 +76,7 @@ export const FullScreenPlayer: React.FC = () => {
     sendFeedback,
   } = useMusicPlayer();
 
-  const [activeTab, setActiveTab] = useState<'queue' | 'lyrics' | 'related'>('lyrics');
+  const [activeTab, setActiveTab] = useState<'queue' | 'lyrics' | 'related'>('queue');
   const [isDownloading, setIsDownloading] = useState(false);
   const [relatedTracks, setRelatedTracks] = useState<Track[]>([]);
   const [isLoadingRelated, setIsLoadingRelated] = useState(false);
@@ -355,7 +355,7 @@ export const FullScreenPlayer: React.FC = () => {
                       <div
                         key={`modal-q-${track.id}-${idx}`}
                         className="flex items-center justify-between p-2 rounded-xl hover:bg-[#1c1c1c] group transition-colors cursor-pointer"
-                        onClick={() => playTrack(track)}
+                        onClick={() => playTrack(track, queue, 'radio')}
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <img

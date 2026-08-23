@@ -18,7 +18,6 @@ export const canonicalMusicResolver = {
     if (!cleanQuery) return { songs: [], albums: [], artists: [] };
 
     try {
-      // 1. Fetch Songs from Music Metadata Catalog
       const songUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanQuery)}&entity=song&limit=15`;
       const albumUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanQuery)}&entity=album&limit=6`;
       const artistUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanQuery)}&entity=musicArtist&limit=6`;
@@ -55,7 +54,6 @@ export const canonicalMusicResolver = {
             duration: durationSec,
           });
 
-          // If query is normal (ORIGINAL_MUSIC), skip slowed/remixes from canonical song bucket
           if (!intent.wantsSlowed && !intent.wantsRemix && !intent.wantsCover) {
             if (classification.isSlowed || classification.isRemix || classification.isCover) continue;
           }
@@ -70,7 +68,7 @@ export const canonicalMusicResolver = {
             album: item.collectionName || 'Single',
             albumId: item.collectionId ? `alb_${item.collectionId}` : null,
             releaseYear,
-            duration: durationSec, // Canonical studio track duration
+            duration: durationSec,
             thumbnail: artwork || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
             genre: item.primaryGenreName || 'Pop',
             contentType: CONTENT_TYPES.MUSIC,
@@ -94,7 +92,7 @@ export const canonicalMusicResolver = {
         }
       }
 
-      // 2. Real Albums
+      // Real Albums
       const albums = [];
       if (albumRes.status === 'fulfilled' && albumRes.value.data?.results) {
         for (const alb of albumRes.value.data.results) {
@@ -115,7 +113,7 @@ export const canonicalMusicResolver = {
         }
       }
 
-      // 3. Real Artists
+      // Real Artists
       const artists = [];
       if (artistRes.status === 'fulfilled' && artistRes.value.data?.results) {
         for (const art of artistRes.value.data.results) {
@@ -141,9 +139,8 @@ export const canonicalMusicResolver = {
   async bindPlaybackSources(canonicalSong, youtubeCandidates = []) {
     if (!canonicalSong) return null;
 
-    const canonicalDuration = canonicalSong.duration || 210;
-    const targetTitle = (canonicalSong.title || '').toLowerCase();
-    const targetArtist = (canonicalSong.artist || '').toLowerCase();
+    const targetTitle = (canonicalSong.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const targetArtist = (canonicalSong.artist || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
     let bestAudioCandidate = null;
     let bestAudioScore = -Infinity;
@@ -152,53 +149,58 @@ export const canonicalMusicResolver = {
     let bestVideoScore = -Infinity;
 
     for (const cand of youtubeCandidates) {
-      const candTitle = (cand.title || cand.rawTitle || '').toLowerCase();
-      const candArtist = (cand.artist || '').toLowerCase();
-      const text = `${candTitle} ${candArtist}`;
-      const durationDiff = Math.abs(cand.duration - canonicalDuration);
+      const candRawTitle = (cand.rawTitle || cand.title || '').toLowerCase();
+      const candTitleClean = candRawTitle.replace(/[^a-z0-9]/g, '');
+      const candArtist = (cand.artist || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const text = `${candRawTitle} ${candArtist}`;
 
       const classification = contentClassifier.classifySearchResult(cand);
 
-      // Score for Audio Stream Source
-      if (!classification.isReaction && !classification.isShort && !classification.isCompilation) {
-        let aScore = 0;
-        if (text.includes(targetTitle) || targetTitle.includes(candTitle)) aScore += 50;
-        if (text.includes(targetArtist) || targetArtist.includes(candArtist)) aScore += 30;
-
-        // Official Audio / Topic track boost
-        if (classification.contentType === CONTENT_TYPES.MUSIC && classification.isOfficialMusic) aScore += 50;
-        if (text.includes('official audio') || text.includes('full audio') || text.includes('- topic')) aScore += 40;
-
-        // Sanity Check: Penalize candidate if duration drastically exceeds canonical album duration (e.g. 9:57 music video)
-        if (durationDiff <= 15) {
-          aScore += 60;
-        } else if (durationDiff <= 45) {
-          aScore += 30;
-        } else if (durationDiff > 120) {
-          // Drastic duration mismatch (likely short-film video or extended dialogue)
-          aScore -= 100;
-        }
-
-        // Penalize slowed / remixes / covers / live from being the canonical audio source
-        if (classification.isSlowed || classification.isRemix || classification.isCover || classification.isLive) {
-          aScore -= 150;
-        }
-        if (classification.isMusicVideo) {
-          aScore -= 60; // Prefer pure audio recording over video presentation
-        }
-
-        if (aScore > bestAudioScore) {
-          bestAudioScore = aScore;
-          bestAudioCandidate = cand;
-        }
+      // Skip reactions, shorts, slowed, compilations, covers
+      if (classification.isReaction || classification.isShort || classification.isCompilation || classification.isSlowed || classification.isCover) {
+        continue;
       }
 
-      // Score for Video Stream Source
+      // 1. Audio Candidate Scoring
+      let aScore = 0;
+
+      if (candTitleClean.includes(targetTitle) || targetTitle.includes(candTitleClean)) {
+        aScore += 100;
+      }
+      if (text.includes(targetArtist) || targetArtist.includes(candArtist)) {
+        aScore += 50;
+      }
+
+      // Verified Official Audio / Full Audio / Topic track
+      if (text.includes('full audio') || text.includes('official audio') || text.includes('- topic')) {
+        aScore += 80;
+      }
+      if (classification.isOfficialMusic) {
+        aScore += 40;
+      }
+
+      if (classification.isMusicVideo) {
+        aScore += 20; // Valid fallback
+      }
+
+      const durDiff = Math.abs(cand.duration - canonicalSong.duration);
+      if (durDiff <= 25) {
+        aScore += 60;
+      } else if (durDiff <= 60) {
+        aScore += 20;
+      }
+
+      if (aScore > bestAudioScore) {
+        bestAudioScore = aScore;
+        bestAudioCandidate = cand;
+      }
+
+      // 2. Video Candidate Scoring
       if (classification.isMusicVideo || classification.contentType === CONTENT_TYPES.VIDEO || classification.isLyricsVideo) {
         let vScore = 0;
-        if (text.includes(targetTitle)) vScore += 50;
-        if (text.includes(targetArtist)) vScore += 30;
-        if (classification.isMusicVideo) vScore += 50;
+        if (candTitleClean.includes(targetTitle)) vScore += 100;
+        if (text.includes(targetArtist)) vScore += 50;
+        if (classification.isMusicVideo) vScore += 60;
         if (classification.isOfficialMusic) vScore += 40;
 
         if (vScore > bestVideoScore) {
@@ -208,32 +210,33 @@ export const canonicalMusicResolver = {
       }
     }
 
-    // Attach Playback Sources
-    const selectedAudioId = bestAudioCandidate?.id || canonicalSong.id;
-    const selectedVideoId = bestVideoCandidate?.id || bestAudioCandidate?.id;
+    const selectedAudio = bestAudioCandidate || youtubeCandidates[0];
+    const selectedVideo = bestVideoCandidate || bestAudioCandidate;
+
+    const audioId = selectedAudio ? selectedAudio.id : canonicalSong.id;
+    const videoId = selectedVideo ? selectedVideo.id : audioId;
 
     return {
       ...canonicalSong,
-      providerTrackId: selectedAudioId,
+      providerTrackId: audioId,
       provider: 'youtube',
+      thumbnail: selectedAudio?.thumbnail || canonicalSong.thumbnail,
       audioSource: {
-        sourceId: `src_aud_${selectedAudioId}`,
+        sourceId: `src_aud_${audioId}`,
         musicEntityId: canonicalSong.id,
         type: 'audio',
         provider: 'youtube',
-        providerTrackId: selectedAudioId,
-        duration: bestAudioCandidate ? bestAudioCandidate.duration : canonicalDuration,
+        providerTrackId: audioId,
+        duration: selectedAudio ? selectedAudio.duration : canonicalSong.duration,
       },
-      videoSource: selectedVideoId
-        ? {
-            sourceId: `src_vid_${selectedVideoId}`,
-            musicEntityId: canonicalSong.id,
-            type: 'video',
-            provider: 'youtube',
-            providerTrackId: selectedVideoId,
-            duration: bestVideoCandidate ? bestVideoCandidate.duration : canonicalDuration,
-          }
-        : null,
+      videoSource: {
+        sourceId: `src_vid_${videoId}`,
+        musicEntityId: canonicalSong.id,
+        type: 'video',
+        provider: 'youtube',
+        providerTrackId: videoId,
+        duration: selectedVideo ? selectedVideo.duration : canonicalSong.duration,
+      },
     };
   },
 };
