@@ -33,7 +33,7 @@ export const cloudRecommendationService = {
       if (evt.eventType === 'PLAY_STARTED') {
         profile.totalPlays++;
         if (evt.trackId && !profile.recentSeeds.includes(evt.trackId)) {
-          profile.recentSeeds = [evt.trackId, ...profile.recentSeeds].slice(0, 20);
+          profile.recentSeeds = [evt.trackId, ...profile.recentSeeds].slice(0, 30);
         }
       }
 
@@ -81,11 +81,11 @@ export const cloudRecommendationService = {
     return profile;
   },
 
-  // 2. Generate Seed-Based Radio
+  // 2. Generate Seed-Based Radio from Large Candidate Pool
   getSeedRadio(userId, seedTrack, candidatePool = []) {
     const profile = userId ? db.getTasteProfile(userId) : null;
     const history = userId ? db.getUserHistory(userId) : [];
-    const recentTrackIds = new Set(history.slice(0, 15).map(h => h.trackId));
+    const recentTrackIds = new Set(history.slice(0, 20).map(h => h.trackId));
     const dislikedArtists = new Set(profile?.dislikedArtists || []);
 
     const seedArtist = (seedTrack?.artist || '').toLowerCase();
@@ -100,23 +100,23 @@ export const cloudRecommendationService = {
         const trackTitle = (track.title || '').toLowerCase();
         const trackGenre = (track.genre || '').toLowerCase();
 
-        // Metadata & Artist similarity
-        if (trackArtist === seedArtist) score += 40;
-        if (trackGenre && seedGenre && trackGenre === seedGenre) score += 30;
+        // 1. Metadata & Artist similarity
+        if (trackArtist === seedArtist) score += 45;
+        if (trackGenre && seedGenre && trackGenre === seedGenre) score += 35;
 
-        // User taste affinity
+        // 2. User taste affinity
         if (profile?.preferredArtists?.[track.artist]) {
-          score += Math.min(25, profile.preferredArtists[track.artist] * 3);
+          score += Math.min(30, profile.preferredArtists[track.artist] * 3);
         }
         if (profile?.likedArtists?.includes(track.artist)) {
-          score += 20;
+          score += 25;
         }
 
-        // Penalties
-        if (recentTrackIds.has(track.id)) score -= 30;
+        // 3. History & Skip penalties
+        if (recentTrackIds.has(track.id)) score -= 35;
 
-        // Random jitter for freshness
-        score += Math.random() * 10;
+        // 4. Freshness jitter
+        score += Math.random() * 8;
 
         return { track, score };
       });
@@ -133,7 +133,7 @@ export const cloudRecommendationService = {
       if (artistCounts[art] <= 2) {
         result.push(item.track);
       }
-      if (result.length >= 25) break;
+      if (result.length >= 35) break;
     }
 
     return result;
@@ -149,8 +149,8 @@ export const cloudRecommendationService = {
       .filter(t => !dislikedArtists.has(t.artist))
       .map(track => {
         let score = 0;
-        if (profile?.preferredArtists?.[track.artist]) score += 15;
-        if (profile?.likedArtists?.includes(track.artist)) score += 20;
+        if (profile?.preferredArtists?.[track.artist]) score += 20;
+        if (profile?.likedArtists?.includes(track.artist)) score += 25;
         score += Math.random() * 10;
         return { track, score };
       })
@@ -164,35 +164,50 @@ export const cloudRecommendationService = {
     };
   },
 
-  // 4. Generate Personalized Home Sections
+  // 4. Generate Personalized Home Sections with Distinct Daily Mixes
   getPersonalizedHome(userId, globalTrending = []) {
     const profile = userId ? db.getTasteProfile(userId) : null;
     const liked = userId ? db.getLikedTracks(userId) : [];
     const history = userId ? db.getUserHistory(userId) : [];
 
     // Quick Picks: Top frequent favorites & history
-    const quickPicks = (liked.length > 0 ? liked : history.length > 0 ? history : globalTrending).slice(0, 8);
+    const quickPicks = (liked.length > 0 ? liked : history.length > 0 ? history : globalTrending).slice(0, 16);
 
-    // Daily Mixes
-    const topArtist = Object.entries(profile?.preferredArtists || {}).sort((a, b) => b[1] - a[1])[0]?.[0];
+    // Top artist & genre affinities
+    const sortedArtists = Object.entries(profile?.preferredArtists || {}).sort((a, b) => b[1] - a[1]);
+    const topArtist1 = sortedArtists[0]?.[0] || 'Popular Artists';
+    const topArtist2 = sortedArtists[1]?.[0] || 'Global Hitmakers';
 
     const dailyMix1 = {
       id: 'mix_daily_1',
       title: 'Daily Mix 1',
-      description: topArtist ? `Based on ${topArtist} and similar artists` : 'Personalized blend of your favorite genres',
-      thumbnail: quickPicks[0]?.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
-      tracks: quickPicks,
+      description: topArtist1 ? `Featuring ${topArtist1} and similar favorites` : 'Personalized blend of your top tracks',
+      tracks: quickPicks.slice(0, 8),
+    };
+
+    const dailyMix2 = {
+      id: 'mix_daily_2',
+      title: 'Daily Mix 2',
+      description: topArtist2 ? `Featuring ${topArtist2} and energetic tracks` : 'Upbeat and trending discoveries',
+      tracks: globalTrending.slice(0, 8),
+    };
+
+    const dailyMix3 = {
+      id: 'mix_daily_3',
+      title: 'Chill Discovery Mix',
+      description: 'Relaxing tunes, acoustic tracks, and lofi study beats',
+      tracks: globalTrending.slice(4, 10),
     };
 
     return {
       quickPicks,
       trending: globalTrending,
-      dailyMixes: [dailyMix1],
-      topArtistRec: topArtist ? { artist: topArtist } : null,
+      dailyMixes: [dailyMix1, dailyMix2, dailyMix3],
+      topArtistRec: topArtist1 ? { artist: topArtist1 } : null,
       moods: Object.entries(MOOD_METADATA).map(([id, data]) => ({
         id,
         name: data.name,
-        color: id === 'workout' ? 'from-red-600 to-orange-900' : id === 'focus' ? 'from-emerald-600 to-teal-900' : 'from-blue-600 to-indigo-900',
+        color: id === 'workout' ? 'from-red-600 to-orange-900' : id === 'focus' ? 'from-emerald-600 to-teal-900' : id === 'party' ? 'from-fuchsia-600 to-pink-900' : 'from-blue-600 to-indigo-900',
         count: '40+ Songs',
       })),
     };

@@ -5,14 +5,21 @@ import { Track } from '../types';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { TrackContextMenu } from './TrackContextMenu';
 import { CreatePlaylistModal } from './CreatePlaylistModal';
+import { ArtworkImage } from './ArtworkImage';
 
 interface TrackCardProps {
   track: Track;
   queueContext?: Track[];
   showIndex?: number;
+  variant?: 'row' | 'compact' | 'grid' | 'queue';
 }
 
-export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showIndex }) => {
+export const TrackCard: React.FC<TrackCardProps> = ({
+  track,
+  queueContext,
+  showIndex,
+  variant = 'row',
+}) => {
   const {
     currentTrack,
     isPlaying,
@@ -56,38 +63,102 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
     }
   };
 
-  const formatDuration = (secs: number) => {
+  const formatDuration = (secs?: number) => {
+    if (!secs || isNaN(secs)) return '3:30';
     const min = Math.floor(secs / 60);
     const sec = Math.floor(secs % 60);
     return `${min}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
+  // GRID VARIANT
+  if (variant === 'grid') {
+    return (
+      <>
+        <div
+          onClick={handlePlayClick}
+          className="p-3 rounded-2xl bg-[#141414] hover:bg-[#202020] border border-[#222222]/50 cursor-pointer transition-all hover:scale-[1.02] group select-none flex flex-col justify-between"
+        >
+          <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#1e1e1e] shadow-md">
+            <ArtworkImage
+              src={track.thumbnail}
+              alt={track.title}
+              aspectRatio="square"
+              size="custom"
+              className="w-full h-full group-hover:scale-105 transition-transform duration-300"
+            />
+            {/* Play Overlay */}
+            <div
+              className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${
+                isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
+            >
+              <div className="w-10 h-10 rounded-full bg-[#ff0000] text-white flex items-center justify-center shadow-lg shadow-red-600/30">
+                {isCurrent && isPlaying ? (
+                  <Pause className="w-5 h-5 fill-white" />
+                ) : (
+                  <Play className="w-5 h-5 fill-white ml-0.5" />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <h4 className={`text-sm font-bold truncate ${isCurrent ? 'text-[#ff4e4e]' : 'text-white'}`}>
+              {track.title}
+            </h4>
+            <p
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/artist/${encodeURIComponent(track.artist)}`);
+              }}
+              className="text-xs text-[#aaaaaa] hover:text-white truncate mt-0.5 transition-colors"
+            >
+              {track.artist}
+            </p>
+          </div>
+        </div>
+
+        <CreatePlaylistModal
+          isOpen={playlistModalTrack !== null}
+          onClose={() => setPlaylistModalTrack(null)}
+          trackToAdd={playlistModalTrack}
+        />
+      </>
+    );
+  }
+
+  // DEFAULT / ROW VARIANT
   return (
     <>
       <div
         onClick={handlePlayClick}
-        className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
-          isCurrent ? 'bg-[#262626]' : 'hover:bg-[#181818]'
+        className={`group relative flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all border border-transparent select-none ${
+          isCurrent
+            ? 'bg-[#222222] border-[#333333]'
+            : 'hover:bg-[#181818] hover:border-[#262626]'
         }`}
       >
-        <div className="flex items-center gap-3.5 min-w-0 flex-1">
-          {/* Optional Ranked Index Number */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Optional Ranked Index */}
           {showIndex !== undefined && (
-            <span className={`w-5 text-center font-bold text-sm shrink-0 ${
-              isCurrent ? 'text-[#ff0000]' : 'text-[#717171]'
-            }`}>
+            <span
+              className={`w-5 text-center font-black text-xs shrink-0 ${
+                isCurrent ? 'text-[#ff0000]' : 'text-[#717171]'
+              }`}
+            >
               {showIndex + 1}
             </span>
           )}
 
-          {/* Thumbnail with Circular Play Overlay */}
-          <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-[#212121] shadow-md">
-            <img
+          {/* Artwork with play overlay */}
+          <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-[#1e1e1e] shadow-md">
+            <ArtworkImage
               src={track.thumbnail}
               alt={track.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+              aspectRatio="square"
+              size="custom"
+              className="w-full h-full group-hover:scale-105 transition-transform duration-300"
             />
-
             <div
               className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${
                 isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
@@ -105,10 +176,10 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
             </div>
           </div>
 
-          {/* Track Title and Artist */}
-          <div className="min-w-0 flex-1">
+          {/* Title & Artist */}
+          <div className="min-w-0 flex-1 pr-2">
             <h4
-              className={`text-sm font-bold truncate ${
+              className={`text-xs md:text-sm font-bold truncate leading-tight ${
                 isCurrent ? 'text-[#ff4e4e]' : 'text-white'
               }`}
             >
@@ -119,16 +190,15 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
                 e.stopPropagation();
                 navigate(`/artist/${encodeURIComponent(track.artist)}`);
               }}
-              className="text-xs text-[#aaaaaa] truncate mt-0.5 hover:text-white transition-colors"
+              className="text-[11px] md:text-xs text-[#aaaaaa] hover:text-white truncate mt-0.5 transition-colors"
             >
               {track.artist}
-              {track.views && <span className="text-[#717171]"> • {track.views}</span>}
             </p>
           </div>
         </div>
 
-        {/* Right Hover Actions */}
-        <div className="flex items-center gap-1 shrink-0 ml-2">
+        {/* Right Actions */}
+        <div className="flex items-center gap-1 shrink-0 ml-1">
           {/* Like Button */}
           <button
             onClick={(e) => {
@@ -136,11 +206,13 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
               toggleFavorite(track);
             }}
             className={`p-1.5 rounded-full hover:bg-[#282828] transition-colors ${
-              isLiked ? 'text-[#ff0000]' : 'opacity-0 group-hover:opacity-100 text-[#aaaaaa] hover:text-white'
+              isLiked
+                ? 'text-[#ff0000]'
+                : 'opacity-0 group-hover:opacity-100 text-[#aaaaaa] hover:text-white'
             }`}
             title="Like"
           >
-            <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
+            <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-current' : ''}`} />
           </button>
 
           {/* Download Button */}
@@ -148,27 +220,29 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, queueContext, showI
             onClick={handleDownloadToggle}
             disabled={isDownloading}
             className={`p-1.5 rounded-full hover:bg-[#282828] transition-colors ${
-              isDownloaded ? 'text-emerald-400' : 'opacity-0 group-hover:opacity-100 text-[#aaaaaa] hover:text-white'
+              isDownloaded
+                ? 'text-emerald-400'
+                : 'opacity-0 group-hover:opacity-100 text-[#aaaaaa] hover:text-white'
             }`}
             title={isDownloaded ? 'Downloaded Offline' : 'Download'}
           >
             {isDownloading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-[#ff0000]" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff0000]" />
             ) : isDownloaded ? (
-              <Check className="w-4 h-4 text-emerald-400" />
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
-              <Download className="w-4 h-4" />
+              <Download className="w-3.5 h-3.5" />
             )}
           </button>
 
-          {/* 3-Dots Context Menu */}
+          {/* Context Menu (3-dots) */}
           <TrackContextMenu
             track={track}
             onOpenPlaylistModal={(t) => setPlaylistModalTrack(t)}
           />
 
           {/* Duration */}
-          <span className="text-xs font-semibold text-[#717171] w-10 text-right group-hover:hidden hidden sm:inline">
+          <span className="text-[11px] font-semibold text-[#717171] w-9 text-right hidden sm:inline">
             {formatDuration(track.duration)}
           </span>
         </div>

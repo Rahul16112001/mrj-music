@@ -4,7 +4,8 @@ import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 import { offlineAdEngine } from '../services/offlineAdEngine';
 import { smartDownloads } from '../services/smartDownloads';
-import { setupMediaSession } from '../services/mediaSession';
+import { setupMediaSession, updateMediaSessionPosition } from '../services/mediaSession';
+import { syncService } from '../services/syncService';
 
 interface MusicPlayerContextType {
   currentTrack: Track | null;
@@ -102,6 +103,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
   const pollTimerRef = useRef<any>(null);
   const isUsingHtmlAudio = useRef<boolean>(false);
+  const wakeLockRef = useRef<any>(null);
+  const milestoneRef = useRef<Set<number>>(new Set());
 
   // Initialize playback system & persistent storage
   useEffect(() => {
@@ -109,15 +112,22 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     setIsOfflineMode(!navigator.onLine);
 
-    // 1. Initialize HTML5 Audio
+    // 1. Initialize HTML5 Audio Element for mobile background stream & offline
     try {
       const audio = new Audio();
       htmlAudioRef.current = audio;
-      audio.onended = () => handleNextTrack();
+      audio.preload = 'auto';
+      // Enable background play attributes
+      audio.setAttribute('playsinline', 'true');
+      audio.setAttribute('webkit-playsinline', 'true');
+      
+      audio.onended = () => handleTrackEnded();
       audio.ontimeupdate = () => {
         if (isUsingHtmlAudio.current) {
           setCurrentTime(audio.currentTime);
           if (audio.duration) setDuration(audio.duration);
+          checkMilestones(audio.currentTime, audio.duration);
+          updateMediaSessionPosition(audio.currentTime, audio.duration);
         }
       };
     } catch {}
@@ -153,12 +163,14 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 if (event.data === 1) { // PLAYING
                   setIsPlaying(true);
                   setIsLoading(false);
+                  acquireWakeLock();
                   const dur = ytPlayerRef.current?.getDuration?.();
                   if (dur) setDuration(dur);
                 } else if (event.data === 2) { // PAUSED
                   setIsPlaying(false);
+                  releaseWakeLock();
                 } else if (event.data === 0) { // ENDED
-                  handleNextTrack();
+                  handleTrackEnded();
                 } else if (event.data === 3) { // BUFFERING
                   setIsLoading(true);
                 }
@@ -183,26 +195,29 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setupYtPlayer();
     }
 
-    // 3. Polling interval to smoothly read currentTime
+    // 3. Polling interval to smoothly read currentTime & update lockscreen
     pollTimerRef.current = setInterval(() => {
       if (!isUsingHtmlAudio.current && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         try {
           const curr = ytPlayerRef.current.getCurrentTime();
           if (typeof curr === 'number' && !isNaN(curr)) {
             setCurrentTime(curr);
-          }
-          const dur = ytPlayerRef.current.getDuration();
-          if (typeof dur === 'number' && !isNaN(dur) && dur > 0) {
-            setDuration(dur);
+            const dur = ytPlayerRef.current.getDuration();
+            if (typeof dur === 'number' && !isNaN(dur) && dur > 0) {
+              setDuration(dur);
+              checkMilestones(curr, dur);
+              updateMediaSessionPosition(curr, dur);
+            }
           }
         } catch {}
       }
-    }, 250);
+    }, 300);
 
     const handleOnline = () => {
       setIsOfflineMode(false);
       offlineAdEngine.syncAdBundle();
       smartDownloads.checkAndRunSmartDownloads().then(() => refreshLibrary());
+      syncService.pullCloudLibrary().then(() => refreshLibrary());
     };
     const handleOffline = () => setIsOfflineMode(true);
 
@@ -212,19 +227,47 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     refreshLibrary();
     offlineAdEngine.syncAdBundle();
 
-    // Trigger Smart Downloads when idle
-    setTimeout(() => {
-      if (navigator.onLine) {
-        smartDownloads.checkAndRunSmartDownloads().then(() => refreshLibrary());
-      }
-    }, 3000);
-
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      releaseWakeLock();
     };
   }, []);
+
+  const acquireWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator && !wakeLockRef.current) {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      }
+    } catch {}
+  };
+
+  const releaseWakeLock = () => {
+    try {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch {}
+  };
+
+  const checkMilestones = (curr: number, dur: number) => {
+    if (dur <= 0) return;
+    const pct = (curr / dur) * 100;
+    if (pct >= 25 && !milestoneRef.current.has(25)) {
+      milestoneRef.current.add(25);
+      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_25', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 25 });
+    }
+    if (pct >= 50 && !milestoneRef.current.has(50)) {
+      milestoneRef.current.add(50);
+      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_50', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 50 });
+    }
+    if (pct >= 75 && !milestoneRef.current.has(75)) {
+      milestoneRef.current.add(75);
+      if (currentTrack) syncService.queueEvent({ eventType: 'PLAY_75', trackId: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist, completionPercent: 75 });
+    }
+  };
 
   const refreshLibrary = async () => {
     try {
@@ -244,7 +287,16 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const playTrack = async (track: Track, newQueue?: Track[]) => {
     setIsLoading(true);
     setCurrentTrack(track);
+    milestoneRef.current.clear();
     await offlineStorage.recordPlay(track);
+
+    syncService.queueEvent({
+      eventType: 'PLAY_STARTED',
+      trackId: track.id,
+      title: track.title,
+      artist: track.artist,
+      duration: track.duration,
+    });
 
     if (newQueue) {
       setQueue(newQueue);
@@ -252,13 +304,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setQueueIndex(idx !== -1 ? idx : 0);
     } else if (!queue.some(t => t.id === track.id)) {
       setQueue(prev => [...prev, track]);
-    }
-
-    // Check Ad Trigger
-    const adCheck = offlineAdEngine.onTrackStart();
-    if (adCheck.shouldPlayAd && adCheck.ad) {
-      setActiveAd(adCheck.ad);
-      setIsAdPlaying(true);
     }
 
     try {
@@ -298,8 +343,22 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       setupMediaSession(track, {
-        onPlay: togglePlay,
-        onPause: togglePlay,
+        onPlay: () => {
+          if (isUsingHtmlAudio.current && htmlAudioRef.current) {
+            htmlAudioRef.current.play();
+          } else if (ytPlayerRef.current) {
+            ytPlayerRef.current.playVideo?.();
+          }
+          setIsPlaying(true);
+        },
+        onPause: () => {
+          if (isUsingHtmlAudio.current && htmlAudioRef.current) {
+            htmlAudioRef.current.pause();
+          } else if (ytPlayerRef.current) {
+            ytPlayerRef.current.pauseVideo?.();
+          }
+          setIsPlaying(false);
+        },
         onNext: handleNextTrack,
         onPrevious: handlePreviousTrack,
         onSeek: seek,
@@ -337,6 +396,26 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsPlaying(true);
       }
     }
+  };
+
+  const handleTrackEnded = () => {
+    if (currentTrack) {
+      syncService.queueEvent({
+        eventType: 'PLAY_COMPLETED',
+        trackId: currentTrack.id,
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        completionPercent: 100,
+      });
+    }
+
+    if (playbackMode === 'repeat-one') {
+      seek(0);
+      if (currentTrack) playTrack(currentTrack);
+      return;
+    }
+
+    handleNextTrack();
   };
 
   const handleNextTrack = () => {
@@ -407,6 +486,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Queue actions
   const addToQueue = (track: Track) => {
     setQueue(prev => [...prev, track]);
+    syncService.queueEvent({ eventType: 'ADD_TO_QUEUE', trackId: track.id, title: track.title, artist: track.artist });
   };
 
   const playNextInQueue = (track: Track) => {
@@ -443,6 +523,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Library & Download actions
   const toggleFavorite = async (track: Track): Promise<boolean> => {
     const isLiked = await offlineStorage.toggleLike(track);
+    if (isLiked) {
+      await api.likeTrack(track);
+      syncService.queueEvent({ eventType: 'LIKE', trackId: track.id, title: track.title, artist: track.artist });
+    } else {
+      await api.unlikeTrack(track.id);
+      syncService.queueEvent({ eventType: 'UNLIKE', trackId: track.id, title: track.title, artist: track.artist });
+    }
     await refreshLibrary();
     return isLiked;
   };
@@ -454,13 +541,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const downloadTrack = async (track: Track): Promise<boolean> => {
     try {
       const lyrics = await api.getLyrics(track.title, track.artist, track.duration);
-      // Fetch real audio blob from backend download pipe
       const audioBlob = await api.downloadAudioBlob(track.id);
       
       if (audioBlob && audioBlob.size > 1000) {
         await offlineStorage.saveDownloadedTrack(track, audioBlob, lyrics);
       } else {
-        // Fallback placeholder blob for offline metadata persistence
         const emptyBlob = new Blob([new Uint8Array(100)], { type: 'audio/webm' });
         await offlineStorage.saveDownloadedTrack(track, emptyBlob, lyrics);
       }
@@ -492,6 +577,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isCustom: true,
     };
     await offlineStorage.savePlaylist(newPlaylist);
+    await api.saveUserPlaylist(newPlaylist);
     await refreshLibrary();
     return newPlaylist;
   };
@@ -506,6 +592,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       pl.updatedAt = Date.now();
       if (!pl.thumbnail) pl.thumbnail = track.thumbnail;
       await offlineStorage.savePlaylist(pl);
+      await api.saveUserPlaylist(pl);
       await refreshLibrary();
       return true;
     }
@@ -520,14 +607,16 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     pl.trackCount = pl.tracks.length;
     pl.updatedAt = Date.now();
     await offlineStorage.savePlaylist(pl);
+    await api.saveUserPlaylist(pl);
     await refreshLibrary();
     return true;
   };
 
   const deletePlaylist = async (playlistId: string): Promise<boolean> => {
-    const res = await offlineStorage.deletePlaylist(playlistId);
+    await offlineStorage.deletePlaylist(playlistId);
+    await api.deleteUserPlaylist(playlistId);
     await refreshLibrary();
-    return res;
+    return true;
   };
 
   const dismissAd = () => {
