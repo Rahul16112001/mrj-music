@@ -1,17 +1,13 @@
 package com.mrj.music.player
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.mrj.music.model.NativeTrack
-import com.mrj.music.storage.NativeOfflineStorage
 import java.util.Collections
 
 private const val TAG = "MRJ_ExoPlayerManager"
@@ -24,6 +20,22 @@ interface PlayerEventListener {
     fun onError(errorMessage: String)
 }
 
+/**
+ * METADATA-ONLY player manager.
+ *
+ * The real audio engine is the WebView — online playback runs through a hidden YouTube
+ * IFrame player and offline playback through HTML5 Audio (blob URLs). This class used to
+ * be a SECOND, competing ExoPlayer audio engine: notification buttons drove it,
+ * [triggerOfflineAutoplay] layered a random download on top of the YouTube audio, and
+ * `onPlayerError` fired `playNext()` every 1.5s against a backend URL that returns JSON,
+ * not audio bytes — a skip storm plus doubled audio ("everything is disturbed").
+ *
+ * It is now a pure state holder for the lock-screen / notification surface. It NEVER
+ * prepares or starts the ExoPlayer. The retained [player] instance exists only so a
+ * Media3 [androidx.media3.session.MediaSession] can be built on it; it is deliberately
+ * kept idle with no media items. All transport (play/pause/next/prev/seek) is relayed to
+ * the WebView via the plugin's `remoteCommand` event; JS is the single source of truth.
+ */
 class MRJExoPlayerManager private constructor(private val context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
@@ -32,15 +44,11 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .build(),
-            true // Handle Audio Focus automatically
+            true
         )
-        .setHandleAudioBecomingNoisy(true) // Pause on headphone disconnect
-        .setWakeMode(C.WAKE_MODE_NETWORK) // Prevent CPU sleep during background audio
         .build()
 
-    private val offlineStorage = NativeOfflineStorage.getInstance(context)
     private val listeners = mutableListOf<PlayerEventListener>()
-    private val mainHandler = Handler(Looper.getMainLooper())
 
     var currentTrack: NativeTrack? = null
         private set
@@ -51,61 +59,19 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
         private set
     var autoplayEnabled: Boolean = true
 
-    private val positionPollRunnable = object : Runnable {
-        override fun run() {
-            try {
-                if (player.isPlaying) {
-                    val pos = player.currentPosition
-                    val dur = if (player.duration > 0) player.duration
-                              else ((currentTrack?.duration ?: 0.0) * 1000).toLong()
-                    listeners.forEach { it.onPositionChange(pos, dur) }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Position poll error: ${e.message}")
-            }
-            mainHandler.postDelayed(this, 1000)
-        }
-    }
+    // Last play/pause state pushed from JS (via updateMetadata / setPlaybackState).
+    // The notification reads this instead of the idle ExoPlayer's own state.
+    var lastKnownPlaying: Boolean = true
+        private set
 
     init {
+        // Keep a minimal listener purely for diagnostics. Critically, there is NO
+        // auto-skip on error and NO advance on STATE_ENDED — the idle player must never
+        // drive playback. These handlers previously caused the skip storm.
         player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                val isBuffering = playbackState == Player.STATE_BUFFERING
-                val isPlaying = player.isPlaying
-                listeners.forEach { it.onPlaybackStateChange(isPlaying, isBuffering) }
-
-                if (playbackState == Player.STATE_ENDED) {
-                    Log.d(TAG, "Track ended, advancing to next")
-                    handleTrackEnded()
-                }
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                listeners.forEach { it.onPlaybackStateChange(isPlaying, false) }
-                if (isPlaying) {
-                    mainHandler.post(positionPollRunnable)
-                }
-            }
-
             override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "ExoPlayer error: ${error.message}, code: ${error.errorCode}", error)
-                val msg = when (error.errorCode) {
-                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
-                        "Network connection failed. Check your internet connection."
-                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-                        "Stream unavailable (HTTP error). Try another song."
-                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
-                        "Audio format not supported on this device."
-                    PlaybackException.ERROR_CODE_IO_NO_PERMISSION ->
-                        "Permission denied reading audio file."
-                    else -> "Playback error (${error.errorCode}): ${error.localizedMessage ?: "Unknown error"}"
-                }
-                listeners.forEach { it.onError(msg) }
-
-                // Auto-recover: try next track after error
-                if (autoplayEnabled) {
-                    mainHandler.postDelayed({ playNext() }, 1500)
-                }
+                Log.w(TAG, "Idle ExoPlayer reported an error (ignored; metadata-only): " +
+                    "${error.errorCode} ${error.message}")
             }
         })
     }
@@ -118,135 +84,65 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
         listeners.remove(listener)
     }
 
+    /**
+     * Metadata-only. Updates the current track + queue and notifies listeners (the
+     * notification service) — but NEVER touches the ExoPlayer. The WebView owns the audio.
+     */
     fun playTrack(track: NativeTrack, newQueue: List<NativeTrack>? = null) {
-        // Input validation
         if (track.id.isBlank()) {
-            Log.e(TAG, "playTrack called with blank track ID — ignoring")
-            listeners.forEach { it.onError("Invalid track: missing ID") }
+            Log.w(TAG, "playTrack called with blank track ID — ignoring")
             return
         }
-
-        try {
-            if (newQueue != null && newQueue.isNotEmpty()) {
-                queue.clear()
-                queue.addAll(newQueue)
-                queueIndex = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
-            } else if (!queue.any { it.id == track.id }) {
-                queue.add(track)
-                queueIndex = queue.size - 1
-            } else {
-                queueIndex = queue.indexOfFirst { it.id == track.id }
-            }
-
-            // Prefer offline if available
-            val offlineTrack = try {
-                offlineStorage.getTrack(track.id)
-                    ?: offlineStorage.getTrack(track.canonicalTrackId ?: "")
-            } catch (e: Exception) {
-                Log.w(TAG, "Offline storage lookup failed: ${e.message}")
-                null
-            }
-
-            val trackToPlay = if (offlineTrack != null && offlineStorage.isTrackDownloaded(offlineTrack.id)) {
-                Log.d(TAG, "Playing from offline vault: ${offlineTrack.title}")
-                offlineTrack
-            } else {
-                track
-            }
-
-            currentTrack = trackToPlay
-
-            // Build MediaItem safely — this will never produce an empty URI
-            val mediaItem = try {
-                trackToPlay.toMediaItem()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to build MediaItem for: ${trackToPlay.title} — ${e.message}")
-                listeners.forEach { it.onError("Failed to prepare track: ${e.message}") }
-                return
-            }
-
-            Log.d(TAG, "ExoPlayer: setMediaItem -> ${trackToPlay.title} | uri: ${mediaItem.localConfiguration?.uri}")
-
-            // Reset and play
-            player.stop()
-            player.clearMediaItems()
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            player.play()
-
-            listeners.forEach {
-                it.onTrackChange(trackToPlay)
-                it.onQueueChange(queue, queueIndex)
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "playTrack exception: ${e.message}", e)
-            listeners.forEach { it.onError("Playback failed: ${e.message ?: "Unknown error"}") }
+        if (newQueue != null && newQueue.isNotEmpty()) {
+            queue.clear()
+            queue.addAll(newQueue)
+            queueIndex = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+        } else if (queue.none { it.id == track.id }) {
+            queue.add(track)
+            queueIndex = queue.size - 1
+        } else {
+            queueIndex = queue.indexOfFirst { it.id == track.id }
+        }
+        currentTrack = track
+        lastKnownPlaying = true
+        listeners.forEach {
+            it.onTrackChange(track)
+            it.onQueueChange(queue, queueIndex)
         }
     }
 
-    fun pause() {
-        try { player.pause() } catch (e: Exception) { Log.w(TAG, "pause() error: ${e.message}") }
-    }
-
-    fun resume() {
-        try {
-            val curr = currentTrack
-            if (player.playbackState == Player.STATE_IDLE && curr != null) {
-                playTrack(curr)
-            } else {
-                player.play()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "resume() error: ${e.message}")
-        }
-    }
-
-    fun togglePlay() {
-        if (player.isPlaying) pause() else resume()
-    }
-
+    /**
+     * Push a new track's metadata to the notification. Called by the plugin on every
+     * JS-driven track change. Does not start any audio.
+     */
     fun notifyTrackChange(track: NativeTrack, isPlaying: Boolean) {
         currentTrack = track
+        lastKnownPlaying = isPlaying
         listeners.forEach {
             it.onTrackChange(track)
             it.onPlaybackStateChange(isPlaying, false)
         }
     }
 
-    fun seekTo(positionMs: Long) {
-        try { player.seekTo(positionMs) } catch (e: Exception) { Log.w(TAG, "seekTo() error: ${e.message}") }
+    /**
+     * Push a play/pause change to the notification without resending full metadata.
+     * Called by the plugin's setPlaybackState.
+     */
+    fun notifyPlaybackState(isPlaying: Boolean) {
+        lastKnownPlaying = isPlaying
+        listeners.forEach { it.onPlaybackStateChange(isPlaying, false) }
     }
 
-    fun playNext() {
-        if (queue.isEmpty()) {
-            triggerOfflineAutoplay()
-            return
-        }
-        if (queueIndex < queue.size - 1) {
-            queueIndex++
-            playTrack(queue[queueIndex])
-        } else if (autoplayEnabled) {
-            triggerOfflineAutoplay()
-        }
-    }
-
-    fun playPrevious() {
-        try {
-            if (player.currentPosition > 3000) {
-                player.seekTo(0)
-                return
-            }
-            if (queueIndex > 0) {
-                queueIndex--
-                playTrack(queue[queueIndex])
-            } else {
-                player.seekTo(0)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "playPrevious() error: ${e.message}")
-        }
-    }
+    // ---- Transport methods kept for the plugin surface, but INERT. ----
+    // JS never calls these to control audio (it drives the WebView directly); they exist
+    // only so the Capacitor plugin's method table stays intact. None of them touch the
+    // ExoPlayer, so there is no way to spin up a second audio stream.
+    fun pause() { lastKnownPlaying = false }
+    fun resume() { lastKnownPlaying = true }
+    fun togglePlay() { /* no-op: JS toggles the WebView engine */ }
+    fun seekTo(positionMs: Long) { /* no-op: JS seeks the WebView engine */ }
+    fun playNext() { /* no-op: JS advances the queue */ }
+    fun playPrevious() { /* no-op: JS advances the queue */ }
 
     fun setShuffle(enabled: Boolean) {
         isShuffleEnabled = enabled
@@ -262,29 +158,8 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
         listeners.forEach { it.onQueueChange(queue, queueIndex) }
     }
 
-    private fun handleTrackEnded() {
-        playNext()
-    }
-
-    private fun triggerOfflineAutoplay() {
-        try {
-            val downloads = offlineStorage.getAllDownloadedTracks()
-            if (downloads.isEmpty()) return
-            val candidates = downloads.filter { it.id != currentTrack?.id }
-            if (candidates.isNotEmpty()) {
-                val nextTrack = candidates.random()
-                queue.add(nextTrack)
-                queueIndex = queue.size - 1
-                playTrack(nextTrack)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "triggerOfflineAutoplay() error: ${e.message}")
-        }
-    }
-
     fun release() {
         try {
-            mainHandler.removeCallbacks(positionPollRunnable)
             player.release()
         } catch (e: Exception) {
             Log.w(TAG, "release() error: ${e.message}")

@@ -236,11 +236,28 @@ export const db = {
 
   async saveTasteProfile(userId, profile) {
     const now = Date.now();
+    // UPSERT: a taste_profiles row already exists from createUser (user_id is the PK),
+    // so a bare INSERT throws 23505 on Postgres. ON CONFLICT persists the learned signals.
     await dbClient.query(
       `INSERT INTO taste_profiles (
         user_id, preferred_artists, preferred_genres, preferred_moods, liked_artists, disliked_artists,
         liked_genres, disliked_genres, skip_rate, completion_rate, total_plays, total_skips, total_completions, recent_seeds, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ON CONFLICT (user_id) DO UPDATE SET
+        preferred_artists = EXCLUDED.preferred_artists,
+        preferred_genres = EXCLUDED.preferred_genres,
+        preferred_moods = EXCLUDED.preferred_moods,
+        liked_artists = EXCLUDED.liked_artists,
+        disliked_artists = EXCLUDED.disliked_artists,
+        liked_genres = EXCLUDED.liked_genres,
+        disliked_genres = EXCLUDED.disliked_genres,
+        skip_rate = EXCLUDED.skip_rate,
+        completion_rate = EXCLUDED.completion_rate,
+        total_plays = EXCLUDED.total_plays,
+        total_skips = EXCLUDED.total_skips,
+        total_completions = EXCLUDED.total_completions,
+        recent_seeds = EXCLUDED.recent_seeds,
+        updated_at = EXCLUDED.updated_at;`,
       [
         userId,
         JSON.stringify(profile.preferred_artists || {}),
@@ -337,9 +354,18 @@ export const db = {
 
   async addLikedTrack(userId, track) {
     const now = Date.now();
+    // UPSERT on the (user_id, track_id) composite PK so re-liking a track refreshes
+    // its metadata instead of throwing a 23505 duplicate-key error on Postgres.
     await dbClient.query(
       `INSERT INTO liked_tracks (user_id, track_id, title, artist, album, thumbnail, duration, liked_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (user_id, track_id) DO UPDATE SET
+         title = EXCLUDED.title,
+         artist = EXCLUDED.artist,
+         album = EXCLUDED.album,
+         thumbnail = EXCLUDED.thumbnail,
+         duration = EXCLUDED.duration,
+         liked_at = EXCLUDED.liked_at;`,
       [userId, track.id, track.title, track.artist, track.album || '', track.thumbnail || '', track.duration || 210, now]
     );
     return await this.getLikedTracks(userId);
@@ -463,9 +489,17 @@ export const db = {
 
   async updateUserSettings(userId, settings) {
     const now = Date.now();
+    // UPSERT: user_settings.user_id is the PK and a row already exists from createUser,
+    // so a bare INSERT throws 23505 on Postgres and settings never persist.
     await dbClient.query(
       `INSERT INTO user_settings (user_id, audio_quality, autoplay_radio, theme, smart_downloads, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6);`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id) DO UPDATE SET
+         audio_quality = EXCLUDED.audio_quality,
+         autoplay_radio = EXCLUDED.autoplay_radio,
+         theme = EXCLUDED.theme,
+         smart_downloads = EXCLUDED.smart_downloads,
+         updated_at = EXCLUDED.updated_at;`,
       [
         userId,
         settings.audioQuality || 'high',

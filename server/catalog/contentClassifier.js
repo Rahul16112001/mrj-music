@@ -160,8 +160,96 @@ function normalizeFuzzy(str = '') {
     .replace(/uu+/g, 'u');
 }
 
+// ==========================================================
+// Coarse metadata inference (genre / language / mood) used to
+// activate genre & freshness scoring that would otherwise never fire
+// for thinly-scraped catalog items. Signals are intentionally coarse.
+// ==========================================================
+const GENRE_KEYWORD_MAP = [
+  { genre: 'Punjabi', patterns: [/\b(punjabi|bhangra|jatt|desi\s*hip\s*hop)\b/i, /\b(diljit|karan\s*aujla|sidhu|shubh|ap\s*dhillon|ammy\s*virk|jordan\s*sandhu|sharn|guru\s*randhawa|jassie\s*gill|nimrat)\b/i] },
+  { genre: 'Bhojpuri', patterns: [/\bbhojpuri\b/i, /\b(pawan\s*singh|khesari|nirahua|shilpi\s*raj|aamrapali)\b/i] },
+  { genre: 'Haryanvi', patterns: [/\bharyanvi\b/i, /\b(masoom\s*sharma|sapna\s*choudhary|amanraj\s*gill|aman\s*jaji|raj\s*mawar)\b/i] },
+  { genre: 'Tollywood', patterns: [/\b(telugu|tamil|kollywood|tollywood|kannada|malayalam)\b/i, /\b(anirudh|thaman|devi\s*sri\s*prasad|yuvan|ilaiyaraaja|sid\s*sriram)\b/i] },
+  { genre: 'Indie', patterns: [/\b(indie|acoustic|unplugged|singer\s*songwriter)\b/i, /\b(anuv\s*jain|prateek\s*kuhad|ritviz|when\s*chai\s*met\s*toast|the\s*local\s*train|taba\s*chake)\b/i] },
+  { genre: 'Bollywood', patterns: [/\b(bollywood|hindi\s*song)\b/i, /\b(arijit|pritam|shreya|vishal\s*mishra|jubin|neha\s*kakkar|sachin.?jigar|amit\s*trivedi|honey\s*singh)\b/i] },
+  { genre: 'Hollywood', patterns: [/\b(the\s*weeknd|taylor\s*swift|dua\s*lipa|ed\s*sheeran|harry\s*styles|drake|billie\s*eilish|ariana|justin\s*bieber|coldplay|bruno\s*mars|shawn\s*mendes|one\s*direction|adele|maroon\s*5)\b/i] },
+];
+
+const LANGUAGE_BY_GENRE = {
+  Punjabi: 'Punjabi',
+  Bhojpuri: 'Bhojpuri',
+  Haryanvi: 'Haryanvi',
+  Tollywood: 'Telugu',
+  Bollywood: 'Hindi',
+  Indie: 'Hindi',
+  Hollywood: 'English',
+  Pop: 'English',
+};
+
+const MOOD_KEYWORD_MAP = [
+  { mood: 'Romance', pattern: /\b(love|romantic|romance|pyaar|dil|ishq|heeriye|mohabbat|valentine|crush)\b/i },
+  { mood: 'Party', pattern: /\b(party|dance|club|dj|nach|naach|banger|anthem|thumka|bounce)\b/i },
+  { mood: 'Workout', pattern: /\b(workout|gym|beast|power|hustle|grind|pump)\b/i },
+  { mood: 'Melancholy', pattern: /\b(sad|broken|bewafa|judaai|tanha|alone|tears|heartbreak|dard)\b/i },
+  { mood: 'Chill', pattern: /\b(chill|lofi|lo-fi|acoustic|relax|sukoon|calm|soothing|mellow)\b/i },
+];
+
 export const contentClassifier = {
   normalizeFuzzy,
+
+  /**
+   * Parses a raw views/viewCount signal ("1.2M views", "985K", "2.3B", 1200000)
+   * into a numeric popularity value. Defensive: never throws, returns 0 on miss.
+   */
+  parsePopularity(views) {
+    if (views == null) return 0;
+    if (typeof views === 'number') return isFinite(views) ? Math.max(0, Math.round(views)) : 0;
+    const str = String(views).toLowerCase().replace(/views?/g, '').replace(/,/g, '').trim();
+    const m = str.match(/([\d.]+)\s*([kmb])?/);
+    if (!m) return 0;
+    let n = parseFloat(m[1]);
+    if (!isFinite(n)) return 0;
+    const suffix = m[2];
+    if (suffix === 'k') n *= 1e3;
+    else if (suffix === 'm') n *= 1e6;
+    else if (suffix === 'b') n *= 1e9;
+    return Math.max(0, Math.round(n));
+  },
+
+  /**
+   * Coarse genre inference from title + artist keywords. Returns null when unknown.
+   */
+  inferGenre(text = '') {
+    const t = (text || '').toLowerCase();
+    if (!t.trim()) return null;
+    for (const { genre, patterns } of GENRE_KEYWORD_MAP) {
+      if (patterns.some((p) => p.test(t))) return genre;
+    }
+    return null;
+  },
+
+  /**
+   * Coarse language inference, keyed primarily off the (possibly inferred) genre.
+   */
+  inferLanguage(text = '', genre = '') {
+    const t = (text || '').toLowerCase();
+    if (/\b(english|pop|hollywood)\b/i.test(t) && !genre) return 'English';
+    if (genre && LANGUAGE_BY_GENRE[genre]) return LANGUAGE_BY_GENRE[genre];
+    const inferred = this.inferGenre(t);
+    if (inferred && LANGUAGE_BY_GENRE[inferred]) return LANGUAGE_BY_GENRE[inferred];
+    return null;
+  },
+
+  /**
+   * Coarse mood inference from genre + title keywords. Returns null when unknown.
+   */
+  inferMood(genre = '', title = '') {
+    const text = `${title || ''} ${genre || ''}`.toLowerCase();
+    for (const { mood, pattern } of MOOD_KEYWORD_MAP) {
+      if (pattern.test(text)) return mood;
+    }
+    return null;
+  },
 
   /**
    * Deeply classifies a search candidate into its true content type and metadata flags
@@ -286,6 +374,18 @@ export const contentClassifier = {
 
     const classification = this.classifySearchResult(rawTrack);
 
+    // Coarse metadata enrichment (defensive: preserves any explicit rawTrack values)
+    const enrichText = `${rawTitle} ${artist}`;
+    const genre = rawTrack.genre || this.inferGenre(enrichText) || 'Pop';
+    const popularity = this.parsePopularity(
+      rawTrack.popularity != null ? rawTrack.popularity
+        : rawTrack.views != null ? rawTrack.views
+        : rawTrack.viewCount
+    );
+    const language = rawTrack.language || this.inferLanguage(enrichText, genre);
+    const mood = rawTrack.mood || this.inferMood(genre, rawTitle);
+    const releaseYear = rawTrack.releaseYear || rawTrack.year || null;
+
     return {
       id: rawTrack.id || rawTrack.videoId || 'trk_' + Math.random().toString(36).substring(2, 9),
       title: classification.cleanTitle || rawTitle || 'Untitled Track',
@@ -295,7 +395,11 @@ export const contentClassifier = {
       thumbnail: rawTrack.thumbnail || (rawTrack.id ? `https://i.ytimg.com/vi/${rawTrack.id}/hqdefault.jpg` : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400'),
       duration,
       views: rawTrack.views || null,
-      genre: rawTrack.genre || 'Pop',
+      popularity,
+      genre,
+      language: language || null,
+      mood: mood || null,
+      releaseYear,
       contentType: classification.contentType,
       isOfficialMusic: classification.isOfficialMusic,
       isAudioOnly: classification.isAudioOnly,

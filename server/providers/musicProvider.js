@@ -87,6 +87,7 @@ export const musicProvider = {
                     ? parts[0] * 3600 + parts[1] * 60 + parts[2]
                     : 210;
 
+                const rawViews = v.viewCountText?.simpleText || null;
                 rawCandidates.push({
                   id: videoId,
                   videoId,
@@ -96,7 +97,10 @@ export const musicProvider = {
                   artist,
                   duration: durationSec,
                   thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                  views: v.viewCountText?.simpleText || null,
+                  views: rawViews,
+                  // Numeric popularity parsed from the "1.2M views" string so freshness/
+                  // popularity ranking can actually use it (defensive: 0 when absent).
+                  popularity: contentClassifier.parsePopularity(rawViews),
                 });
               }
 
@@ -231,7 +235,34 @@ export const musicProvider = {
     return Array.from(pool.values());
   },
 
-  // 3. Multi-Region Stream Resolvers with Failover
+  // 2b. Taste-sourced candidate pool: retrieval seeded by the USER'S top artists,
+  // recent searches and (optionally) an active mood — not just the current song.
+  // Best-effort over the network; returns [] when offline/unreachable so callers
+  // can safely blend it with local corpora.
+  async getTasteCandidatePool({ artists = [], searches = [], genres = [], mood = null, limitPerQuery = 15, maxQueries = 6 } = {}) {
+    const queries = [];
+    for (const a of (artists || []).slice(0, 4)) {
+      if (a && String(a).trim()) queries.push(`${a} songs`);
+    }
+    for (const s of (searches || []).slice(0, 3)) {
+      if (s && String(s).trim()) queries.push(String(s).trim());
+    }
+    for (const g of (genres || []).slice(0, 2)) {
+      if (g && String(g).trim()) queries.push(`${g} ${mood ? mood + ' ' : ''}top hits`);
+    }
+    if (mood && String(mood).trim()) queries.push(`${mood} songs`);
+
+    const pool = new Map();
+    for (const q of queries.slice(0, maxQueries)) {
+      try {
+        const res = await this.search(q, 'songs', limitPerQuery);
+        for (const t of res.songs || []) {
+          if (t && t.id && !pool.has(t.id)) pool.set(t.id, t);
+        }
+      } catch {}
+    }
+    return Array.from(pool.values());
+  },
   async resolveAudioStream(videoId) {
     if (!videoId) return null;
 

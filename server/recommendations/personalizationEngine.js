@@ -81,17 +81,43 @@ export const personalizationEngine = {
   async processBehavioralEvent(userId, event = {}) {
     if (!userId) return;
     const profile = await db.getTasteProfile(userId);
-    const prefArtists = profile.preferred_artists || {};
-    const prefGenres = profile.preferred_genres || {};
+    const prefArtists = { ...(profile.preferred_artists || {}) };
+    const prefGenres = { ...(profile.preferred_genres || {}) };
+    const prefMoods = { ...(profile.preferred_moods || {}) };
     const likedArtists = new Set(profile.liked_artists || []);
     const dislikedArtists = new Set(profile.disliked_artists || []);
+    const likedGenres = new Set(profile.liked_genres || []);
+    const dislikedGenres = new Set(profile.disliked_genres || []);
+    let recentSeeds = Array.isArray(profile.recent_seeds) ? [...profile.recent_seeds] : [];
 
     const artist = event.artist || '';
     const genre = event.genre || '';
     const trackId = event.trackId || '';
+    const title = event.title || '';
+    const completionPercent = Number.isFinite(event.completionPercent) ? event.completionPercent : null;
+    const et = event.eventType;
+
+    // ---- RECENCY WEIGHTING ----
+    // Decay long-term affinity based on time since the profile was last touched, so
+    // the profile tracks CURRENT taste rather than an all-time accumulation. Same-batch
+    // events (age ~0) are effectively undecayed.
+    const now = Date.now();
+    const lastUpdate = Number(profile.updated_at) || now;
+    const ageDays = Math.max(0, (now - lastUpdate) / 86400000);
+    const HALF_LIFE_DAYS = 30;
+    const decay = ageDays > 0 ? Math.pow(0.5, ageDays / HALF_LIFE_DAYS) : 1;
+    if (decay < 1) {
+      for (const map of [prefArtists, prefGenres, prefMoods]) {
+        for (const k of Object.keys(map)) {
+          const v = map[k] * decay;
+          if (v < 0.5) delete map[k];
+          else map[k] = Math.round(v * 100) / 100;
+        }
+      }
+    }
 
     let delta = 0;
-    switch (event.eventType) {
+    switch (et) {
       case 'DONT_RECOMMEND_ARTIST':
         if (artist) dislikedArtists.add(artist);
         delete prefArtists[artist];
@@ -142,6 +168,11 @@ export const personalizationEngine = {
         delta = 5;
     }
 
+    // completionPercent (previously captured but ignored) nudges the affinity delta.
+    if (completionPercent != null && (et === 'PLAY_COMPLETED' || et === 'PLAY_50' || et === 'PLAY_STARTED' || et === 'REPEAT' || !et)) {
+      delta += Math.max(-15, Math.min(20, Math.round((completionPercent - 50) / 5)));
+    }
+
     if (artist && !dislikedArtists.has(artist)) {
       prefArtists[artist] = Math.max(0, (prefArtists[artist] || 0) + delta);
     }
@@ -149,26 +180,68 @@ export const personalizationEngine = {
       prefGenres[genre] = Math.max(0, (prefGenres[genre] || 0) + Math.floor(delta / 2));
     }
 
+    // ---- Preferred moods (event-supplied or inferred from genre/title) ----
+    const mood = event.mood || contentClassifier.inferMood(genre, title);
+    if (mood) {
+      prefMoods[mood] = Math.max(0, (prefMoods[mood] || 0) + Math.floor(delta / 2));
+    }
+
+    // ---- Liked / disliked genres ----
+    const POSITIVE_GENRE_EVENTS = ['LIKE', 'MORE_LIKE_THIS', 'REPEAT', 'PLAYLIST_ADD'];
+    const NEGATIVE_GENRE_EVENTS = ['DONT_RECOMMEND_ARTIST', 'NOT_INTERESTED', 'DISLIKE'];
+    if (genre && POSITIVE_GENRE_EVENTS.includes(et)) {
+      likedGenres.add(genre);
+      dislikedGenres.delete(genre);
+    }
+    if (genre && NEGATIVE_GENRE_EVENTS.includes(et)) {
+      dislikedGenres.add(genre);
+      likedGenres.delete(genre);
+    }
+
+    // ---- Play / skip / completion counters + running rates ----
+    const isSkip = typeof et === 'string' && et.startsWith('SKIP');
+    const isPlayAttempt = ['PLAY_STARTED', 'PLAY_50', 'PLAY_COMPLETED', 'REPEAT'].includes(et);
+    const isCompletion = et === 'PLAY_COMPLETED' || (isPlayAttempt && completionPercent != null && completionPercent >= 90);
+    const total_plays = (profile.total_plays || 0) + ((isPlayAttempt || isSkip) ? 1 : 0);
+    const total_skips = (profile.total_skips || 0) + (isSkip ? 1 : 0);
+    const total_completions = (profile.total_completions || 0) + (isCompletion ? 1 : 0);
+    const denom = Math.max(1, total_plays);
+    const completion_rate = Math.round((total_completions / denom) * 1000) / 1000;
+    const skip_rate = Math.round((total_skips / denom) * 1000) / 1000;
+
+    // ---- Rolling recent seeds (ids actually engaged with; used to filter "already heard") ----
+    if (trackId && (isPlayAttempt || isSkip)) {
+      recentSeeds = recentSeeds.filter((s) => s !== trackId);
+      recentSeeds.unshift(trackId);
+      recentSeeds = recentSeeds.slice(0, 50);
+    }
+
     await db.saveTasteProfile(userId, {
       ...profile,
       preferred_artists: prefArtists,
       preferred_genres: prefGenres,
+      preferred_moods: prefMoods,
       liked_artists: Array.from(likedArtists),
       disliked_artists: Array.from(dislikedArtists),
-      total_plays: (profile.total_plays || 0) + (event.eventType === 'PLAY_COMPLETED' ? 1 : 0),
-      total_skips: (profile.total_skips || 0) + (event.eventType?.startsWith('SKIP') ? 1 : 0),
-      last_active: Date.now(),
+      liked_genres: Array.from(likedGenres),
+      disliked_genres: Array.from(dislikedGenres),
+      skip_rate,
+      completion_rate,
+      total_plays,
+      total_skips,
+      total_completions,
+      recent_seeds: recentSeeds,
     });
 
     // Mirror to active session
     if (event.sessionId) {
       sessionManager.recordSessionEvent(event.sessionId, {
-        searchQuery: event.eventType === 'SEARCH' ? event.query : null,
+        searchQuery: et === 'SEARCH' ? event.query : null,
         artist,
         genre,
         trackId,
         weight: delta,
-        isSkip: event.eventType?.startsWith('SKIP'),
+        isSkip,
       });
     }
   },

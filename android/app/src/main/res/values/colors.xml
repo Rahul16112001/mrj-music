@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      MRJ Music brand palette. styles.xml referenced colorPrimary/colorPrimaryDark/
+      colorAccent with NO defining file, which is a hard aapt2 link failure — this
+      file fixes that build blocker. (ic_launcher_background is defined separately in
+      ic_launcher_background.xml; do not redefine it here.)
+    -->
+    <color name="colorPrimary">#030303</color>
+    <color name="colorPrimaryDark">#030303</color>
+    <color name="colorAccent">#FF0000</color>
+
+    <!-- System chrome — near-black surface matching the web app (#030303). -->
+    <color name="statusBar">#030303</color>
+    <color name="navBar">#030303</color>
+    <color name="windowBg">#030303</color>
+</resources>

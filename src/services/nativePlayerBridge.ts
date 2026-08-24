@@ -14,7 +14,10 @@ export interface NativePlayerPlugin {
   getNativeStorageBreakdown(): Promise<any>;
   getNativeDownloads(): Promise<{ tracks: any[] }>;
   deleteDownloadedTrack(options: { trackId: string }): Promise<{ success: boolean }>;
-  updateMetadata?(options: { track: any; isPlaying: boolean }): Promise<void>;
+  updateMetadata?(options: { track: any; isPlaying: boolean; isLocal?: boolean }): Promise<void>;
+  setPlaybackState?(options: { isPlaying: boolean; position?: number; duration?: number }): Promise<void>;
+  stop?(): Promise<void>;
+  requestNotificationPermission?(): Promise<{ granted: boolean }>;
   addListener(eventName: string, listenerFunc: (data: any) => void): Promise<any>;
   removeAllListeners(): Promise<void>;
 }
@@ -43,6 +46,7 @@ class NativePlayerBridge {
     onPositionChange?: (currentTime: number, duration: number) => void;
     onQueueChange?: (queue: Track[], queueIndex: number) => void;
     onError?: (error: string) => void;
+    onRemoteCommand?: (command: string, value?: number) => void;
   }): Promise<boolean> {
     if (!this.isNative || this.isInitialized) return this.isNative;
     this.isInitialized = true;
@@ -74,6 +78,13 @@ class NativePlayerBridge {
           callbacks.onError?.(data.error);
         });
 
+        // Lock-screen / notification transport controls relayed from native.
+        // In metadata-only mode the WebView (YouTube/HTML5) is the real engine,
+        // so these commands must drive the web player, not a native ExoPlayer.
+        NativePlayer.addListener('remoteCommand', (data) => {
+          callbacks.onRemoteCommand?.(data.command, data.value ?? data.position);
+        });
+
         return true;
       }
     } catch (err) {
@@ -96,13 +107,41 @@ class NativePlayerBridge {
     }
   }
 
-  public async updateMetadata(track: Track, isPlaying: boolean = true): Promise<void> {
+  public async updateMetadata(track: Track, isPlaying: boolean = true, isLocal: boolean = false): Promise<void> {
     if (!this.isNative) return;
     try {
       if (NativePlayer.updateMetadata) {
-        await NativePlayer.updateMetadata({ track, isPlaying });
+        await NativePlayer.updateMetadata({ track, isPlaying, isLocal });
       }
     } catch {}
+  }
+
+  // Lightweight play/pause + position refresh for the notification without a full metadata resend.
+  public async setPlaybackState(state: { isPlaying: boolean; position?: number; duration?: number }): Promise<void> {
+    if (!this.isNative) return;
+    try {
+      if (NativePlayer.setPlaybackState) await NativePlayer.setPlaybackState(state);
+    } catch {}
+  }
+
+  // Tear down the foreground service + media notification entirely.
+  public async stop(): Promise<void> {
+    if (!this.isNative) return;
+    try {
+      if (NativePlayer.stop) await NativePlayer.stop();
+    } catch {}
+  }
+
+  // Android 13+ requires runtime POST_NOTIFICATIONS or the media notification is silently suppressed.
+  public async requestNotificationPermission(): Promise<boolean> {
+    if (!this.isNative) return false;
+    try {
+      if (NativePlayer.requestNotificationPermission) {
+        const res = await NativePlayer.requestNotificationPermission();
+        return !!res?.granted;
+      }
+    } catch {}
+    return false;
   }
 
   public async pause(): Promise<boolean> {

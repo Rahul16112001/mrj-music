@@ -1,6 +1,10 @@
 package com.mrj.music.bridge
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -12,11 +16,7 @@ import com.mrj.music.model.NativeTrack
 import com.mrj.music.player.MRJExoPlayerManager
 import com.mrj.music.player.PlayerEventListener
 import com.mrj.music.service.MRJMediaSessionService
-import com.mrj.music.smartdownload.SmartDownloadWorker
 import com.mrj.music.storage.NativeOfflineStorage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 @CapacitorPlugin(name = "MRJNativePlayer")
 class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
@@ -26,22 +26,15 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
 
     override fun load() {
         super.load()
-        val context = context.applicationContext
-        playerManager = MRJExoPlayerManager.getInstance(context)
-        offlineStorage = NativeOfflineStorage.getInstance(context)
+        pluginInstance = this
+        val ctx = context.applicationContext
+        playerManager = MRJExoPlayerManager.getInstance(ctx)
+        offlineStorage = NativeOfflineStorage.getInstance(ctx)
         playerManager.addListener(this)
-
-        // Ensure MediaSessionService is started as Foreground Service
-        try {
-            val serviceIntent = Intent(context, MRJMediaSessionService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        // NOTE: the foreground MediaSessionService is intentionally NOT started here.
+        // Starting it on every launch posted a placeholder notification before any
+        // playback (the stuck "MRJ Music" notification). It now starts on first
+        // updateMetadata with a real track.
     }
 
     @PluginMethod
@@ -74,6 +67,7 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
         }
 
         playerManager.playTrack(track, if (queueList.isNotEmpty()) queueList else null)
+        ensureServiceStarted()
         call.resolve()
     }
 
@@ -125,21 +119,67 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
     fun updateMetadata(call: PluginCall) {
         val trackObj = call.getObject("track")
         val isPlaying = call.getBoolean("isPlaying") ?: true
+        // isLocal is informational: local tracks may carry a non-http thumbnail (blob/file),
+        // in which case the service's artwork fetch simply degrades to no large-icon.
+        val isLocal = call.getBoolean("isLocal") ?: false
         if (trackObj != null) {
             try {
-                val serviceIntent = Intent(context, MRJMediaSessionService::class.java)
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
-                }
                 val track = gson.fromJson(trackObj.toString(), NativeTrack::class.java)
+                // Set the track FIRST so the service (once created) sees it synchronously
+                // in onCreate and can satisfy the ~5s startForeground rule.
                 playerManager.notifyTrackChange(track, isPlaying)
+                ensureServiceStarted()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
         call.resolve()
+    }
+
+    @PluginMethod
+    fun setPlaybackState(call: PluginCall) {
+        val isPlaying = call.getBoolean("isPlaying") ?: true
+        playerManager.notifyPlaybackState(isPlaying)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun stop(call: PluginCall) {
+        try {
+            val intent = Intent(context, MRJMediaSessionService::class.java).apply {
+                action = MRJMediaSessionService.ACTION_STOP
+            }
+            // startService (not startForegroundService): pure teardown, no FGS obligation.
+            context.startService(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun requestNotificationPermission(call: PluginCall) {
+        val res = JSObject()
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                try {
+                    activity?.let {
+                        ActivityCompat.requestPermissions(
+                            it, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9911
+                        )
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            res.put("granted", granted)
+        } else {
+            res.put("granted", true)
+        }
+        call.resolve(res)
     }
 
     @PluginMethod
@@ -181,39 +221,27 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
         call.resolve(res)
     }
 
-    // PlayerEventListener Implementation
-    override fun onPlaybackStateChange(isPlaying: Boolean, isLoading: Boolean) {
-        val data = JSObject()
-        data.put("isPlaying", isPlaying)
-        data.put("isLoading", isLoading)
-        notifyListeners("playbackStateChange", data)
-    }
-
-    override fun onTrackChange(track: NativeTrack?) {
-        val data = JSObject()
-        if (track != null) {
-            data.put("track", JSObject(gson.toJson(track)))
-        } else {
-            data.put("track", null)
+    private fun ensureServiceStarted() {
+        try {
+            val serviceIntent = Intent(context, MRJMediaSessionService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        notifyListeners("trackChange", data)
     }
 
-    override fun onPositionChange(positionMs: Long, durationMs: Long) {
-        val data = JSObject()
-        data.put("currentTime", positionMs / 1000.0)
-        data.put("duration", durationMs / 1000.0)
-        notifyListeners("positionChange", data)
-    }
-
-    override fun onQueueChange(queue: List<NativeTrack>, currentIndex: Int) {
-        val data = JSObject()
-        val array = JSArray()
-        queue.forEach { array.put(JSObject(gson.toJson(it))) }
-        data.put("queue", array)
-        data.put("queueIndex", currentIndex)
-        notifyListeners("queueChange", data)
-    }
+    // ---- PlayerEventListener ----
+    // Metadata-only: the WebView (YouTube / HTML5 Audio) is the single source of truth, so
+    // native playback/track/position/queue changes are NOT forwarded to JS — doing so let
+    // the idle native engine fight the web player's state. Only errors are surfaced.
+    override fun onPlaybackStateChange(isPlaying: Boolean, isLoading: Boolean) {}
+    override fun onTrackChange(track: NativeTrack?) {}
+    override fun onPositionChange(positionMs: Long, durationMs: Long) {}
+    override fun onQueueChange(queue: List<NativeTrack>, currentIndex: Int) {}
 
     override fun onError(errorMessage: String) {
         val data = JSObject()
@@ -223,6 +251,25 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
 
     override fun handleOnDestroy() {
         playerManager.removeListener(this)
+        if (pluginInstance === this) pluginInstance = null
         super.handleOnDestroy()
+    }
+
+    companion object {
+        @Volatile
+        private var pluginInstance: MRJNativePlayerPlugin? = null
+
+        /**
+         * Bridge from the notification service to JS. Emits the `remoteCommand` event the
+         * web layer listens for. Commands are UPPERCASE to match the web bridge's dispatch
+         * table: PLAY_PAUSE | PLAY | PAUSE | NEXT | PREVIOUS | SEEK | STOP.
+         */
+        fun emitRemoteCommand(command: String, value: Double? = null) {
+            val plugin = pluginInstance ?: return
+            val data = JSObject()
+            data.put("command", command)
+            if (value != null) data.put("value", value)
+            plugin.notifyListeners("remoteCommand", data)
+        }
     }
 }

@@ -365,6 +365,7 @@ export const api = {
     currentQueueIds?: string[];
     mood?: string | null;
     sessionSearches?: string[];
+    sessionId?: string;
   }): Promise<{ tracks: Track[] }> {
     try {
       const res = await fetch(`${API_BASE}/recommendations/next`, {

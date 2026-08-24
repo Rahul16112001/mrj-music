@@ -173,6 +173,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const lastSeekTimestampRef = useRef<number>(0);
   const isFetchingAutoplay = useRef<boolean>(false);
   const sessionIdRef = useRef<string>('sess_' + Math.random().toString(36).substring(2, 9));
+  // latest-closure refs (assigned every render near the provider return) so that
+  // mount-bound non-React listeners never fire against a stale first-render closure.
+  const latestStateRef = useRef<any>({ queue: [], queueIndex: 0, repeatMode: 'off', currentTrack: null, autoplayEnabled: true, playbackHistory: [], isPlaying: false, currentTime: 0, duration: 0 });
+  const handlersRef = useRef<any>({});
+  const notifPermRef = useRef<boolean>(false);
 
   // Initialize playback & library storage
   useEffect(() => {
@@ -197,6 +202,20 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setQueue(q);
         setQueueIndex(idx);
       },
+      // Lock-screen / notification transport → drive the real (web) audio engine.
+      onRemoteCommand: (command, value) => {
+        const h = handlersRef.current;
+        const s = latestStateRef.current;
+        switch (command) {
+          case 'PLAY_PAUSE': h.togglePlay?.(); break;
+          case 'PLAY': if (!s.isPlaying) h.togglePlay?.(); break;
+          case 'PAUSE': if (s.isPlaying) h.togglePlay?.(); break;
+          case 'NEXT': h.handleNextTrack?.(); break;
+          case 'PREVIOUS': h.handlePreviousTrack?.(); break;
+          case 'SEEK': if (typeof value === 'number') h.seek?.(value); break;
+          case 'STOP': h.stopPlayback?.(); break;
+        }
+      },
     });
 
     // 1. Initialize HTML5 Audio Element
@@ -207,7 +226,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       audio.setAttribute('playsinline', 'true');
       audio.setAttribute('webkit-playsinline', 'true');
 
-      audio.onended = () => handleTrackEnded();
+      audio.onended = () => handlersRef.current.handleTrackEnded?.();
       audio.ontimeupdate = () => {
         if (isUsingHtmlAudio.current) {
           setCurrentTime(audio.currentTime);
@@ -275,7 +294,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   setIsPlaying(false);
                   releaseWakeLock();
                 } else if (event.data === 0) { // ENDED
-                  handleTrackEnded();
+                  handlersRef.current.handleTrackEnded?.();
                 } else if (event.data === 3) { // BUFFERING
                   setIsLoading(true);
                 }
@@ -434,6 +453,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         currentTrack: track,
         playedTrackIds: [track.id],
         currentQueueIds: [track.id],
+        sessionId: sessionIdRef.current,
+        mood: tuneConfig.mood || undefined,
       }).then(rec => {
         if (rec.tracks && rec.tracks.length > 0) {
           setQueue(prev => {
@@ -527,12 +548,17 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           setIsPlaying(false);
           nativePlayerBridge.updateMetadata(track, false);
         },
-        onNext: handleNextTrack,
-        onPrevious: handlePreviousTrack,
-        onSeek: seek,
+        onNext: () => handlersRef.current.handleNextTrack?.(),
+        onPrevious: () => handlersRef.current.handlePreviousTrack?.(),
+        onSeek: (s: number) => handlersRef.current.seek?.(s),
       });
 
       nativePlayerBridge.updateMetadata(track, true);
+      // Android 13+ requires runtime POST_NOTIFICATIONS before the media notification can show.
+      if (!notifPermRef.current) {
+        notifPermRef.current = true;
+        nativePlayerBridge.requestNotificationPermission();
+      }
 
       checkAndTriggerAutoplay(queueIndex, queue);
     } catch (err) {
@@ -577,6 +603,16 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } else {
       setIsPlaying(!isPlaying);
     }
+    // Keep the native media notification's play/pause + scrubber in sync.
+    nativePlayerBridge.setPlaybackState({ isPlaying: !isPlaying, position: currentTime, duration });
+  };
+
+  // Hard stop: pause whichever engine is active and tear down the media notification.
+  const stopPlayback = () => {
+    try { if (isUsingHtmlAudio.current && htmlAudioRef.current) htmlAudioRef.current.pause(); } catch {}
+    try { ytPlayerRef.current?.pauseVideo?.(); } catch {}
+    setIsPlaying(false);
+    nativePlayerBridge.stop();
   };
 
   const handleTrackEnded = () => {
@@ -617,6 +653,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             currentTrack,
             playedTrackIds: playbackHistory.map(t => t.id),
             currentQueueIds: currentQueue.map(t => t.id),
+            sessionId: sessionIdRef.current,
+            mood: tuneConfig.mood || undefined,
           });
 
           if (genId === autoplayGenerationId.current && nextBatch.tracks.length > 0) {
@@ -680,11 +718,14 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               currentTrack,
               playedTrackIds: playbackHistory.map(t => t.id),
               currentQueueIds: queue.map(t => t.id),
+              sessionId: sessionIdRef.current,
+              mood: tuneConfig.mood || undefined,
             });
             if (res.tracks.length > 0) {
               const nextTrackItem = res.tracks[0];
+              const baseLen = latestStateRef.current.queue.length;
               setQueue(prev => [...prev, ...res.tracks]);
-              setQueueIndex(queue.length);
+              setQueueIndex(baseLen);
               playTrack(nextTrackItem);
               return;
             }
@@ -699,15 +740,20 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         );
         if (offlineTracks.length > 0) {
           const nextTrackItem = offlineTracks[0];
+          const baseLen = latestStateRef.current.queue.length;
           setQueue(prev => [...prev, ...offlineTracks]);
-          setQueueIndex(queue.length);
+          setQueueIndex(baseLen);
           playTrack(nextTrackItem);
           return;
         }
 
+        // Autoplay exhausted with nothing to queue — clear the notification so it can't stick.
+        nativePlayerBridge.stop();
         setIsPlaying(false);
         return;
       } else {
+        // Autoplay disabled — playback truly ends; tear down the media notification.
+        nativePlayerBridge.stop();
         setIsPlaying(false);
         return;
       }
@@ -751,6 +797,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } else if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
       try { ytPlayerRef.current.seekTo(seconds, true); } catch {}
     }
+    nativePlayerBridge.setPlaybackState({ isPlaying, position: seconds, duration });
   };
 
   const setVolume = (val: number) => {
@@ -972,6 +1019,15 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsAdPlaying(false);
     setActiveAd(null);
   };
+
+  // --- Latest-closure refs -------------------------------------------------
+  // Non-React callbacks (HTML5 <audio> onended, the YouTube iframe onStateChange,
+  // native lock-screen remoteCommand, and the web MediaSession handlers) are bound
+  // ONCE and would otherwise capture the first render's stale state (queue=[],
+  // queueIndex=0). Refreshing these refs every render lets those listeners always
+  // reach the live handlers/state — this is what makes web autoplay-on-end fire.
+  latestStateRef.current = { queue, queueIndex, repeatMode, currentTrack, autoplayEnabled, playbackHistory, isPlaying, currentTime, duration };
+  handlersRef.current = { handleTrackEnded, handleNextTrack, handlePreviousTrack, togglePlay, seek, stopPlayback };
 
   return (
     <MusicPlayerContext.Provider

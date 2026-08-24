@@ -16,6 +16,7 @@ import {
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { useAuth } from '../context/AuthContext';
 import { api, SearchSuggestionsResult } from '../services/api';
+import { syncService } from '../services/syncService';
 import { SearchSuggestionDropdown } from './SearchSuggestionDropdown';
 import { Track } from '../types';
 
@@ -91,6 +92,8 @@ export const Navbar: React.FC = () => {
     if (isAuthenticated) {
       api.addSearchHistory(clean);
     }
+    // Feed the search signal into the personalization engine (search → taste).
+    syncService.queueEvent({ eventType: 'SEARCH', query: clean, title: clean });
     navigate(`/search?q=${encodeURIComponent(clean)}`);
   };
 
@@ -128,7 +131,10 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header className="h-16 px-4 md:px-8 bg-[#030303]/95 backdrop-blur-md border-b border-[#181818] flex items-center justify-between sticky top-0 z-40 select-none">
+    <header
+      className="px-4 md:px-8 bg-[#030303]/95 backdrop-blur-md border-b border-[#181818] flex items-center justify-between sticky top-0 z-40 select-none"
+      style={{ height: 'calc(4rem + var(--sat))', paddingTop: 'var(--sat)' }}
+    >
       {/* Left: Navigation Controls */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 hidden sm:flex">
