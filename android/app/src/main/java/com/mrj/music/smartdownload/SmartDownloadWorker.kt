@@ -4,8 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.mrj.music.data.local.entities.DownloadedTrackEntity
-import com.mrj.music.data.repository.MusicRepository
+import com.google.gson.Gson
 import com.mrj.music.model.NativeTrack
 import com.mrj.music.storage.NativeOfflineStorage
 import kotlinx.coroutines.Dispatchers
@@ -13,21 +12,18 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
 
-class SmartDownloadWorker @Inject constructor(
+class SmartDownloadWorker(
     private val context: Context,
     workerParams: WorkerParameters
 ) : CoroutineWorker(context, workerParams) {
 
     private val offlineStorage = NativeOfflineStorage.getInstance(context)
+    private val gson = Gson()
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
-
-    @Inject
-    lateinit var musicRepository: MusicRepository
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
@@ -44,60 +40,50 @@ class SmartDownloadWorker @Inject constructor(
                 offlineStorage.evictLowestPrioritySmartDownloads(currentStorage - maxStorageBytes)
             }
 
-            val tracksToDownload = currentDownloads.size
-            if (tracksToDownload >= maxTracks) {
+            val request = Request.Builder()
+                .url("https://mrj-music.vercel.app/api/music/personalized-home?region=IN")
+                .build()
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful || response.body == null) {
                 return@withContext Result.success()
             }
 
-            val homeResult = musicRepository.getHome()
-            if (homeResult.isSuccess) {
-                val homeData = homeResult.getOrNull()!!
-                val quickPicks = (homeData["personalized"] as? Map<String, Any>)?.get("quickPicks") as? List<Map<String, Any>> ?: emptyList()
-                val recommended = (homeData["personalized"] as? Map<String, Any>)?.get("recommendedForYou") as? List<Map<String, Any>> ?: emptyList()
-                val allTracks = (quickPicks + recommended).distinctBy { it["id"] }
+            val bodyStr = response.body!!.string()
+            val homeData = gson.fromJson(bodyStr, Map::class.java)
+            val personalized = homeData["personalized"] as? Map<*, *>
+            val quickPicks = (personalized?.get("quickPicks") as? List<Map<*, *>>) ?: emptyList()
 
-                var downloaded = 0
-                for (trackMap in allTracks) {
-                    if (downloaded >= maxTracks - currentDownloads.size) break
+            var downloaded = 0
+            for (trackMap in quickPicks) {
+                if (downloaded >= maxTracks - currentDownloads.size) break
 
-                    val trackId = trackMap["id"] as? String ?: continue
-                    if (offlineStorage.getTrack(trackId) != null) continue
+                val trackId = trackMap["id"] as? String ?: continue
+                if (offlineStorage.getTrack(trackId) != null) continue
 
-                    val title = trackMap["title"] as? String ?: continue
-                    val artist = trackMap["artist"] as? String ?: continue
-                    val thumbnail = trackMap["thumbnail"] as? String
-                    val duration = (trackMap["duration"] as? Number)?.toDouble() ?: 0.0
-                    val providerTrackId = trackMap["providerTrackId"] as? String ?: trackId
+                val title = trackMap["title"] as? String ?: continue
+                val artist = trackMap["artist"] as? String ?: continue
+                val thumbnail = trackMap["thumbnail"] as? String
+                val duration = (trackMap["duration"] as? Number)?.toDouble() ?: 0.0
+                val streamUrl = "https://mrj-music.vercel.app/api/music/stream/$trackId"
 
-                    val resolveResult = musicRepository.search("$title $artist")
-                    if (resolveResult.isSuccess) {
-                        val searchData = resolveResult.getOrNull()!!
-                        val songs = (searchData["songs"] as? List<Map<String, Any>>) ?: emptyList()
-                        val firstSong = songs.firstOrNull()
-                        val streamUrl = firstSong?.get("audioUrl") as? String
-                            ?: "https://mrj-music.vercel.app/api/music/stream/$providerTrackId"
+                val nativeTrack = NativeTrack(
+                    id = trackId,
+                    title = title,
+                    artist = artist,
+                    album = trackMap["album"] as? String,
+                    thumbnail = thumbnail,
+                    duration = duration,
+                    genre = trackMap["genre"] as? String,
+                    providerTrackId = trackId,
+                    streamUrl = streamUrl,
+                    downloadType = "smart",
+                    priorityScore = 50.0
+                )
 
-                        val nativeTrack = NativeTrack(
-                            id = trackId,
-                            canonicalTrackId = trackMap["canonicalTrackId"] as? String,
-                            title = title,
-                            artist = artist,
-                            album = trackMap["album"] as? String,
-                            thumbnail = thumbnail,
-                            duration = duration,
-                            genre = trackMap["genre"] as? String,
-                            providerTrackId = providerTrackId,
-                            streamUrl = streamUrl,
-                            downloadType = "smart",
-                            priorityScore = 50.0
-                        )
-
-                        val success = downloadTrackDirectly(nativeTrack, streamUrl, "smart", 50.0, "recommendation")
-                        if (success) {
-                            downloaded++
-                            Log.d(TAG, "Smart downloaded: $title - $artist")
-                        }
-                    }
+                val success = downloadTrackDirectly(nativeTrack, streamUrl, "smart", 50.0, "recommendation")
+                if (success) {
+                    downloaded++
+                    Log.d(TAG, "Smart downloaded: $title - $artist")
                 }
             }
 
@@ -108,7 +94,7 @@ class SmartDownloadWorker @Inject constructor(
         }
     }
 
-    suspend fun downloadTrackDirectly(
+    private suspend fun downloadTrackDirectly(
         track: NativeTrack,
         streamUrl: String,
         downloadType: String = "manual",

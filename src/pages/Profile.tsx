@@ -20,8 +20,11 @@ import { useMusicPlayer } from '../context/MusicPlayerContext';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout, changePassword, deleteAccount } = useAuth();
+  const { user, logout, changePassword, deleteAccount, updatePreferredName } = useAuth();
   const { likedTrackIds, playlists } = useMusicPlayer();
+
+  const [preferredName, setPreferredName] = useState(user?.preferredName || user?.name || '');
+  const [nameSavedMsg, setNameSavedMsg] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -37,6 +40,15 @@ export const ProfilePage: React.FC = () => {
     navigate('/login');
     return null;
   }
+
+  const handleSaveName = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (preferredName.trim()) {
+      updatePreferredName(preferredName.trim());
+      setNameSavedMsg(true);
+      setTimeout(() => setNameSavedMsg(false), 3000);
+    }
+  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +166,42 @@ export const ProfilePage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Preferred Callout Name Section */}
+      <section className="space-y-4 bg-[#121212] border border-[#212121] p-6 rounded-3xl">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <UserIcon className="w-5 h-5 text-[#ff4e4e]" />
+            <span>Preferred Callout Name</span>
+          </h2>
+          {nameSavedMsg && (
+            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+              <Check className="w-3.5 h-3.5" />
+              <span>Saved!</span>
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-[#aaaaaa]">
+          This is the name MRJ Music uses to greet and call you throughout your personal dashboard and mixes.
+        </p>
+
+        <form onSubmit={handleSaveName} className="flex flex-col sm:flex-row gap-3 max-w-md">
+          <input
+            type="text"
+            required
+            value={preferredName}
+            onChange={(e) => setPreferredName(e.target.value)}
+            placeholder="e.g. Shivam"
+            className="flex-1 h-11 px-4 bg-[#1e1e1e] border border-[#333333] focus:border-[#ff0000] rounded-xl text-sm text-white focus:outline-none transition-all placeholder-[#555555]"
+          />
+          <button
+            type="submit"
+            className="px-5 h-11 bg-[#ff0000] hover:bg-[#cc0000] text-white text-xs font-bold rounded-xl transition-all active:scale-95 shrink-0"
+          >
+            Save Name
+          </button>
+        </form>
+      </section>
 
       {/* Change Password Form */}
       <section className="space-y-4 bg-[#121212] border border-[#212121] p-6 rounded-3xl">

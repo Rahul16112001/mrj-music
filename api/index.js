@@ -40,10 +40,11 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
       versionCode: 300,
       apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
       apkFileName: 'mrj-music-v3.0.0.apk',
-      fileSize: '7.8 MB',
-      fileSizeBytes: 8178892,
+      fileSize: '64.4 MB',
+      fileSizeBytes: 67579573,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
+      sha256: '1779a5f183cf4c9c5c99c1cb3c1e706ac8228fb825bff4b4cb05e2b835046655',
       engine: 'AndroidX Media3 / ExoPlayer + Foreground MediaSession Service',
       isAvailable: true,
       releaseNotes: [

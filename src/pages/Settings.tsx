@@ -273,6 +273,30 @@ export const SettingsPage: React.FC = () => {
         )}
       </section>
 
+      {/* Download Android App Section */}
+      <section className="space-y-4 bg-gradient-to-r from-red-950/40 via-[#161618] to-[#121212] border border-red-900/30 p-6 rounded-3xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-red-600/20 border border-red-500/30 flex items-center justify-center shrink-0">
+              <Smartphone className="w-6 h-6 text-[#ff4e4e]" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white">MRJ Music Android App</h2>
+              <p className="text-xs text-[#aaaaaa]">
+                Native AndroidX Media3 Background Audio, Offline Smart Downloads & Lock Screen Controls
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/download"
+            className="px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-all shrink-0 min-h-[44px]"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download Android App</span>
+          </Link>
+        </div>
+      </section>
+
       {/* 4. Automatic Update & Central Release Management */}
       <section className="space-y-4 bg-gradient-to-r from-[#141417] via-[#1a1417] to-[#141417] border border-[#2c2226] p-6 rounded-3xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

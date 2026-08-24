@@ -210,7 +210,7 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
     }
 
     override fun onPlaybackStateChange(isPlaying: Boolean, isLoading: Boolean) {
-        updateNotification(playerManager.currentTrack, isPlaying)
+        updateNotification(playerManager.currentTrack.value, isPlaying)
     }
 
     override fun onTrackChange(track: NativeTrack?) {

@@ -61,6 +61,24 @@ export const Sidebar: React.FC = () => {
             <span>{label}</span>
           </NavLink>
         ))}
+
+        {/* Prominent Download App Link */}
+        <NavLink
+          to="/download"
+          className={({ isActive }) =>
+            `flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+              isActive
+                ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-lg shadow-red-600/30'
+                : 'text-rose-400 hover:text-white hover:bg-red-950/30 border border-red-900/30'
+            }`
+          }
+        >
+          <Smartphone className="w-5 h-5 text-[#ff4e4e] shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate">Download App</p>
+            <p className="text-[10px] text-zinc-400 truncate">Get MRJ Music for Android</p>
+          </div>
+        </NavLink>
       </div>
 
       <div className="mx-4 my-2 border-t border-[#1f1f1f]" />

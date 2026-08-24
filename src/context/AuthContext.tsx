@@ -11,6 +11,7 @@ interface AuthContextType {
   register: (name: string, email: string, password: string, ageGroup?: string, gender?: string) => Promise<void>;
   sendSignupOtp: (email: string, name?: string) => Promise<{ status: string; message: string; otp?: string; expiresAt?: number }>;
   verifySignupOtp: (email: string, otp: string, password: string, name: string, ageGroup?: string, gender?: string) => Promise<void>;
+  updatePreferredName: (preferredName: string) => void;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   deleteAccount: (password: string) => Promise<{ success: boolean; message: string }>;
@@ -100,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.refreshToken) {
           localStorage.setItem('MRJ_REFRESH_TOKEN', data.refreshToken);
         }
-        setUser(data.user);
+        saveUserPersistently(data.user);
         await handlePostAuthMigration();
       }
     } finally {
@@ -130,7 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.refreshToken) {
           localStorage.setItem('MRJ_REFRESH_TOKEN', data.refreshToken);
         }
-        setUser(data.user);
+        saveUserPersistently(data.user);
         await handlePostAuthMigration();
       }
     } finally {
@@ -150,12 +151,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.refreshToken) {
           localStorage.setItem('MRJ_REFRESH_TOKEN', data.refreshToken);
         }
-        setUser(data.user);
+        saveUserPersistently(data.user);
         await handlePostAuthMigration();
       }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const updatePreferredName = (preferredName: string) => {
+    if (!user) return;
+    const updatedUser = { ...user, preferredName: preferredName.trim(), name: preferredName.trim() || user.name };
+    saveUserPersistently(updatedUser);
   };
 
   const logout = async () => {
@@ -165,7 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('MRJ_AUTH_TOKEN');
       localStorage.removeItem('MRJ_REFRESH_TOKEN');
       localStorage.removeItem('MRJ_LAST_AUTH_EMAIL');
-      setUser(null);
+      saveUserPersistently(null);
     } finally {
       setIsLoading(false);
     }
@@ -180,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('MRJ_AUTH_TOKEN');
     localStorage.removeItem('MRJ_REFRESH_TOKEN');
     localStorage.removeItem('MRJ_LAST_AUTH_EMAIL');
-    setUser(null);
+    saveUserPersistently(null);
     return res;
   };
 
@@ -194,6 +201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         sendSignupOtp,
         verifySignupOtp,
+        updatePreferredName,
         logout,
         changePassword,
         deleteAccount,

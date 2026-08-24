@@ -163,7 +163,7 @@ export const RegisterPage: React.FC = () => {
         {step === 'details' ? (
           <form onSubmit={handleSendOtp} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#aaaaaa]">Full Name</label>
+              <label className="text-xs font-bold text-[#aaaaaa]">Your Name / Nickname (What should MRJ Music call you?)</label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#717171]" />
                 <input
@@ -171,7 +171,7 @@ export const RegisterPage: React.FC = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your full name"
+                  placeholder="e.g. Shivam"
                   className="w-full h-11 pl-10 pr-4 bg-[#1a1a20] border border-white/10 focus:border-[#ff0000] rounded-xl text-sm text-white focus:outline-none transition-all placeholder-[#555555]"
                   autoFocus
                 />

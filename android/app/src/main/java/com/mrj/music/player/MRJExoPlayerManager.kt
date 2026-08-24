@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -13,8 +12,10 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.mrj.music.model.NativeTrack
 import com.mrj.music.storage.NativeOfflineStorage
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import java.util.Collections
 
 private const val TAG = "MRJ_ExoPlayerManager"
@@ -27,11 +28,7 @@ interface PlayerEventListener {
     fun onError(errorMessage: String)
 }
 
-import javax.inject.Inject
-import javax.inject.Singleton
-
-@Singleton
-class MRJExoPlayerManager @Inject constructor(private val context: Context) {
+class MRJExoPlayerManager(private val context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setAudioAttributes(
@@ -57,7 +54,7 @@ class MRJExoPlayerManager @Inject constructor(private val context: Context) {
 
     private val _position = MutableStateFlow(0L)
     private val _duration = MutableStateFlow(0L)
-    val positionFlow: StateFlow<Pair<Long, Long>> = _position.combine(_duration) { pos, dur -> pos to dur }
+    val positionFlow: Flow<Pair<Long, Long>> = _position.combine(_duration) { pos, dur -> pos to dur }
 
     val queue = mutableListOf<NativeTrack>()
     var queueIndex: Int = 0

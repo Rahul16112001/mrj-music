@@ -20,6 +20,7 @@ import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { ProfilePage } from './pages/Profile';
 import { ForgotPasswordPage } from './pages/ForgotPassword';
+import { DownloadApp } from './pages/DownloadApp';
 import { androidLifecycleService } from './services/androidLifecycleService';
 import { updateService, UpdateCheckResult } from './services/updateService';
 import { UpdateModal } from './components/UpdateModal';
@@ -70,6 +71,8 @@ const AppContent: React.FC = () => {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/download" element={<DownloadApp />} />
+              <Route path="/download-app" element={<DownloadApp />} />
             </Routes>
           </ErrorBoundary>
         </main>
