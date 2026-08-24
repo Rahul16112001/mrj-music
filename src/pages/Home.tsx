@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Sparkles, TrendingUp, Compass, Heart, Loader2, RefreshCw, Flame, Globe, Music2 } from 'lucide-react';
+import { Play, Sparkles, TrendingUp, Compass, Heart, Loader2, RefreshCw, Flame, Globe, Music2, Sun, Moon, Sunset, Coffee, Zap } from 'lucide-react';
 import { Track, MoodStation } from '../types';
 import { api } from '../services/api';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
@@ -16,10 +16,13 @@ export const Home: React.FC = () => {
   const navigate = useNavigate();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState('IN');
   const [showTasteModal, setShowTasteModal] = useState(false);
 
   // Home Page Sections
+  const [greeting, setGreeting] = useState('Good Day');
+  const [timeOfDayMix, setTimeOfDayMix] = useState<{ sectionTitle: string; tracks: Track[] } | null>(null);
   const [quickPicks, setQuickPicks] = useState<Track[]>([]);
   const [dailyMixes, setDailyMixes] = useState<any[]>([]);
   const [listenAgain, setListenAgain] = useState<Track[]>([]);
@@ -29,10 +32,14 @@ export const Home: React.FC = () => {
   const [moods, setMoods] = useState<MoodStation[]>([]);
   const [activeMoodFilter, setActiveMoodFilter] = useState<string | null>(null);
 
-  const fetchHomeData = async (region = selectedRegion) => {
-    setIsLoading(true);
+  const fetchHomeData = async (region = selectedRegion, isManualRefresh = false) => {
+    if (isManualRefresh) setIsRefreshing(true);
+    else setIsLoading(true);
+
     try {
       const data = await api.getPersonalizedHome(region);
+      setGreeting(data.personalized?.greeting || 'Welcome');
+      setTimeOfDayMix(data.personalized?.timeOfDay || null);
       setQuickPicks(data.personalized?.quickPicks || []);
       setDailyMixes(data.personalized?.dailyMixes || []);
       setListenAgain(data.personalized?.listenAgain || []);
@@ -44,6 +51,7 @@ export const Home: React.FC = () => {
       console.error('Home data fetch error:', err);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -75,6 +83,14 @@ export const Home: React.FC = () => {
     } catch (err) {
       console.error('Mood station error:', err);
     }
+  };
+
+  const getTimeIcon = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return <Sun className="w-5 h-5 text-amber-400" />;
+    if (hour >= 12 && hour < 17) return <Coffee className="w-5 h-5 text-orange-400" />;
+    if (hour >= 17 && hour < 21) return <Sunset className="w-5 h-5 text-rose-400" />;
+    return <Moon className="w-5 h-5 text-indigo-400" />;
   };
 
   if (isLoading) {
@@ -112,7 +128,37 @@ export const Home: React.FC = () => {
 
   return (
     <div className="pb-mobile-player-nav pt-2 px-3 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-8 select-none">
-      {/* 1. MOOD / ACTIVITY FILTER CHIPS */}
+      {/* 1. DYNAMIC GREETING & TIME-OF-DAY HERO BANNER */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-2xl bg-[#18181b] border border-[#27272a] shadow-md">
+            {getTimeIcon()}
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <span>{greeting}</span>
+              {user?.name && (
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-rose-400">
+                  {user.name.split(' ')[0]}
+                </span>
+              )}
+            </h1>
+            <p className="text-xs text-[#8e8e93]">Fresh music updated live for your taste profile</p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => fetchHomeData(selectedRegion, true)}
+          disabled={isRefreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#18181b] border border-[#27272a] hover:border-[#3f3f46] text-xs font-bold text-[#aaaaaa] hover:text-white transition-all active:scale-95 shadow-sm"
+          title="Refresh recommendations"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-[#ff0000]' : ''}`} />
+          <span className="hidden sm:inline">Refresh</span>
+        </button>
+      </div>
+
+      {/* 2. MOOD / ACTIVITY FILTER CHIPS */}
       {moods.length > 0 && (
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
           {moods.slice(0, 10).map((m) => {
@@ -134,7 +180,38 @@ export const Home: React.FC = () => {
         </div>
       )}
 
-      {/* 2. QUICK PICKS (Mobile 2-Column / Compact Grid) */}
+      {/* 3. TIME-OF-DAY ADAPTIVE MIX SHELF (if available) */}
+      {timeOfDayMix && timeOfDayMix.tracks.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-400" />
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                {timeOfDayMix.sectionTitle}
+              </h2>
+            </div>
+            <button
+              onClick={() => playTrack(timeOfDayMix.tracks[0], timeOfDayMix.tracks)}
+              className="text-xs font-bold text-[#ff4e4e] hover:underline"
+            >
+              Play all
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {timeOfDayMix.tracks.slice(0, 8).map((track) => (
+              <TrackCard
+                key={track.id}
+                track={track}
+                queueContext={timeOfDayMix.tracks}
+                variant="compact"
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 4. DYNAMIC QUICK PICKS */}
       {quickPicks.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -165,7 +242,7 @@ export const Home: React.FC = () => {
         </section>
       )}
 
-      {/* 3. DAILY MIXES (Horizontal Carousel) */}
+      {/* 5. DAILY MIXES (Horizontal Carousel) */}
       {dailyMixes.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -197,7 +274,7 @@ export const Home: React.FC = () => {
         </section>
       )}
 
-      {/* 4. LISTEN AGAIN / RECENTLY PLAYED */}
+      {/* 6. LISTEN AGAIN / RECENTLY PLAYED */}
       {listenAgain.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -225,7 +302,7 @@ export const Home: React.FC = () => {
         </section>
       )}
 
-      {/* 5. TOP ARTISTS (Circular Avatars) */}
+      {/* 7. TOP ARTISTS (Circular Avatars) */}
       {topArtists.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
@@ -256,14 +333,14 @@ export const Home: React.FC = () => {
         </section>
       )}
 
-      {/* 6. TRENDING REGIONAL */}
+      {/* 8. TRENDING REGIONAL */}
       {trendingRegional.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Flame className="w-4 h-4 text-[#ff0000]" />
               <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                Trending in {selectedRegion}
+                Trending Hits
               </h2>
             </div>
             <button
@@ -275,7 +352,7 @@ export const Home: React.FC = () => {
           </div>
 
           <div className="space-y-1">
-            {trendingRegional.slice(0, 6).map((track, idx) => (
+            {trendingRegional.slice(0, 8).map((track, idx) => (
               <TrackCard
                 key={track.id}
                 track={track}
@@ -286,27 +363,6 @@ export const Home: React.FC = () => {
             ))}
           </div>
         </section>
-      )}
-
-      {/* 7. EMPTY / RECONNECT RETRY STATE */}
-      {!isLoading && quickPicks.length === 0 && dailyMixes.length === 0 && trendingRegional.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-          <div className="w-14 h-14 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
-            <Music2 className="w-7 h-7 text-[#ff0000]" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-white">Connecting to MRJ Music...</h3>
-            <p className="text-xs text-zinc-400 max-w-xs">
-              Fetching your personalized mixes, trending charts, and daily stations.
-            </p>
-          </div>
-          <button
-            onClick={() => fetchHomeData()}
-            className="px-6 py-2.5 rounded-full bg-white text-black font-bold text-xs hover:bg-zinc-200 active:scale-95 transition-all shadow-lg"
-          >
-            Refresh Feed
-          </button>
-        </div>
       )}
 
       {/* Taste Onboarding Modal */}

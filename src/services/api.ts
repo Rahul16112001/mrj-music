@@ -269,7 +269,15 @@ export const api = {
 
   // ==================== RECOMMENDATION & AUTOPLAY API ====================
   async getPersonalizedHome(region: string = 'IN'): Promise<{
-    personalized: { quickPicks: Track[]; dailyMixes: any[]; listenAgain: Track[]; recommendedForYou: Track[]; becauseYouLike: any };
+    personalized: {
+      greeting?: string;
+      timeOfDay?: { sectionTitle: string; tracks: Track[] };
+      quickPicks: Track[];
+      dailyMixes: any[];
+      listenAgain: Track[];
+      recommendedForYou: Track[];
+      becauseYouLike: any;
+    };
     discovery: { newReleases: Track[]; topArtists: any[] };
     charts: { trendingRegional: Track[]; trendingWorldwide: Track[]; topSongs: Track[]; topArtists: any[]; region: string; updatedAt: number };
     moods: MoodStation[];

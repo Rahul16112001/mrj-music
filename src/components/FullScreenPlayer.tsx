@@ -18,13 +18,18 @@ import {
   Sliders,
   Video,
   Music,
-  MoreVertical
+  MoreVertical,
+  Volume2,
+  VolumeX,
+  Radio,
+  Sparkles
 } from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { SyncedLyrics } from './SyncedLyrics';
 import { TuneMixModal } from './TuneMixModal';
 import { TrackContextMenu } from './TrackContextMenu';
 import { ArtworkImage } from './ArtworkImage';
+import { AudioVisualizer } from './AudioVisualizer';
 import { androidLifecycleService } from '../services/androidLifecycleService';
 import { api } from '../services/api';
 import { Track } from '../types';
@@ -117,34 +122,35 @@ export const FullScreenPlayer: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#030303] text-white flex flex-col justify-between select-none overflow-hidden animate-in fade-in slide-in-from-bottom duration-300"
+      className="fixed inset-0 z-50 bg-[#060608] text-white flex flex-col justify-between select-none overflow-hidden animate-in fade-in slide-in-from-bottom duration-300"
       style={{
         paddingTop: 'max(var(--sat), 12px)',
         paddingBottom: 'max(var(--sab), 16px)',
       }}
     >
-      {/* Dynamic Ambient Glow Background */}
+      {/* 1. DYNAMIC MULTI-LAYER AMBIENT GLOW BACKDROP */}
       <div
-        className="absolute inset-0 opacity-20 blur-3xl pointer-events-none transition-all duration-700"
+        className="absolute inset-0 opacity-30 blur-[120px] scale-125 pointer-events-none transition-all duration-1000"
         style={{
-          backgroundImage: `url(${currentTrack.thumbnail})`,
+          backgroundImage: `radial-gradient(circle at 50% 35%, #ff0000 0%, transparent 65%), url(${currentTrack.thumbnail})`,
           backgroundPosition: 'center',
           backgroundSize: 'cover',
         }}
       />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[#060608]/90 pointer-events-none" />
 
-      {/* 1. TOP BAR */}
+      {/* 2. TOP BAR */}
       <header className="relative z-10 px-4 py-2 flex items-center justify-between">
         <button
           onClick={() => setFullScreenPlayerOpen(false)}
-          className="p-2.5 rounded-full hover:bg-white/10 active:scale-95 transition-all text-[#aaaaaa] hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center"
+          className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 transition-all text-[#aaaaaa] hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center backdrop-blur-md border border-white/5 shadow-sm"
           aria-label="Collapse player"
         >
           <ChevronDown className="w-6 h-6" />
         </button>
 
         {/* Audio / Video Toggle Pill */}
-        <div className="flex items-center bg-[#18181b] border border-[#27272a] rounded-full p-1 shadow-inner">
+        <div className="flex items-center bg-[#141418]/80 backdrop-blur-md border border-white/10 rounded-full p-1 shadow-inner">
           <button
             onClick={() => playbackFormat !== 'audio' && togglePlaybackFormat()}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${
@@ -173,7 +179,7 @@ export const FullScreenPlayer: React.FC = () => {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setTuneModalOpen(true)}
-            className="p-2.5 rounded-full hover:bg-white/10 text-[#aaaaaa] hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
+            className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-[#aaaaaa] hover:text-white min-w-[44px] min-h-[44px] flex items-center justify-center transition-all active:scale-95 backdrop-blur-md border border-white/5 shadow-sm"
             title="Tune Mix"
           >
             <Sliders className="w-5 h-5" />
@@ -181,19 +187,25 @@ export const FullScreenPlayer: React.FC = () => {
         </div>
       </header>
 
-      {/* 2. MAIN CENTER: ARTWORK & DETAILS */}
+      {/* 3. MAIN CENTER: ARTWORK, LIVE SPECTRUM & CONTROLS */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 max-w-lg mx-auto w-full min-h-0">
-        {/* 1:1 Square Artwork */}
-        <div className="w-full aspect-square max-w-[320px] sm:max-w-[360px] rounded-2xl overflow-hidden shadow-2xl bg-[#141416] border border-white/5 my-auto">
-          <ArtworkImage
-            src={currentTrack.thumbnail}
-            alt={currentTrack.title}
-            className="w-full h-full object-cover shadow-inner"
-          />
+        {/* Animated Artwork Container with Dynamic Drop Shadow */}
+        <div className="relative group my-auto">
+          <div
+            className={`w-full aspect-square max-w-[300px] sm:max-w-[340px] rounded-3xl overflow-hidden shadow-2xl bg-[#141416] border border-white/10 transition-all duration-500 ${
+              isPlaying ? 'scale-[1.02] shadow-[0_20px_50px_rgba(255,0,0,0.3)]' : 'scale-95 shadow-black/80'
+            }`}
+          >
+            <ArtworkImage
+              src={currentTrack.thumbnail}
+              alt={currentTrack.title}
+              className="w-full h-full object-cover shadow-inner"
+            />
+          </div>
         </div>
 
         {/* Track Title & Artist */}
-        <div className="w-full mt-5 mb-2 flex items-center justify-between gap-4">
+        <div className="w-full mt-4 mb-1 flex items-center justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h2 className="text-xl sm:text-2xl font-black text-white truncate tracking-tight">
               {currentTrack.title}
@@ -235,29 +247,36 @@ export const FullScreenPlayer: React.FC = () => {
           </div>
         </div>
 
+        {/* Live Audio Visualizer Spectrum */}
+        <div className="w-full flex justify-center py-1">
+          <AudioVisualizer isPlaying={isPlaying} barCount={26} />
+        </div>
+
         {/* Progress Scrubber */}
-        <div className="w-full mt-3">
-          <input
-            type="range"
-            min={0}
-            max={duration || 1}
-            step={0.1}
-            value={currentTime}
-            onChange={(e) => seek(parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-[#252528] rounded-full appearance-none cursor-pointer accent-[#ff0000]"
-          />
-          <div className="flex justify-between text-xs text-[#717171] font-mono mt-1.5">
+        <div className="w-full mt-2">
+          <div className="relative group">
+            <input
+              type="range"
+              min={0}
+              max={duration || 1}
+              step={0.1}
+              value={currentTime}
+              onChange={(e) => seek(parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-[#252528] rounded-full appearance-none cursor-pointer accent-[#ff0000] focus:outline-none"
+            />
+          </div>
+          <div className="flex justify-between text-xs text-[#888888] font-mono mt-1">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
         </div>
 
-        {/* 3. PLAYBACK CONTROLS */}
-        <div className="w-full flex items-center justify-between mt-4 px-2">
+        {/* Playback Controls with 60fps Micro-interactions */}
+        <div className="w-full flex items-center justify-between mt-3 px-2">
           {/* Shuffle */}
           <button
             onClick={toggleShuffle}
-            className={`p-3 rounded-full min-w-[48px] min-h-[48px] flex items-center justify-center transition-colors ${
+            className={`p-3 rounded-full min-w-[48px] min-h-[48px] flex items-center justify-center transition-colors active:scale-90 ${
               shuffleEnabled ? 'text-[#ff0000]' : 'text-[#888888] hover:text-white'
             }`}
             aria-label="Toggle shuffle"
@@ -277,7 +296,7 @@ export const FullScreenPlayer: React.FC = () => {
           {/* Large Circular Play / Pause Button */}
           <button
             onClick={togglePlay}
-            className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+            className="w-16 h-16 rounded-full bg-gradient-to-tr from-white via-zinc-100 to-white text-black flex items-center justify-center shadow-[0_10px_25px_rgba(255,255,255,0.25)] active:scale-95 hover:scale-105 transition-all"
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isLoading ? (
@@ -301,7 +320,7 @@ export const FullScreenPlayer: React.FC = () => {
           {/* Repeat */}
           <button
             onClick={cycleRepeatMode}
-            className={`p-3 rounded-full min-w-[48px] min-h-[48px] flex items-center justify-center transition-colors ${
+            className={`p-3 rounded-full min-w-[48px] min-h-[48px] flex items-center justify-center transition-colors active:scale-90 ${
               repeatMode !== 'off' ? 'text-[#ff0000]' : 'text-[#888888] hover:text-white'
             }`}
             aria-label={`Repeat mode: ${repeatMode}`}
@@ -322,75 +341,58 @@ export const FullScreenPlayer: React.FC = () => {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`text-xs font-black tracking-wider uppercase py-1.5 px-4 transition-all relative ${
+                className={`text-xs font-bold tracking-wider py-1.5 transition-colors relative ${
                   isActive ? 'text-white' : 'text-[#717171] hover:text-[#aaaaaa]'
                 }`}
               >
-                <span>{labels[tab]}</span>
+                {labels[tab]}
                 {isActive && (
-                  <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-[#ff0000] rounded-full" />
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ff0000] rounded-full" />
                 )}
               </button>
             );
           })}
         </div>
 
-        {/* Tab Drawer Body */}
-        <div className="h-44 sm:h-52 overflow-y-auto pt-2 no-scrollbar">
+        {/* Tab Content Panel (Scrollable) */}
+        <div className="h-44 overflow-y-auto no-scrollbar pt-2 pb-1">
           {/* TAB 1: UP NEXT QUEUE */}
           {activeTab === 'queue' && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between px-2 py-1 text-[11px] text-[#717171] font-semibold">
-                <span>Playing next ({queue.length})</span>
-                {queue.length > 1 && (
-                  <button onClick={clearQueue} className="text-[#888888] hover:text-white">
-                    Clear
-                  </button>
-                )}
-              </div>
-
               {queue.map((track, idx) => {
                 const isCurrent = idx === queueIndex;
                 return (
                   <div
                     key={`${track.id}-${idx}`}
                     onClick={() => playTrack(track, queue)}
-                    className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all ${
-                      isCurrent
-                        ? 'bg-white/10 text-white font-bold'
-                        : 'hover:bg-white/5 text-[#aaaaaa]'
+                    className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors ${
+                      isCurrent ? 'bg-[#1e1e24] text-white' : 'hover:bg-white/5 text-[#aaaaaa]'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-[#222226]">
-                        <ArtworkImage src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className={`text-xs truncate ${isCurrent ? 'text-[#ff4e4e]' : 'text-white'}`}>
-                          {track.title}
-                        </p>
-                        <p className="text-[11px] text-[#777777] truncate">
-                          {track.artist}
-                        </p>
-                      </div>
+                    <span className="text-xs font-mono w-4 text-center text-[#717171]">
+                      {isCurrent ? <Play className="w-3 h-3 text-[#ff0000] fill-current" /> : idx + 1}
+                    </span>
+                    <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-[#1e1e22]">
+                      <ArtworkImage src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" />
                     </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] font-mono text-[#666666]">
-                        {formatTime(track.duration)}
-                      </span>
-                      {queue.length > 1 && !isCurrent && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFromQueue(idx);
-                          }}
-                          className="p-1.5 text-[#666666] hover:text-[#ff4e4e] transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs font-bold truncate ${isCurrent ? 'text-[#ff4e4e]' : 'text-white'}`}>
+                        {track.title}
+                      </p>
+                      <p className="text-[11px] text-[#717171] truncate">{track.artist}</p>
                     </div>
+                    {queue.length > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeFromQueue(idx);
+                        }}
+                        className="p-1.5 text-[#717171] hover:text-white rounded-full hover:bg-white/10"
+                        title="Remove from queue"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -399,42 +401,45 @@ export const FullScreenPlayer: React.FC = () => {
 
           {/* TAB 2: SYNCED LYRICS */}
           {activeTab === 'lyrics' && (
-            <div className="py-2">
-              <SyncedLyrics
-                lyricsData={activeLyrics}
-                currentTime={currentTime}
-                onLineClick={seek}
-              />
+            <div className="h-full flex items-center justify-center p-2 text-center overflow-y-auto no-scrollbar max-h-36">
+              {activeLyrics ? (
+                <SyncedLyrics
+                  lyricsData={activeLyrics}
+                  currentTime={currentTime}
+                  onLineClick={seek}
+                />
+              ) : (
+                <p className="text-xs text-[#717171] italic">Lyrics not available for this song.</p>
+              )}
             </div>
           )}
 
-          {/* TAB 3: RELATED SONGS */}
+          {/* TAB 3: RELATED / RECOMMENDATIONS */}
           {activeTab === 'related' && (
             <div className="space-y-1">
               {isLoadingRelated ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-5 h-5 animate-spin text-[#ff0000]" />
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="w-5 h-5 text-[#ff0000] animate-spin" />
                 </div>
               ) : relatedTracks.length > 0 ? (
-                relatedTracks.map((relTrack) => (
+                relatedTracks.map((track) => (
                   <div
-                    key={relTrack.id}
-                    onClick={() => playTrack(relTrack)}
-                    className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-all"
+                    key={track.id}
+                    onClick={() => playTrack(track)}
+                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-colors"
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-[#222226]">
-                        <ArtworkImage src={relTrack.thumbnail} alt={relTrack.title} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-white truncate">{relTrack.title}</p>
-                        <p className="text-[11px] text-[#777777] truncate">{relTrack.artist}</p>
-                      </div>
+                    <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-[#1e1e22]">
+                      <ArtworkImage src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" />
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-white truncate">{track.title}</p>
+                      <p className="text-[11px] text-[#717171] truncate">{track.artist}</p>
+                    </div>
+                    <Play className="w-3.5 h-3.5 text-[#717171] group-hover:text-white" />
                   </div>
                 ))
               ) : (
-                <p className="text-center text-xs text-[#777777] py-6">No related tracks found</p>
+                <p className="text-xs text-[#717171] text-center py-4">No related tracks found.</p>
               )}
             </div>
           )}
