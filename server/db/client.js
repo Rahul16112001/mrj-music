@@ -35,6 +35,7 @@ class EmbeddedRelationalStore {
       users: new Map(),
       sessions: new Map(),
       password_reset_tokens: new Map(),
+      signup_otps: new Map(),
       taste_profiles: new Map(),
       user_settings: new Map(),
       listening_events: [],
@@ -179,6 +180,26 @@ class EmbeddedRelationalStore {
       const record = this.tables.password_reset_tokens.get(hash);
       if (record) record.used_at = used_at;
       return { rows: [], rowCount: record ? 1 : 0 };
+    }
+
+    // 4.5 SIGNUP OTPS
+    if (/INSERT INTO signup_otps/i.test(sql)) {
+      const [email, otp, name, expires_at, created_at] = params;
+      const record = { email, otp, name, expires_at, created_at };
+      this.tables.signup_otps.set(email, record);
+      return { rows: [record], rowCount: 1 };
+    }
+
+    if (/SELECT \* FROM signup_otps WHERE email = \$1/i.test(sql)) {
+      const email = params[0];
+      const record = this.tables.signup_otps.get(email);
+      return { rows: record ? [record] : [], rowCount: record ? 1 : 0 };
+    }
+
+    if (/DELETE FROM signup_otps WHERE email = \$1/i.test(sql)) {
+      const email = params[0];
+      this.tables.signup_otps.delete(email);
+      return { rows: [], rowCount: 1 };
     }
 
     // 5. TASTE PROFILES
