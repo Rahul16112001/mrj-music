@@ -36,7 +36,12 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [playlistModalTrack, setPlaylistModalTrack] = useState<Track | null>(null);
 
-  const isCurrent = currentTrack?.id === track.id || currentTrack?.canonicalTrackId === track.canonicalTrackId;
+  const isCurrent = Boolean(
+    currentTrack && (
+      currentTrack.id === track.id ||
+      (currentTrack.canonicalTrackId && track.canonicalTrackId && currentTrack.canonicalTrackId === track.canonicalTrackId)
+    )
+  );
   const isLiked = isFavorite(track.id);
   const isDownloaded = downloadedTrackIds.has(track.id);
 
