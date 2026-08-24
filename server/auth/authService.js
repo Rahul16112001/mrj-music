@@ -65,7 +65,7 @@ async function sendOtpEmail(email, otp, name) {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'MRJ Music <noreply@mrjmusic.app>',
+        from: 'MRJ Music <onboarding@resend.dev>',
         to: [email],
         subject: `${otp} — Your MRJ Music Verification Code`,
         html: `
