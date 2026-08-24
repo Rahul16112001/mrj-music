@@ -138,7 +138,7 @@ class OfflineStorageManager {
 
       req.onsuccess = () => {
         const record = req.result as OfflineRecord | undefined;
-        if (!record || !record.audioBlob) return resolve(null);
+        if (!record || !record.audioBlob || record.audioBlob.size < 50000) return resolve(null);
 
         const blobUrl = URL.createObjectURL(record.audioBlob);
         resolve({

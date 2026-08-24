@@ -29,15 +29,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     // Initialize native Android hardware back button and lifecycle services
     androidLifecycleService.initialize(() => navigate(-1));
-
-    // Auto-trigger background Smart Downloads sync after initial mount
-    const timer = setTimeout(() => {
-      import('./services/smartDownloadEngine').then(({ smartDownloadEngine }) => {
-        smartDownloadEngine.syncSmartDownloads().catch(() => {});
-      });
-    }, 4000);
-
-    return () => clearTimeout(timer);
   }, [navigate]);
 
   return (

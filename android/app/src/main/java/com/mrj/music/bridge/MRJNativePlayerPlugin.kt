@@ -31,10 +31,14 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
         offlineStorage = NativeOfflineStorage.getInstance(context)
         playerManager.addListener(this)
 
-        // Ensure MediaSessionService is started
+        // Ensure MediaSessionService is started as Foreground Service
         try {
             val serviceIntent = Intent(context, MRJMediaSessionService::class.java)
-            context.startService(serviceIntent)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -123,6 +127,12 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
         val isPlaying = call.getBoolean("isPlaying") ?: true
         if (trackObj != null) {
             try {
+                val serviceIntent = Intent(context, MRJMediaSessionService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
                 val track = gson.fromJson(trackObj.toString(), NativeTrack::class.java)
                 playerManager.notifyTrackChange(track, isPlaying)
             } catch (e: Exception) {

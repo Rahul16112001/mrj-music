@@ -20,10 +20,10 @@ export const APP_RELEASE: AppReleaseInfo = {
   apkFileName: 'mrj-music.apk',
   apkDownloadUrl: '/downloads/mrj-music.apk',
   fileSizeFormatted: '7.5 MB',
-  fileSizeBytes: 7891322,
+  fileSizeBytes: 7891676,
   minAndroidVersion: 'Android 8.0 (Oreo) or higher',
   targetAndroidVersion: 'Android 14 (API 34)',
-  sha256: 'c3e5af098f293a105cf3300c115c28dfe018ead3ce870796dc8964a21ba45e82',
+  sha256: 'e4ac8dc611d194ab09146cbfcc9174d1c3134293318f9b20ccaafb7c1e7ee1e9',
   isAvailable: true,
   features: [
     'Native AndroidX Media3 / ExoPlayer Engine with Audio Focus & Ducking',

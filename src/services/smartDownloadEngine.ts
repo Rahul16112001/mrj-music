@@ -311,13 +311,11 @@ class SmartDownloadEngine {
     track: Track
   ): Promise<{ success: boolean; blob?: Blob; lyrics?: any }> {
     try {
-      let blob: Blob | null = await api.downloadAudioBlob(track.canonicalTrackId || track.id);
+      const blob: Blob | null = await api.downloadAudioBlob(track.canonicalTrackId || track.id);
 
-      // If direct audio blob was not available, generate an offline audio envelope
-      if (!blob || blob.size < 1000) {
-        blob = new Blob([JSON.stringify({ trackId: track.id, title: track.title, artist: track.artist })], {
-          type: 'audio/webm',
-        });
+      // Only accept genuine audio blobs (> 50KB)
+      if (!blob || blob.size < 50000 || blob.type.includes('json') || blob.type.includes('text')) {
+        return { success: false };
       }
 
       // Try fetching lyrics

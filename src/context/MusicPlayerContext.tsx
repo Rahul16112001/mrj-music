@@ -436,17 +436,26 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     try {
-      // 1. Check Offline Storage first
+      // 1. Check Offline Storage first with automatic online fallback
+      let playedOffline = false;
       const offlineRecord = await offlineStorage.getOfflineAudio(track.id);
-      if (offlineRecord && htmlAudioRef.current) {
-        isUsingHtmlAudio.current = true;
-        try { ytPlayerRef.current?.pauseVideo?.(); } catch {}
-        htmlAudioRef.current.src = offlineRecord.blobUrl;
-        await htmlAudioRef.current.play().catch(() => {});
-        setActiveLyrics(offlineRecord.lyrics || null);
-        setIsPlaying(true);
-        setIsLoading(false);
-      } else {
+      if (offlineRecord && offlineRecord.blobUrl && htmlAudioRef.current) {
+        try {
+          isUsingHtmlAudio.current = true;
+          try { ytPlayerRef.current?.pauseVideo?.(); } catch {}
+          htmlAudioRef.current.src = offlineRecord.blobUrl;
+          await htmlAudioRef.current.play();
+          setActiveLyrics(offlineRecord.lyrics || null);
+          setIsPlaying(true);
+          setIsLoading(false);
+          playedOffline = true;
+        } catch (e) {
+          console.warn('Offline playback failed, falling back to stream:', e);
+          playedOffline = false;
+        }
+      }
+
+      if (!playedOffline) {
         // 2. Play Online Stream
         isUsingHtmlAudio.current = false;
         try { htmlAudioRef.current?.pause(); } catch {}
