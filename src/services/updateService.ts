@@ -1,71 +1,78 @@
 import { API_BASE } from './api';
-import { nativePlayerBridge } from './nativePlayerBridge';
-import { Capacitor } from '@capacitor/core';
 
-export interface UpdateInfo {
+export interface WebVersionInfo {
+  version: string;
+  build: string;
+  updatedAt: string;
+}
+
+export interface UpdateCheckResult {
+  platform: 'web' | 'android';
   isUpdateAvailable: boolean;
   currentVersion: string;
   latestVersion: string;
-  buildNumber: number;
-  releaseDate?: string;
+  build?: string;
   title: string;
   changelog: string[];
-  apkDownloadUrl: string;
-  apkFileName: string;
-  fileSize: string;
-  fileSizeBytes: number;
-  isMandatory: boolean;
+  action: 'reload' | 'apk';
+  message: string;
 }
 
 class UpdateService {
   private lastCheckTime = 0;
-  private cachedUpdateInfo: UpdateInfo | null = null;
+  private cachedUpdateInfo: UpdateCheckResult | null = null;
 
-  /**
-   * Check for updates against central release server.
-   */
-  async checkForUpdates(force = false): Promise<UpdateInfo | null> {
+  async checkForUpdates(force = false): Promise<UpdateCheckResult | null> {
     if (!force && this.cachedUpdateInfo && Date.now() - this.lastCheckTime < 5 * 60 * 1000) {
       return this.cachedUpdateInfo;
     }
 
     try {
-      const versionInfo = await nativePlayerBridge.getAppVersion();
-      const currentVer = versionInfo.version || '2.1.0';
+      const res = await fetch(`${API_BASE}/version.json`, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Version check failed');
 
-      const res = await fetch(`${API_BASE}/app/check-update?version=${encodeURIComponent(currentVer)}`);
-      if (!res.ok) throw new Error('Update check failed');
+      const remoteVersion: WebVersionInfo = await res.json();
+      const currentVersion = this.getCurrentWebVersion();
 
-      const data: UpdateInfo = await res.json();
+      const isUpdateAvailable = remoteVersion.version !== currentVersion;
+
+      const result: UpdateCheckResult = {
+        platform: 'web',
+        isUpdateAvailable,
+        currentVersion,
+        latestVersion: remoteVersion.version,
+        build: remoteVersion.build,
+        title: 'MRJ Music Web Update',
+        changelog: [
+          '🔐 Production security hardening',
+          '🛠️ Stream resilience improvements',
+          '🎨 UI stability fixes'
+        ],
+        action: 'reload',
+        message: isUpdateAvailable
+          ? `Version ${remoteVersion.version} is available. Refresh to update.`
+          : 'You are on the latest version.',
+      };
+
       this.lastCheckTime = Date.now();
-      this.cachedUpdateInfo = data;
-      return data;
+      this.cachedUpdateInfo = result;
+      return result;
     } catch (err) {
-      console.warn('Update check notice:', err);
+      console.warn('Web update check notice:', err);
       return null;
     }
   }
 
-  /**
-   * Triggers download and installation of APK update.
-   */
-  async performUpdate(
-    apkUrl: string,
-    onProgress?: (percent: number) => void
-  ): Promise<{ success: boolean; message: string }> {
-    if (Capacitor.isNativePlatform()) {
-      try {
-        onProgress?.(10);
-        // Direct browser/system download manager intent on Android
-        window.open(apkUrl, '_system');
-        onProgress?.(100);
-        return { success: true, message: 'Downloading update package...' };
-      } catch (err: any) {
-        return { success: false, message: err?.message || 'Failed to start download' };
-      }
-    } else {
-      window.open(apkUrl, '_blank');
-      return { success: true, message: 'Opening download link...' };
+  getCurrentWebVersion(): string {
+    return '2.1.0';
+  }
+
+  async performUpdate(): Promise<{ success: boolean; message: string }> {
+    try {
+      window.location.reload();
+      return { success: true, message: 'Reloading...' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Failed to reload' };
     }
   }
 }

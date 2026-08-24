@@ -17,54 +17,109 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Web Version Check — lightweight, no APK references
+app.get(['/version.json', '/api/version.json'], (req, res) => {
+  res.json({
+    version: '2.1.0',
+    build: '20250824-01',
+    updatedAt: '2026-08-24T00:00:00Z',
+  });
+});
+
 // App Release Info Endpoint
 app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
-    version: '3.0.0',
-    buildNumber: 300,
-    apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.0.0.apk',
-    fileSize: '7.8 MB',
-    fileSizeBytes: 8178892,
-    minAndroidVersion: 'Android 8.0+',
-    targetAndroidVersion: 'Android 14',
-    engine: 'AndroidX Media3 / ExoPlayer + Foreground MediaSession Service',
-    isAvailable: true,
+    web: {
+      version: '2.1.0',
+      build: '20250824-01',
+      updatedAt: '2026-08-24T00:00:00Z',
+    },
+    android: {
+      versionName: '3.0.0',
+      versionCode: 300,
+      apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+      apkFileName: 'mrj-music-v3.0.0.apk',
+      fileSize: '7.8 MB',
+      fileSizeBytes: 8178892,
+      minAndroidVersion: 'Android 8.0+',
+      targetAndroidVersion: 'Android 14',
+      engine: 'AndroidX Media3 / ExoPlayer + Foreground MediaSession Service',
+      isAvailable: true,
+      releaseNotes: [
+        '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
+        '🎵 Seamless Song / Video Switcher with interactive playback',
+        '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
+        '🚀 Up Next dynamic queue improvements and synchronized lyrics',
+        '🔒 In-App Silent Update System with FileProvider integration',
+        '🛠️ Stream resilience and performance improvements'
+      ],
+      releaseDate: '2026-08-24',
+      isMandatory: false,
+    },
   });
 });
 
-// App Update Check Endpoint
+// App Update Check Endpoint — returns platform-specific data
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
+  const platform = (req.headers['x-mrj-platform'] || req.query.platform || 'web').toString().toLowerCase();
   const clientVersion = req.query.version || '1.0.0';
-  const latestVersion = '3.0.0';
-  const isUpdateAvailable = clientVersion !== latestVersion;
 
-  res.json({
-    status: 'success',
-    isUpdateAvailable,
-    currentVersion: clientVersion,
-    latestVersion,
-    buildNumber: 300,
-    releaseDate: '2026-08-24',
-    title: 'MRJ Music v3.0.0 Native Production Update',
-    changelog: [
-      '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
-      '🎵 Seamless Song / Video Switcher with interactive playback',
-      '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
-      '🚀 Up Next dynamic queue improvements and synchronized lyrics',
-      '🔒 In-App Silent Update System with FileProvider integration',
-      '🛠️ Stream resilience and performance improvements',
-      '🔐 Production security hardening (JWT, CORS, rate limiting, PostgreSQL enforcement)',
-      '📱 Native Kotlin + Jetpack Compose + Material 3 Android application'
-    ],
-    apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.0.0.apk',
-    fileSize: '7.8 MB',
-    fileSizeBytes: 8178892,
-    isMandatory: false,
-    minAndroidVersion: 'Android 8.0+'
-  });
+  if (platform === 'android') {
+    const latestVersion = '3.0.0';
+    const latestVersionCode = 300;
+    const isUpdateAvailable = clientVersion !== latestVersion;
+
+    res.json({
+      status: 'success',
+      platform: 'android',
+      isUpdateAvailable,
+      currentVersion: clientVersion,
+      latestVersion,
+      versionCode: latestVersionCode,
+      releaseDate: '2026-08-24',
+      title: 'MRJ Music v3.0.0 Native Production Update',
+      changelog: [
+        '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
+        '🎵 Seamless Song / Video Switcher with interactive playback',
+        '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
+        '🚀 Up Next dynamic queue improvements and synchronized lyrics',
+        '🔒 In-App Silent Update System with FileProvider integration',
+        '🛠️ Stream resilience and performance improvements'
+      ],
+      apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+      apkFileName: 'mrj-music-v3.0.0.apk',
+      fileSize: '7.8 MB',
+      fileSizeBytes: 8178892,
+      isMandatory: false,
+      minAndroidVersion: 'Android 8.0+'
+    });
+  } else {
+    // Web platform — no APK, just version check
+    const latestVersion = '2.1.0';
+    const isUpdateAvailable = clientVersion !== latestVersion;
+
+    res.json({
+      status: 'success',
+      platform: 'web',
+      isUpdateAvailable,
+      currentVersion: clientVersion,
+      latestVersion,
+      build: '20250824-01',
+      releaseDate: '2026-08-24',
+      title: 'MRJ Music Web Update',
+      changelog: [
+        '🔐 Production security hardening',
+        '🛠️ Stream resilience improvements',
+        '🎨 UI stability fixes'
+      ],
+      action: 'reload',
+      message: isUpdateAvailable
+        ? 'A new version is available. Refresh to update.'
+        : 'You are on the latest version.',
+    });
+  }
+});
 });
 
 // Raw Stream Redirect for Native Players

@@ -21,20 +21,20 @@ import { RegisterPage } from './pages/Register';
 import { ProfilePage } from './pages/Profile';
 import { ForgotPasswordPage } from './pages/ForgotPassword';
 import { androidLifecycleService } from './services/androidLifecycleService';
-import { updateService, UpdateInfo } from './services/updateService';
+import { updateService, UpdateCheckResult } from './services/updateService';
 import { UpdateModal } from './components/UpdateModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const navigate = useNavigate();
-  const [updateInfo, setUpdateInfo] = React.useState<UpdateInfo | null>(null);
+  const [updateInfo, setUpdateInfo] = React.useState<UpdateCheckResult | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = React.useState(false);
 
   useEffect(() => {
     // Initialize native Android hardware back button and lifecycle services
     androidLifecycleService.initialize(() => navigate(-1));
 
-    // Check for updates on launch
+    // Check for web updates on launch
     updateService.checkForUpdates().then((info) => {
       if (info && info.isUpdateAvailable) {
         setUpdateInfo(info);
