@@ -781,6 +781,4 @@ app.get(['/api/ads/bundle', '/ads/bundle'], (req, res) => {
   res.json({ status: 'success', version: '1.0', audioAds: [], displayBanners: [] });
 });
 
-export default function handler(req, res) {
-  return app(req, res);
-}
+export default app;
