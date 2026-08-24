@@ -5,6 +5,7 @@ import { authService } from '../server/auth/authService.js';
 import { requireAuth, optionalAuth } from '../server/auth/authMiddleware.js';
 import { db } from '../server/db/schema.js';
 import { dbClient } from '../server/db/client.js';
+import { runMigrations } from '../server/db/migrate.js';
 import { chartService } from '../server/charts/chartService.js';
 import { cloudRecommendationService } from '../server/recommendations/cloudRecommendationService.js';
 import { nextTrackService } from '../server/recommendations/nextTrackService.js';
@@ -12,16 +13,50 @@ import { searchSuggestionService } from '../server/catalog/searchSuggestionServi
 import { trackIdentityManager } from '../server/catalog/trackIdentityManager.js';
 import { musicProvider } from '../server/providers/musicProvider.js';
 
+authService.validateEnv();
+runMigrations().catch(err => console.error('Migration notice:', err.message));
+
+const ALLOWED_ORIGINS = [
+  'https://mrj-music.vercel.app',
+  'https://www.mrj-music.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5005',
+];
+
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.startsWith('http://localhost:')) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
+
+// Lightweight in-memory rate limiter for auth routes
+const authRateMap = new Map();
+const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, next) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'client';
+  const now = Date.now();
+  const history = (authRateMap.get(ip) || []).filter(t => now - t < windowMs);
+  if (history.length >= maxReqs) {
+    return res.status(429).json({ error: 'Too many authentication attempts. Please try again later.' });
+  }
+  history.push(now);
+  authRateMap.set(ip, history);
+  next();
+};
 
 // Web Version Check — lightweight, no APK references
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '2.1.0',
-    build: '20250824-01',
+    version: '2.1.1',
+    build: '20260824-01',
     updatedAt: '2026-08-24T00:00:00Z',
   });
 });
@@ -31,29 +66,28 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '2.1.0',
-      build: '20250824-01',
+      version: '2.1.1',
+      build: '20260824-01',
       updatedAt: '2026-08-24T00:00:00Z',
     },
     android: {
-      versionName: '3.0.0',
-      versionCode: 300,
-      apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-      apkFileName: 'mrj-music-v3.0.0.apk',
-      fileSize: '64.4 MB',
-      fileSizeBytes: 67579573,
+      versionName: '3.1.0',
+      versionCode: 301,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
+      apkFileName: 'mrj-music-v3.1.0.apk',
+      fileSize: '111 MB',
+      fileSizeBytes: 116375238,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
-      sha256: '1779a5f183cf4c9c5c99c1cb3c1e706ac8228fb825bff4b4cb05e2b835046655',
-      engine: 'AndroidX Media3 / ExoPlayer + Foreground MediaSession Service',
+      sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
+      engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
-        '🎵 Seamless Song / Video Switcher with interactive playback',
-        '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
-        '🚀 Up Next dynamic queue improvements and synchronized lyrics',
-        '🔒 In-App Silent Update System with FileProvider integration',
-        '🛠️ Stream resilience and performance improvements'
+        '⚡ 100% Native Jetpack Compose & Material 3 Architecture',
+        '🎵 AndroidX Media3 ExoPlayer Foreground Media Session with Lockscreen Controls',
+        '🚀 Continuous Autoplay & Audio Focus Handling',
+        '🔒 Android Keystore AES-GCM Encrypted Token Storage',
+        '🛠️ In-App Android Package Installer Upgrade flow'
       ],
       releaseDate: '2026-08-24',
       isMandatory: false,
@@ -67,8 +101,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   const clientVersion = req.query.version || '1.0.0';
 
   if (platform === 'android') {
-    const latestVersion = '3.0.0';
-    const latestVersionCode = 300;
+    const latestVersion = '3.1.0';
+    const latestVersionCode = 301;
     const isUpdateAvailable = clientVersion !== latestVersion;
 
     res.json({
@@ -79,25 +113,25 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
       latestVersion,
       versionCode: latestVersionCode,
       releaseDate: '2026-08-24',
-      title: 'MRJ Music v3.0.0 Native Production Update',
+      title: 'MRJ Music v3.1.0 Native Jetpack Compose Release',
       changelog: [
-        '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
-        '🎵 Seamless Song / Video Switcher with interactive playback',
-        '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
-        '🚀 Up Next dynamic queue improvements and synchronized lyrics',
-        '🔒 In-App Silent Update System with FileProvider integration',
-        '🛠️ Stream resilience and performance improvements'
+        '⚡ 100% Native Jetpack Compose & Material 3 Architecture',
+        '🎵 AndroidX Media3 ExoPlayer Foreground Media Session with Lockscreen Controls',
+        '🚀 Continuous Autoplay & Audio Focus Handling',
+        '🔒 Android Keystore AES-GCM Encrypted Token Storage',
+        '🛠️ In-App Android Package Installer Upgrade flow'
       ],
-      apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-      apkFileName: 'mrj-music-v3.0.0.apk',
-      fileSize: '64.4 MB',
-      fileSizeBytes: 67579573,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
+      apkFileName: 'mrj-music-v3.1.0.apk',
+      fileSize: '111 MB',
+      fileSizeBytes: 116375238,
+      sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
       isMandatory: false,
       minAndroidVersion: 'Android 8.0+'
     });
   } else {
     // Web platform — no APK, just version check
-    const latestVersion = '2.1.0';
+    const latestVersion = '2.1.1';
     const isUpdateAvailable = clientVersion !== latestVersion;
 
     res.json({
@@ -106,18 +140,18 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
       isUpdateAvailable,
       currentVersion: clientVersion,
       latestVersion,
-      build: '20250824-01',
+      build: '20260824-01',
       releaseDate: '2026-08-24',
       title: 'MRJ Music Web Update',
       changelog: [
-        '🔐 Production security hardening',
+        '🔐 Hardened production security & CORS allowlists',
         '🛠️ Stream resilience improvements',
-        '🎨 UI stability fixes'
+        '🎨 UI stability and performance enhancements'
       ],
       action: 'reload',
       message: isUpdateAvailable
-        ? 'A new version is available. Refresh to update.'
-        : 'You are on the latest version.',
+        ? 'A new version of the web app is available. Refresh to update.'
+        : 'You are on the latest web version.',
     });
   }
 });
@@ -130,7 +164,11 @@ app.get(['/api/music/stream-raw/:id', '/music/stream-raw/:id'], async (req, res)
     if (stream && stream.url && stream.url.startsWith('http') && !stream.url.includes('youtube.com/watch')) {
       return res.redirect(302, stream.url);
     }
-    return res.redirect(302, `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`);
+    return res.status(404).json({
+      status: 'unavailable',
+      message: 'Direct audio stream unavailable for this track.',
+      videoId: id,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -150,8 +188,8 @@ app.get(['/api/health/db', '/health/db'], async (req, res) => {
   }
 });
 
-// 1. Auth Routes
-app.post(['/api/auth/signup-otp', '/auth/signup-otp'], async (req, res) => {
+// 1. Auth Routes with Rate Limiting
+app.post(['/api/auth/signup-otp', '/auth/signup-otp'], authRateLimiter(10, 15 * 60 * 1000), async (req, res) => {
   try {
     const { email, name } = req.body;
     const result = await authService.sendSignupOtp(email, name);
@@ -161,11 +199,11 @@ app.post(['/api/auth/signup-otp', '/auth/signup-otp'], async (req, res) => {
   }
 });
 
-app.post(['/api/auth/verify-otp', '/auth/verify-otp'], async (req, res) => {
+app.post(['/api/auth/verify-otp', '/auth/verify-otp'], authRateLimiter(10, 15 * 60 * 1000), async (req, res) => {
   try {
     const { email, otp, password, name, ageGroup, gender } = req.body;
     const userAgent = req.headers['user-agent'] || '';
-    const ip = req.ip || req.socket.remoteAddress || '';
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
     const result = await authService.verifySignupOtp(email, otp, password, name, ageGroup, gender, userAgent, ip);
     res.status(201).json({ status: 'success', ...result });
   } catch (err) {
@@ -173,11 +211,27 @@ app.post(['/api/auth/verify-otp', '/auth/verify-otp'], async (req, res) => {
   }
 });
 
-app.post(['/api/auth/register', '/auth/register'], async (req, res) => {
+// Dev-only: retrieve OTP from DB (auto-disabled when RESEND_API_KEY is set)
+app.get(['/api/auth/dev-otp', '/auth/dev-otp'], async (req, res) => {
+  if (process.env.RESEND_API_KEY) {
+    return res.status(403).json({ error: 'Not available when email service is configured.' });
+  }
+  try {
+    const email = (req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'email query param required' });
+    const r = await dbClient.query('SELECT otp, expires_at FROM signup_otps WHERE email=$1 LIMIT 1;', [email]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'No OTP found — try signing up first.' });
+    res.json({ otp: r.rows[0].otp, expiresAt: r.rows[0].expires_at });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post(['/api/auth/register', '/auth/register'], authRateLimiter(10, 15 * 60 * 1000), async (req, res) => {
   try {
     const { name, email, password, ageGroup, gender } = req.body;
     const userAgent = req.headers['user-agent'] || '';
-    const ip = req.ip || req.socket.remoteAddress || '';
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
     const result = await authService.register(name, email, password, ageGroup, gender, userAgent, ip);
     res.status(201).json({ status: 'success', ...result });
   } catch (err) {
@@ -185,11 +239,11 @@ app.post(['/api/auth/register', '/auth/register'], async (req, res) => {
   }
 });
 
-app.post(['/api/auth/login', '/auth/login'], async (req, res) => {
+app.post(['/api/auth/login', '/auth/login'], authRateLimiter(20, 15 * 60 * 1000), async (req, res) => {
   try {
     const { email, password } = req.body;
     const userAgent = req.headers['user-agent'] || '';
-    const ip = req.ip || req.socket.remoteAddress || '';
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
     const result = await authService.login(email, password, userAgent, ip);
     res.json({ status: 'success', ...result });
   } catch (err) {
@@ -320,7 +374,7 @@ app.get(['/api/charts/category/:categoryId', '/charts/category/:categoryId'], as
 });
 
 // 3. Recommendation Routes
-app.get(['/api/recommendations/home', '/recommendations/home'], optionalAuth, async (req, res) => {
+app.get(['/api/recommendations/home', '/recommendations/home', '/api/music/personalized-home', '/music/personalized-home'], optionalAuth, async (req, res) => {
   try {
     const userId = req.user ? req.user.id : null;
     const region = req.query.region || 'IN';
