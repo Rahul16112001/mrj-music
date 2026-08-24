@@ -90,8 +90,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
       ],
       apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
       apkFileName: 'mrj-music-v3.0.0.apk',
-      fileSize: '7.8 MB',
-      fileSizeBytes: 8178892,
+      fileSize: '64.4 MB',
+      fileSizeBytes: 67579573,
       isMandatory: false,
       minAndroidVersion: 'Android 8.0+'
     });
@@ -120,7 +120,6 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
         : 'You are on the latest version.',
     });
   }
-});
 });
 
 // Raw Stream Redirect for Native Players
