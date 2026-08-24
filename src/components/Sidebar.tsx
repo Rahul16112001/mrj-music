@@ -23,8 +23,9 @@ export const Sidebar: React.FC = () => {
 
   const mainLinks = [
     { to: '/', label: 'Home', icon: Home },
-    { to: '/search', label: 'Explore', icon: Compass },
+    { to: '/explore', label: 'Explore', icon: Compass },
     { to: '/library', label: 'Library', icon: Library },
+    { to: '/downloads', label: 'Downloads', icon: Download },
     { to: '/settings', label: 'Settings', icon: Settings },
   ];
 

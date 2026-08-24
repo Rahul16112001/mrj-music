@@ -8,7 +8,7 @@ export const BottomNav: React.FC = () => {
 
   const navItems = [
     { to: '/', label: 'Home', icon: Home },
-    { to: '/search', label: 'Explore', icon: Compass },
+    { to: '/explore', label: 'Explore', icon: Compass },
     { to: '/library', label: 'Library', icon: Library },
     { to: '/downloads', label: 'Downloads', icon: Download, badge: downloadedTrackIds.size },
     { to: '/settings', label: 'Settings', icon: Settings },

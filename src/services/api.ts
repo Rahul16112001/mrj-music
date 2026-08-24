@@ -267,6 +267,28 @@ export const api = {
     }
   },
 
+  async getCategories(): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/charts/categories`);
+      if (!res.ok) throw new Error('Categories fetch failed');
+      const data = await res.json();
+      return data.categories || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async getCategoryTracks(categoryId: string): Promise<Track[]> {
+    try {
+      const res = await fetch(`${API_BASE}/charts/category/${encodeURIComponent(categoryId)}`);
+      if (!res.ok) throw new Error('Category tracks fetch failed');
+      const data = await res.json();
+      return data.tracks || [];
+    } catch {
+      return [];
+    }
+  },
+
   // ==================== RECOMMENDATION & AUTOPLAY API ====================
   async getPersonalizedHome(region: string = 'IN'): Promise<{
     personalized: {

@@ -26,10 +26,10 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
     apkFileName: 'mrj-music.apk',
     fileSize: '7.5 MB',
-    fileSizeBytes: 7886973,
+    fileSizeBytes: 7888890,
     minAndroidVersion: 'Android 8.0+',
     targetAndroidVersion: 'Android 14',
-    sha256: 'adffac4cf389fc76ccc370d417c0766d8ebbf742267febfbdebecfd1d6b654f9',
+    sha256: '550f55ae678cab8757fbcef66b641578eebe7bcfb600c095ceb16d26546d7e68',
     engine: 'AndroidX Media3 / ExoPlayer + Kotlin Foreground Service',
     isAvailable: true,
   });
@@ -172,6 +172,25 @@ app.get(['/api/charts/top-artists', '/charts/top-artists'], async (req, res) => 
     const region = req.query.region || 'GLOBAL';
     const data = await chartService.getTopArtists(region);
     res.json({ status: 'success', ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/charts/categories', '/charts/categories'], async (req, res) => {
+  try {
+    const categories = chartService.getAllCategories();
+    res.json({ status: 'success', categories });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/charts/category/:categoryId', '/charts/category/:categoryId'], async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const tracks = chartService.getTracksByCategory(categoryId);
+    res.json({ status: 'success', categoryId, tracks });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -8,6 +8,7 @@ import { BottomNav } from './components/BottomNav';
 import { PlayerBar } from './components/PlayerBar';
 import { FullScreenPlayer } from './components/FullScreenPlayer';
 import { Home } from './pages/Home';
+import { Explore } from './pages/Explore';
 import { Search } from './pages/Search';
 import { Downloads } from './pages/Downloads';
 import { Library } from './pages/Library';
@@ -53,6 +54,7 @@ const AppContent: React.FC = () => {
         <main className="flex-1">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/explore" element={<Explore />} />
             <Route path="/search" element={<Search />} />
             <Route path="/downloads" element={<Downloads />} />
             <Route path="/library" element={<Library />} />
