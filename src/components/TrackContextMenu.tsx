@@ -11,14 +11,16 @@ import {
   PlusCircle,
   MoreVertical,
   Check,
-  Sparkles,
   Ban,
-  X
+  X,
+  Heart
 } from 'lucide-react';
 import { Track } from '../types';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { shareService } from '../services/share';
 import { syncService } from '../services/syncService';
+import { androidLifecycleService } from '../services/androidLifecycleService';
+import { ArtworkImage } from './ArtworkImage';
 
 interface TrackContextMenuProps {
   track: Track;
@@ -28,7 +30,6 @@ interface TrackContextMenuProps {
 export const TrackContextMenu: React.FC<TrackContextMenuProps> = ({ track, onOpenPlaylistModal }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   const {
@@ -38,20 +39,21 @@ export const TrackContextMenu: React.FC<TrackContextMenuProps> = ({ track, onOpe
     downloadTrack,
     deleteDownloadedTrack,
     downloadedTrackIds,
+    toggleFavorite,
+    isFavorite,
   } = useMusicPlayer();
 
   const isDownloaded = downloadedTrackIds.has(track.id);
+  const isLiked = isFavorite(track.id);
 
+  // Register with Android back button
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    if (!isOpen) return;
+    const unregister = androidLifecycleService.registerBackHandler(() => {
+      setIsOpen(false);
+      return true;
+    });
+    return () => unregister();
   }, [isOpen]);
 
   const handleStartRadio = async (e: React.MouseEvent) => {
@@ -88,166 +90,171 @@ export const TrackContextMenu: React.FC<TrackContextMenuProps> = ({ track, onOpe
     setIsOpen(false);
   };
 
+  const handleViewArtist = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(false);
+    navigate(`/artist/${encodeURIComponent(track.artist)}`);
+  };
+
   return (
-    <div className="relative inline-block" ref={menuRef}>
+    <>
       <button
         onClick={(e) => {
           e.stopPropagation();
-          setIsOpen(!isOpen);
+          setIsOpen(true);
         }}
-        className="p-1.5 rounded-full hover:bg-[#282828] text-[#aaaaaa] hover:text-white transition-colors"
-        title="More actions"
+        className="p-2 rounded-full hover:bg-white/10 text-[#888888] hover:text-white min-w-[40px] min-h-[40px] flex items-center justify-center transition-colors"
+        aria-label="More actions"
       >
         <MoreVertical className="w-4 h-4" />
       </button>
 
+      {/* MOBILE BOTTOM SHEET MODAL */}
       {isOpen && (
-        <>
-          {/* Mobile Backdrop & Bottom Sheet */}
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsOpen(false)}
+        >
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 lg:hidden"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsOpen(false);
-            }}
-          />
-
-          <div
-            className={`
-              fixed lg:absolute bottom-0 lg:bottom-auto right-0 lg:right-0 lg:top-full lg:mt-1.5 
-              w-full lg:w-60 bg-[#161616] border-t lg:border border-[#2d2d2d] 
-              rounded-t-3xl lg:rounded-2xl shadow-2xl py-3 lg:py-2 z-50 
-              animate-in fade-in slide-in-from-bottom-6 lg:slide-in-from-top-2 duration-150 select-none
-            `}
+            className="w-full max-w-lg bg-[#141417] border-t border-[#26262a] rounded-t-3xl p-4 shadow-2xl animate-in slide-in-from-bottom duration-300 select-none overflow-hidden"
+            style={{ paddingBottom: 'max(var(--sab), 16px)' }}
+            onClick={(e) => e.stopPropagation()}
           >
-            {/* Header with Close on Mobile */}
-            <div className="px-4 py-2 border-b border-[#242424] mb-1 flex items-center justify-between">
-              <div className="min-w-0 flex-1 pr-2">
-                <p className="text-xs font-bold text-white truncate">{track.title}</p>
-                <p className="text-[10px] text-[#aaaaaa] truncate">{track.artist}</p>
+            {/* Drag Handle Indicator */}
+            <div className="w-10 h-1 bg-[#333338] rounded-full mx-auto mb-4" />
+
+            {/* Track Header Preview */}
+            <div className="flex items-center gap-3.5 pb-4 border-b border-[#222226] mb-2">
+              <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-[#202024]">
+                <ArtworkImage src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-sm font-bold text-white truncate">{track.title}</h4>
+                <p className="text-xs text-[#aaaaaa] truncate mt-0.5">{track.artist}</p>
               </div>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsOpen(false);
-                }}
-                className="lg:hidden p-1 rounded-full text-[#aaaaaa] hover:text-white"
+                onClick={() => setIsOpen(false)}
+                className="p-2 text-[#777777] hover:text-white rounded-full min-w-[40px] min-h-[40px] flex items-center justify-center"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Menu Items */}
-            <button
-              onClick={handleStartRadio}
-              className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-white hover:bg-[#242424] transition-colors text-left"
-            >
-              <Radio className="w-4 h-4 text-[#ff4e4e]" />
-              <span>Start Radio</span>
-            </button>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                playNextInQueue(track);
-                setIsOpen(false);
-              }}
-              className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-white hover:bg-[#242424] transition-colors text-left"
-            >
-              <ListPlus className="w-4 h-4 text-[#aaaaaa]" />
-              <span>Play Next</span>
-            </button>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                addToQueue(track);
-                setIsOpen(false);
-              }}
-              className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-white hover:bg-[#242424] transition-colors text-left"
-            >
-              <Sparkles className="w-4 h-4 text-[#aaaaaa]" />
-              <span>Add to Queue</span>
-            </button>
-
-            {onOpenPlaylistModal && (
+            {/* Action Items List (48dp height per row) */}
+            <div className="space-y-0.5 max-h-[60vh] overflow-y-auto no-scrollbar">
+              {/* Play Next */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onOpenPlaylistModal(track);
+                  playNextInQueue(track);
                   setIsOpen(false);
                 }}
-                className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-white hover:bg-[#242424] transition-colors text-left"
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                <Play className="w-4 h-4 text-[#ff0000]" />
+                <span>Play next</span>
+              </button>
+
+              {/* Add to Queue */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  addToQueue(track);
+                  setIsOpen(false);
+                }}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                <ListPlus className="w-4 h-4 text-[#ff0000]" />
+                <span>Add to queue</span>
+              </button>
+
+              {/* Start Radio */}
+              <button
+                onClick={handleStartRadio}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                <Radio className="w-4 h-4 text-[#ff0000]" />
+                <span>Start radio station</span>
+              </button>
+
+              {/* Like / Unlike */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(track);
+                }}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                <Heart className={`w-4 h-4 ${isLiked ? 'text-[#ff0000] fill-current' : 'text-[#888888]'}`} />
+                <span>{isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}</span>
+              </button>
+
+              {/* Download for Offline */}
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (isDownloaded) await deleteDownloadedTrack(track.id);
+                  else await downloadTrack(track);
+                  setIsOpen(false);
+                }}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                {isDownloaded ? (
+                  <>
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    <span>Remove download</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    <span>Download for offline</span>
+                  </>
+                )}
+              </button>
+
+              {/* Add to Playlist */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(false);
+                  onOpenPlaylistModal?.(track);
+                }}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
               >
                 <PlusCircle className="w-4 h-4 text-[#aaaaaa]" />
-                <span>Add to Playlist</span>
+                <span>Add to playlist</span>
               </button>
-            )}
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/artist/${encodeURIComponent(track.artist)}`);
-                setIsOpen(false);
-              }}
-              className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-white hover:bg-[#242424] transition-colors text-left"
-            >
-              <User className="w-4 h-4 text-[#aaaaaa]" />
-              <span>Go to Artist</span>
-            </button>
+              {/* View Artist */}
+              <button
+                onClick={handleViewArtist}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                <User className="w-4 h-4 text-[#aaaaaa]" />
+                <span>View artist</span>
+              </button>
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isDownloaded) {
-                  deleteDownloadedTrack(track.id);
-                } else {
-                  downloadTrack(track);
-                }
-                setIsOpen(false);
-              }}
-              className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-white hover:bg-[#242424] transition-colors text-left"
-            >
-              {isDownloaded ? (
-                <>
-                  <Trash2 className="w-4 h-4 text-red-400" />
-                  <span>Remove Download</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 text-emerald-400" />
-                  <span>Download Offline</span>
-                </>
-              )}
-            </button>
+              {/* Share */}
+              <button
+                onClick={handleShare}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-white text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4 text-[#aaaaaa]" />}
+                <span>{isCopied ? 'Link copied!' : 'Share'}</span>
+              </button>
 
-            <button
-              onClick={handleShare}
-              className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-white hover:bg-[#242424] transition-colors text-left"
-            >
-              {isCopied ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span className="text-emerald-400 font-bold">Link Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-4 h-4 text-[#aaaaaa]" />
-                  <span>Share Song</span>
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={handleNotInterested}
-              className="w-full px-4 py-2.5 flex items-center gap-3 text-xs font-semibold text-[#888888] hover:text-red-400 hover:bg-[#242424] transition-colors text-left border-t border-[#242424] mt-1 pt-2"
-            >
-              <Ban className="w-4 h-4" />
-              <span>Not Interested</span>
-            </button>
+              {/* Not Interested / Dislike */}
+              <button
+                onClick={handleNotInterested}
+                className="w-full flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/5 text-rose-400 text-xs font-semibold active:bg-white/10 min-h-[48px] transition-colors"
+              >
+                <Ban className="w-4 h-4 text-rose-400" />
+                <span>Not interested in this song</span>
+              </button>
+            </div>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </>
   );
 };

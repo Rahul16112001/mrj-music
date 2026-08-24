@@ -42,46 +42,41 @@ export const Downloads: React.FC = () => {
     }
   };
 
-  const handleDelete = async (trackId: string) => {
-    await deleteDownloadedTrack(trackId);
-    await loadDownloads();
-  };
-
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto pb-40 select-none">
+    <div className="p-3 sm:p-6 md:p-8 space-y-6 max-w-7xl mx-auto pb-mobile-player-nav select-none">
       {/* Vault Header Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#121212] via-emerald-950/30 to-[#121212] border border-emerald-800/40 p-6 md:p-8 shadow-xl">
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#121215] via-emerald-950/20 to-[#121215] border border-emerald-800/30 p-5 sm:p-6 shadow-xl">
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold w-fit">
               <WifiOff className="w-3.5 h-3.5" />
               <span>100% Zero-Data Offline Playback</span>
             </div>
-            <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               Offline Music Vault
             </h1>
-            <p className="text-xs md:text-sm text-[#aaaaaa] max-w-xl">
-              Songs and lyrics stored directly inside your device's local offline storage. Play your music on flights, road trips, or without internet.
+            <p className="text-xs text-[#888888] max-w-xl">
+              Songs and high-resolution lyrics stored directly on your device.
             </p>
           </div>
 
           {/* Storage Meter Card */}
-          <div className="p-4 rounded-2xl bg-[#1c1c1c]/90 border border-[#2d2d2d] backdrop-blur-md min-w-[200px] shrink-0">
-            <div className="flex items-center justify-between gap-2 text-xs font-bold text-[#aaaaaa] mb-1">
+          <div className="p-3.5 rounded-2xl bg-[#18181c] border border-[#26262a] min-w-[170px] shrink-0">
+            <div className="flex items-center justify-between gap-2 text-xs font-bold text-[#888888] mb-1">
               <div className="flex items-center gap-1.5">
-                <HardDrive className="w-4 h-4 text-emerald-400" />
+                <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Device Storage</span>
               </div>
               <button
                 onClick={() => navigate('/settings')}
-                className="text-[#aaaaaa] hover:text-white"
+                className="text-[#888888] hover:text-white"
                 title="Download Settings"
               >
                 <Settings className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="text-2xl font-black text-white">{storageInfo.formatted}</div>
-            <div className="text-xs text-emerald-400 font-semibold mt-0.5">
+            <div className="text-xl font-black text-white">{storageInfo.formatted}</div>
+            <div className="text-[11px] text-emerald-400 font-semibold mt-0.5">
               {storageInfo.count} Tracks Saved
             </div>
           </div>
@@ -94,35 +89,34 @@ export const Downloads: React.FC = () => {
           <button
             onClick={handlePlayAll}
             disabled={downloadedTracks.length === 0}
-            className="px-6 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-black text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+            className="px-5 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-black text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all active:scale-95 min-h-[44px]"
           >
             <Play className="w-4 h-4 fill-black" />
             <span>Play All Offline ({downloadedTracks.length})</span>
           </button>
         </div>
 
-        {downloadedTracks.length === 0 ? (
-          <div className="text-center py-20 bg-[#121212] rounded-3xl border border-[#212121] space-y-3">
-            <Download className="w-12 h-12 text-[#717171] mx-auto opacity-50" />
-            <h3 className="text-lg font-bold text-white">No Offline Tracks Yet</h3>
-            <p className="text-xs text-[#aaaaaa] max-w-sm mx-auto">
-              Click the download button next to any song to save it for offline listening.
-            </p>
+        {downloadedTracks.length > 0 ? (
+          <div className="space-y-1">
+            {downloadedTracks.map((track, idx) => (
+              <TrackCard
+                key={track.id}
+                track={track}
+                showIndex={idx + 1}
+                queueContext={downloadedTracks}
+                variant="row"
+              />
+            ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {downloadedTracks.map((track, idx) => (
-              <div key={track.id} className="relative group">
-                <TrackCard track={track} queueContext={downloadedTracks} showIndex={idx} />
-                <button
-                  onClick={() => handleDelete(track.id)}
-                  className="absolute right-14 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-[#282828] text-[#aaaaaa] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                  title="Delete from offline storage"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+          <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 bg-[#121215] border border-[#202024] rounded-3xl p-8">
+            <Download className="w-10 h-10 text-[#444444]" />
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-white">No Offline Downloads</h3>
+              <p className="text-xs text-[#888888] max-w-sm">
+                Tap the download icon on any song to save it for zero-data offline playback anywhere.
+              </p>
+            </div>
           </div>
         )}
       </div>

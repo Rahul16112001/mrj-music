@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, TrendingUp, Compass, Heart, Loader2, RefreshCw, Flame, Globe } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Play, Sparkles, TrendingUp, Compass, Heart, Loader2, RefreshCw, Flame, Globe, Music2 } from 'lucide-react';
 import { Track, MoodStation } from '../types';
 import { api } from '../services/api';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
@@ -7,16 +8,18 @@ import { useAuth } from '../context/AuthContext';
 import { TrackCard } from '../components/TrackCard';
 import { MixArtwork } from '../components/MixArtwork';
 import { TasteOnboardingModal } from '../components/TasteOnboardingModal';
+import { ArtworkImage } from '../components/ArtworkImage';
 
 export const Home: React.FC = () => {
   const { playTrack } = useMusicPlayer();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [isLoading, setIsLoading] = useState(true);
   const [selectedRegion, setSelectedRegion] = useState('IN');
   const [showTasteModal, setShowTasteModal] = useState(false);
 
-  // Home Page Contract Sections
+  // Home Page Sections
   const [quickPicks, setQuickPicks] = useState<Track[]>([]);
   const [dailyMixes, setDailyMixes] = useState<any[]>([]);
   const [listenAgain, setListenAgain] = useState<Track[]>([]);
@@ -30,12 +33,12 @@ export const Home: React.FC = () => {
     setIsLoading(true);
     try {
       const data = await api.getPersonalizedHome(region);
-      setQuickPicks(data.personalized.quickPicks || []);
-      setDailyMixes(data.personalized.dailyMixes || []);
-      setListenAgain(data.personalized.listenAgain || []);
-      setTrendingRegional(data.charts.trendingRegional || []);
-      setTrendingWorldwide(data.charts.trendingWorldwide || []);
-      setTopArtists(data.discovery.topArtists || []);
+      setQuickPicks(data.personalized?.quickPicks || []);
+      setDailyMixes(data.personalized?.dailyMixes || []);
+      setListenAgain(data.personalized?.listenAgain || []);
+      setTrendingRegional(data.charts?.trendingRegional || []);
+      setTrendingWorldwide(data.charts?.trendingWorldwide || []);
+      setTopArtists(data.discovery?.topArtists || []);
       setMoods(data.moods || []);
     } catch (err) {
       console.error('Home data fetch error:', err);
@@ -46,7 +49,6 @@ export const Home: React.FC = () => {
 
   useEffect(() => {
     fetchHomeData(selectedRegion);
-    // Check if user has completed taste onboarding
     const onboardingDone = localStorage.getItem('MRJ_ONBOARDING_DONE');
     if (user && !onboardingDone) {
       setShowTasteModal(true);
@@ -67,7 +69,7 @@ export const Home: React.FC = () => {
     setActiveMoodFilter(moodId);
     try {
       const moodStation = await api.getMoodStation(moodId);
-      if (moodStation.tracks.length > 0) {
+      if (moodStation.tracks && moodStation.tracks.length > 0) {
         playTrack(moodStation.tracks[0], moodStation.tracks);
       }
     } catch (err) {
@@ -77,28 +79,52 @@ export const Home: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <Loader2 className="w-8 h-8 text-[#ff0000] animate-spin" />
-        <p className="text-xs font-semibold text-[#aaaaaa] tracking-wider uppercase">Loading Personalized Feed...</p>
+      <div className="pb-mobile-player-nav pt-4 px-4 md:px-8 max-w-7xl mx-auto space-y-8 select-none">
+        {/* Skeleton Mood Filter Chips */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-8 w-24 rounded-full bg-[#18181b] animate-pulse shrink-0" />
+          ))}
+        </div>
+
+        {/* Skeleton Quick Picks */}
+        <div className="space-y-3">
+          <div className="h-5 w-32 bg-[#18181b] rounded animate-pulse" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="h-14 bg-[#141417] rounded-xl animate-pulse" />
+            ))}
+          </div>
+        </div>
+
+        {/* Skeleton Daily Mixes */}
+        <div className="space-y-3">
+          <div className="h-5 w-40 bg-[#18181b] rounded animate-pulse" />
+          <div className="flex gap-4 overflow-x-auto no-scrollbar">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="w-40 h-52 bg-[#141417] rounded-2xl animate-pulse shrink-0" />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="pb-36 pt-2 px-4 md:px-8 max-w-[1700px] mx-auto space-y-10 select-none">
-      {/* 1. TOP HEADER & FILTER CHIPS */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1f1f1f] pb-4">
+    <div className="pb-mobile-player-nav pt-2 px-3 sm:px-6 md:px-8 max-w-7xl mx-auto space-y-8 select-none">
+      {/* 1. MOOD / ACTIVITY FILTER CHIPS */}
+      {moods.length > 0 && (
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-          {moods.slice(0, 8).map((m) => {
+          {moods.slice(0, 10).map((m) => {
             const isActive = activeMoodFilter === m.id;
             return (
               <button
                 key={m.id}
                 onClick={() => handleMoodSelect(m.id)}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0 min-h-[36px] ${
                   isActive
                     ? 'bg-white text-black border-white shadow-lg'
-                    : 'bg-[#181818] hover:bg-[#282828] text-white border-[#2c2c2c]'
+                    : 'bg-[#121215] text-[#aaaaaa] border-[#222226] hover:text-white hover:border-[#333338]'
                 }`}
               >
                 {m.name}
@@ -106,197 +132,157 @@ export const Home: React.FC = () => {
             );
           })}
         </div>
+      )}
 
-        {/* Region Selector */}
-        <div className="flex items-center gap-2">
-          <Globe className="w-3.5 h-3.5 text-[#aaaaaa]" />
-          <select
-            value={selectedRegion}
-            onChange={(e) => setSelectedRegion(e.target.value)}
-            className="bg-[#181818] text-xs font-bold text-white border border-[#2c2c2c] rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer"
-          >
-            <option value="IN">India (IN)</option>
-            <option value="GLOBAL">Global</option>
-            <option value="US">United States (US)</option>
-            <option value="UK">United Kingdom (UK)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* 2. PERSONALIZED QUICK PICKS */}
+      {/* 2. QUICK PICKS (Mobile 2-Column / Compact Grid) */}
       {quickPicks.length > 0 && (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-[#aaaaaa]">
-                {user ? `Personalized for ${user.name}` : 'Start Radio From A Song'}
-              </p>
-              <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                <span>Quick Picks</span>
-                <Sparkles className="w-5 h-5 text-[#ff0000]" />
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#ff0000]" />
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                Quick Picks
               </h2>
             </div>
+            <button
+              onClick={() => playTrack(quickPicks[0], quickPicks)}
+              className="text-xs font-bold text-[#ff4e4e] hover:underline"
+            >
+              Play all
+            </button>
           </div>
 
-          <div className="grid grid-flow-col grid-rows-4 auto-cols-[85vw] sm:auto-cols-[380px] md:auto-cols-[400px] lg:auto-cols-[420px] gap-2 overflow-x-auto no-scrollbar pb-2">
-            {quickPicks.map((track) => (
-              <TrackCard key={track.id} track={track} variant="row" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {quickPicks.slice(0, 9).map((track) => (
+              <TrackCard
+                key={track.id}
+                track={track}
+                queueContext={quickPicks}
+                variant="compact"
+              />
             ))}
           </div>
         </section>
       )}
 
-      {/* 3. YOUR DAILY MIXES */}
+      {/* 3. DAILY MIXES (Horizontal Carousel) */}
       {dailyMixes.length > 0 && (
-        <section className="space-y-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#aaaaaa]">Tailored Soundtracks</p>
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">Your Daily Mixes</h2>
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+              Mixed For You
+            </h2>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
             {dailyMixes.map((mix) => (
               <div
                 key={mix.id}
                 onClick={() => handlePlayMix(mix)}
-                className="group relative bg-[#181818] hover:bg-[#222222] border border-[#242424] rounded-2xl p-3 flex flex-col gap-3 cursor-pointer transition-all duration-300 hover:scale-[1.02] shadow-lg"
+                className="w-36 sm:w-44 shrink-0 rounded-2xl bg-[#121215] hover:bg-[#1c1c20] p-3 border border-[#202024] cursor-pointer transition-all hover:scale-[1.02] group"
               >
-                <div className="relative aspect-square rounded-xl overflow-hidden shadow-md">
-                  <MixArtwork tracks={mix.tracks} />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePlayMix(mix);
-                    }}
-                    className="absolute bottom-2.5 right-2.5 w-10 h-10 rounded-full bg-[#ff0000] text-white flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300"
-                  >
-                    <Play className="w-4 h-4 fill-current ml-0.5" />
-                  </button>
+                <div className="aspect-square rounded-xl overflow-hidden mb-3 bg-[#1e1e22] shadow-md relative">
+                  <MixArtwork tracks={mix.tracks || []} title={mix.title} />
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <div className="w-10 h-10 rounded-full bg-[#ff0000] text-white flex items-center justify-center shadow-lg">
+                      <Play className="w-5 h-5 fill-white ml-0.5" />
+                    </div>
+                  </div>
                 </div>
-
-                <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-white line-clamp-1 group-hover:text-[#ff4e4e] transition-colors">
-                    {mix.title}
-                  </h3>
-                  <p className="text-xs text-[#aaaaaa] line-clamp-2 leading-relaxed">
-                    {mix.description}
-                  </p>
-                </div>
+                <h3 className="text-xs sm:text-sm font-bold text-white truncate">{mix.title}</h3>
+                <p className="text-[11px] text-[#888888] truncate mt-0.5">{mix.description}</p>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* 4. LISTEN AGAIN / HISTORY */}
+      {/* 4. LISTEN AGAIN / RECENTLY PLAYED */}
       {listenAgain.length > 0 && (
-        <section className="space-y-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#aaaaaa]">Your Listening History</p>
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">Listen Again</h2>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {listenAgain.map((track) => (
-              <TrackCard key={track.id} track={track} variant="grid" />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 5. OFFICIAL REGIONAL TRENDING CHARTS */}
-      {trendingRegional.length > 0 && (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-[#aaaaaa]">Official Chart Rankings</p>
-              <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                <span>Trending in {selectedRegion === 'IN' ? 'India' : selectedRegion}</span>
-                <Flame className="w-5 h-5 text-amber-500" />
-              </h2>
-            </div>
-          </div>
-
-          <div className="grid grid-flow-col grid-rows-4 auto-cols-[85vw] sm:auto-cols-[380px] md:auto-cols-[400px] lg:auto-cols-[420px] gap-2 overflow-x-auto no-scrollbar pb-2">
-            {trendingRegional.map((track) => (
-              <TrackCard key={track.id} track={track} variant="row" />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 6. OFFICIAL WORLDWIDE CHARTS */}
-      {trendingWorldwide.length > 0 && (
-        <section className="space-y-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#aaaaaa]">Global Hitmakers</p>
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-              <span>Trending Worldwide</span>
-              <Globe className="w-5 h-5 text-blue-500" />
+            <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+              Listen Again
             </h2>
+            <button
+              onClick={() => playTrack(listenAgain[0], listenAgain)}
+              className="text-xs font-bold text-[#ff4e4e] hover:underline"
+            >
+              Play all
+            </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {trendingWorldwide.slice(0, 12).map((track) => (
-              <TrackCard key={track.id} track={track} variant="grid" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {listenAgain.slice(0, 6).map((track) => (
+              <TrackCard
+                key={track.id}
+                track={track}
+                queueContext={listenAgain}
+                variant="compact"
+              />
             ))}
           </div>
         </section>
       )}
 
-      {/* 7. TOP ARTISTS */}
+      {/* 5. TOP ARTISTS (Circular Avatars) */}
       {topArtists.length > 0 && (
-        <section className="space-y-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#aaaaaa]">Most Streamed Creators</p>
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">Top Artists</h2>
-          </div>
+        <section className="space-y-3">
+          <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+            Top Artists
+          </h2>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
             {topArtists.map((artist) => (
               <div
-                key={artist.name}
-                className="bg-[#181818] border border-[#242424] rounded-2xl p-4 flex flex-col items-center text-center gap-3 hover:bg-[#222222] transition-all cursor-pointer group"
+                key={artist.id || artist.name}
+                onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
+                className="w-24 sm:w-28 shrink-0 flex flex-col items-center cursor-pointer group"
               >
-                <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border border-[#333333] group-hover:border-[#ff0000] transition-colors">
-                  <img src={artist.thumbnail} alt={artist.name} className="w-full h-full object-cover" />
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden mb-2 bg-[#1e1e22] shadow-md border-2 border-transparent group-hover:border-[#ff0000] transition-colors">
+                  <ArtworkImage
+                    src={artist.thumbnail || artist.image}
+                    alt={artist.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  />
                 </div>
-                <div className="space-y-0.5">
-                  <h3 className="text-sm font-bold text-white group-hover:text-[#ff4e4e] transition-colors">{artist.name}</h3>
-                  <p className="text-[11px] text-[#aaaaaa]">{artist.monthlyListeners} Listeners</p>
-                </div>
+                <p className="text-xs font-bold text-white text-center truncate w-full group-hover:underline">
+                  {artist.name}
+                </p>
+                <span className="text-[10px] text-[#717171] uppercase tracking-wider">Artist</span>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* 8. MOOD STATIONS */}
-      {moods.length > 0 && (
-        <section className="space-y-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#aaaaaa]">Find Your Vibe</p>
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-              <span>Moods & Genres</span>
-              <Compass className="w-5 h-5 text-indigo-400" />
-            </h2>
+      {/* 6. TRENDING REGIONAL */}
+      {trendingRegional.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Flame className="w-4 h-4 text-[#ff0000]" />
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                Trending in {selectedRegion}
+              </h2>
+            </div>
+            <button
+              onClick={() => playTrack(trendingRegional[0], trendingRegional)}
+              className="text-xs font-bold text-[#ff4e4e] hover:underline"
+            >
+              Play all
+            </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-            {moods.map((mood) => (
-              <div
-                key={mood.id}
-                onClick={() => handleMoodSelect(mood.id)}
-                className={`group relative overflow-hidden rounded-2xl p-4 h-28 flex flex-col justify-between bg-gradient-to-br ${mood.color} cursor-pointer transition-all duration-300 hover:scale-[1.03] shadow-lg border border-white/10`}
-              >
-                <div className="space-y-1">
-                  <h3 className="text-base font-black text-white drop-shadow-md leading-tight">{mood.name}</h3>
-                  <p className="text-[11px] font-medium text-white/80">{mood.count}</p>
-                </div>
-                <button className="self-end w-8 h-8 rounded-full bg-white text-black flex items-center justify-center shadow-lg opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                </button>
-              </div>
+          <div className="space-y-1">
+            {trendingRegional.slice(0, 6).map((track, idx) => (
+              <TrackCard
+                key={track.id}
+                track={track}
+                showIndex={idx + 1}
+                queueContext={trendingRegional}
+                variant="row"
+              />
             ))}
           </div>
         </section>
@@ -309,13 +295,10 @@ export const Home: React.FC = () => {
           onClose={() => setShowTasteModal(false)}
           onComplete={() => {
             setShowTasteModal(false);
-            localStorage.setItem('MRJ_ONBOARDING_DONE', 'true');
-            fetchHomeData(selectedRegion);
+            fetchHomeData();
           }}
         />
       )}
     </div>
   );
 };
-
-export const HomePage = Home;
