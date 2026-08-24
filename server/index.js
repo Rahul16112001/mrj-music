@@ -66,10 +66,10 @@ const strictAuthLimiter = rateLimit({
 app.get('/api/app/release', (req, res) => {
   res.json({
     status: 'success',
-    version: '2.1.0',
-    buildNumber: 210,
+    version: '3.0.0',
+    buildNumber: 300,
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v2.1.0.apk',
+    apkFileName: 'mrj-music-v3.0.0.apk',
     fileSize: '7.8 MB',
     fileSizeBytes: 8178892,
     minAndroidVersion: 'Android 8.0+',
@@ -82,7 +82,7 @@ app.get('/api/app/release', (req, res) => {
 // App Update Check Endpoint
 app.get('/api/app/check-update', (req, res) => {
   const clientVersion = req.query.version || '1.0.0';
-  const latestVersion = '2.1.0';
+  const latestVersion = '3.0.0';
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -90,19 +90,21 @@ app.get('/api/app/check-update', (req, res) => {
     isUpdateAvailable,
     currentVersion: clientVersion,
     latestVersion,
-    buildNumber: 210,
+    buildNumber: 300,
     releaseDate: '2026-08-24',
-    title: 'MRJ Music v2.1.0 Production Update',
+    title: 'MRJ Music v3.0.0 Native Production Update',
     changelog: [
       '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
       '🎵 Seamless Song / Video Switcher with interactive playback',
       '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
       '🚀 Up Next dynamic queue improvements and synchronized lyrics',
       '🔒 In-App Silent Update System with FileProvider integration',
-      '🛠️ Stream resilience and performance improvements'
+      '🛠️ Stream resilience and performance improvements',
+      '🔐 Production security hardening (JWT, CORS, rate limiting, PostgreSQL enforcement)',
+      '📱 Native Kotlin + Jetpack Compose + Material 3 Android application'
     ],
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v2.1.0.apk',
+    apkFileName: 'mrj-music-v3.0.0.apk',
     fileSize: '7.8 MB',
     fileSizeBytes: 8178892,
     isMandatory: false,
