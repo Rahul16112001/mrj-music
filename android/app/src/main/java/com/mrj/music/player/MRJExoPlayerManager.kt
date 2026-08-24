@@ -115,11 +115,6 @@ class MRJExoPlayerManager(private val context: Context) {
                     else -> "Playback error (${error.errorCode}): ${error.localizedMessage ?: "Unknown error"}"
                 }
                 listeners.forEach { it.onError(msg) }
-
-                // Auto-recover: try next track after error
-                if (autoplayEnabled) {
-                    mainHandler.postDelayed({ playNext() }, 1500)
-                }
             }
         })
     }
@@ -218,6 +213,10 @@ class MRJExoPlayerManager(private val context: Context) {
 
     fun togglePlay() {
         if (player.isPlaying) pause() else resume()
+    }
+
+    fun togglePlayPause() {
+        togglePlay()
     }
 
     fun notifyTrackChange(track: NativeTrack, isPlaying: Boolean) {
