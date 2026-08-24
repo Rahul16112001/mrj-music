@@ -7,6 +7,7 @@ import { smartDownloadEngine } from '../services/smartDownloadEngine';
 import { offlineRecommendationEngine } from '../services/offlineRecommendationEngine';
 import { setupMediaSession, updateMediaSessionPosition } from '../services/mediaSession';
 import { syncService } from '../services/syncService';
+import { nativePlayerBridge } from '../services/nativePlayerBridge';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 export type QueueSourceType = 'single' | 'album' | 'playlist' | 'artist' | 'radio' | 'mood' | 'search' | 'downloaded' | 'recommendation';
@@ -174,6 +175,25 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (typeof window === 'undefined') return;
 
     setIsOfflineMode(!navigator.onLine);
+
+    // Initialize Native Android Media3 Engine if on Android
+    nativePlayerBridge.initialize({
+      onPlaybackStateChange: (playing, loading) => {
+        setIsPlaying(playing);
+        setIsLoading(loading);
+      },
+      onTrackChange: (t) => {
+        if (t) setCurrentTrack(t);
+      },
+      onPositionChange: (pos, dur) => {
+        setCurrentTime(pos);
+        if (dur) setDuration(dur);
+      },
+      onQueueChange: (q, idx) => {
+        setQueue(q);
+        setQueueIndex(idx);
+      },
+    });
 
     // 1. Initialize HTML5 Audio Element
     try {
@@ -390,6 +410,18 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       });
     }
 
+    // Android Native Media3 Execution
+    if (nativePlayerBridge.isNativeAndroid()) {
+      setIsLoading(true);
+      setCurrentTrack(track);
+      const isPlayed = await nativePlayerBridge.playTrack(track, newQueue || queue);
+      if (isPlayed) {
+        setIsLoading(false);
+        setIsPlaying(true);
+        return;
+      }
+    }
+
     try {
       // 1. Check Offline Storage first
       const offlineRecord = await offlineStorage.getOfflineAudio(track.id);
@@ -501,6 +533,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const togglePlay = () => {
     if (!currentTrack) return;
+    if (nativePlayerBridge.isNativeAndroid()) {
+      nativePlayerBridge.togglePlay();
+      return;
+    }
     if (isUsingHtmlAudio.current && htmlAudioRef.current) {
       if (isPlaying) {
         htmlAudioRef.current.pause();
@@ -591,6 +627,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // ==================== 3. NEXT & PREVIOUS BUTTONS ====================
 
   const handleNextTrack = async () => {
+    if (nativePlayerBridge.isNativeAndroid()) {
+      await nativePlayerBridge.playNext();
+      return;
+    }
     if (queue.length === 0) return;
 
     if (currentTrack) {
@@ -658,7 +698,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     checkAndTriggerAutoplay(nextIdx, queue);
   };
 
-  const handlePreviousTrack = () => {
+  const handlePreviousTrack = async () => {
+    if (nativePlayerBridge.isNativeAndroid()) {
+      await nativePlayerBridge.playPrevious();
+      return;
+    }
     if (currentTime > 3) {
       seek(0);
       return;
@@ -682,7 +726,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const seek = (seconds: number) => {
-    if (isUsingHtmlAudio.current && htmlAudioRef.current) {
+    if (nativePlayerBridge.isNativeAndroid()) {
+      nativePlayerBridge.seekTo(seconds);
+    } else if (isUsingHtmlAudio.current && htmlAudioRef.current) {
       htmlAudioRef.current.currentTime = seconds;
     } else if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
       try { ytPlayerRef.current.seekTo(seconds, true); } catch {}
@@ -730,6 +776,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const toggleShuffle = () => {
     const nextShuffle = !shuffleEnabled;
     setShuffleEnabled(nextShuffle);
+
+    if (nativePlayerBridge.isNativeAndroid()) {
+      nativePlayerBridge.setShuffle(nextShuffle);
+      return;
+    }
 
     if (queue.length <= 1) return;
 
