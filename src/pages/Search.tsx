@@ -214,9 +214,10 @@ export const Search: React.FC = () => {
               [
                 { id: 'all', label: 'All Results' },
                 { id: 'songs', label: `Songs (${songs.length})` },
+                { id: 'videos', label: `Videos (${videos.length})` },
                 { id: 'artists', label: `Artists (${artists.length})` },
                 { id: 'albums', label: `Albums (${albums.length})` },
-                { id: 'videos', label: `Videos (${videos.length})` },
+                { id: 'podcasts', label: `Podcasts (${podcasts.length})` },
               ] as const
             ).map((cat) => (
               <button
@@ -254,7 +255,39 @@ export const Search: React.FC = () => {
             </section>
           )}
 
-          {/* 2. ARTISTS SECTION */}
+          {/* 2. VIDEOS SECTION */}
+          {(activeFilter === 'all' || activeFilter === 'videos') && videos.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-2">
+                <Video className="w-4 h-4 text-emerald-400" />
+                <span>Music Videos & Live Performances</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {videos.map((track) => (
+                  <div
+                    key={track.id}
+                    onClick={() => playTrack(track, videos, 'search', 'video')}
+                    className="p-3 rounded-2xl bg-[#121215] hover:bg-[#1c1c20] border border-[#202024] cursor-pointer transition-all hover:scale-[1.02] group"
+                  >
+                    <div className="aspect-video rounded-xl overflow-hidden mb-2 bg-[#1e1e22] shadow-md relative">
+                      <ArtworkImage
+                        src={track.thumbnail}
+                        alt={track.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                      <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-mono text-white">
+                        {Math.floor(track.duration / 60)}:{String(track.duration % 60).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-bold text-white truncate">{track.title}</h4>
+                    <p className="text-[11px] text-[#888888] truncate mt-0.5">{track.artist}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 3. ARTISTS SECTION */}
           {(activeFilter === 'all' || activeFilter === 'artists') && artists.length > 0 && (
             <section className="space-y-3">
               <h2 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-2">
@@ -284,7 +317,7 @@ export const Search: React.FC = () => {
             </section>
           )}
 
-          {/* 3. ALBUMS SECTION */}
+          {/* 4. ALBUMS SECTION */}
           {(activeFilter === 'all' || activeFilter === 'albums') && albums.length > 0 && (
             <section className="space-y-3">
               <h2 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-2">
@@ -307,6 +340,38 @@ export const Search: React.FC = () => {
                     </div>
                     <h4 className="text-xs font-bold text-white truncate">{album.title}</h4>
                     <p className="text-[11px] text-[#888888] truncate mt-0.5">{album.artist}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 5. PODCASTS & SHOWS SECTION */}
+          {(activeFilter === 'all' || activeFilter === 'podcasts') && podcasts.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-2">
+                <Mic className="w-4 h-4 text-purple-400" />
+                <span>Podcasts & Episodes</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {podcasts.map((track) => (
+                  <div
+                    key={track.id}
+                    onClick={() => playTrack(track, podcasts, 'search', 'video')}
+                    className="p-3 rounded-2xl bg-[#121215] hover:bg-[#1c1c20] border border-[#202024] cursor-pointer transition-all hover:scale-[1.02] group"
+                  >
+                    <div className="aspect-video rounded-xl overflow-hidden mb-2 bg-[#1e1e22] shadow-md relative">
+                      <ArtworkImage
+                        src={track.thumbnail}
+                        alt={track.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                      <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-mono text-white">
+                        {Math.floor(track.duration / 60)}:{String(track.duration % 60).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-bold text-white truncate">{track.title}</h4>
+                    <p className="text-[11px] text-[#888888] truncate mt-0.5">{track.artist}</p>
                   </div>
                 ))}
               </div>

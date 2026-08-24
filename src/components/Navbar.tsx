@@ -148,22 +148,22 @@ export const Navbar: React.FC = () => {
           </button>
         </div>
 
-        {/* Brand Mobile Logo */}
+        {/* Brand Mobile Logo - Icon Only */}
         <div
           onClick={() => navigate('/')}
-          className="flex items-center gap-2 cursor-pointer lg:hidden"
+          className="flex items-center cursor-pointer lg:hidden active:scale-95 transition-transform"
+          title="MRJ Music Home"
         >
           <img
             src="/logo.png"
             alt="MRJ Music"
-            className="w-8 h-8 rounded-full object-cover shadow-lg shadow-red-600/30"
+            className="w-9 h-9 rounded-full object-cover shadow-md shadow-red-600/30 border border-white/10"
           />
-          <span className="font-black text-base text-white tracking-tight">MRJ Music</span>
         </div>
       </div>
 
       {/* Middle: Live Search Bar with Instant Suggestions */}
-      <div ref={searchContainerRef} className="flex-1 max-w-xl mx-4 relative">
+      <div ref={searchContainerRef} className="flex-1 max-w-xl mx-2 sm:mx-4 relative">
         <form onSubmit={handleSearchSubmit} className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#717171]" />
           <input
@@ -175,7 +175,7 @@ export const Navbar: React.FC = () => {
               if (e.key === 'Escape') setIsSearchFocused(false);
             }}
             placeholder="Search songs, albums, artists, podcasts..."
-            className="w-full h-10 pl-10 pr-10 bg-[#181818] border border-[#2d2d2d] focus:border-[#ff0000] rounded-full text-xs text-white placeholder-[#717171] focus:outline-none transition-all shadow-inner"
+            className="w-full h-10 pl-10 pr-10 bg-[#141418] border border-[#26262a] focus:border-[#ff0000] rounded-full text-xs text-white placeholder-[#717171] focus:outline-none transition-all shadow-inner focus:bg-[#18181f]"
           />
           {searchQuery && (
             <button
@@ -218,22 +218,14 @@ export const Navbar: React.FC = () => {
         />
       </div>
 
-      {/* Right: Offline Indicator, Settings & Profile */}
-      <div className="flex items-center gap-3 shrink-0">
+      {/* Right: Offline Indicator & Profile */}
+      <div className="flex items-center gap-2 shrink-0">
         {isOfflineMode && (
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[11px] font-bold">
             <WifiOff className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Offline Mode</span>
+            <span className="hidden sm:inline">Offline</span>
           </div>
         )}
-
-        <button
-          onClick={() => navigate('/settings')}
-          className="p-2 rounded-full hover:bg-[#212121] text-[#aaaaaa] hover:text-white transition-colors"
-          title="Settings"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
 
         {/* User Profile */}
         {isAuthenticated && user ? (

@@ -21,18 +21,62 @@ app.use(express.json({ limit: '10mb' }));
 app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
-    version: '2.0.0',
-    buildNumber: 200,
+    version: '2.1.0',
+    buildNumber: 210,
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music.apk',
-    fileSize: '7.5 MB',
-    fileSizeBytes: 7894082,
+    apkFileName: 'mrj-music-v2.1.0.apk',
+    fileSize: '7.8 MB',
+    fileSizeBytes: 8178892,
     minAndroidVersion: 'Android 8.0+',
     targetAndroidVersion: 'Android 14',
-    sha256: '0b5b10208eaf383ef7f20e7dc88932803dee94d7a47c50032c0a7829dfe42b51',
-    engine: 'AndroidX Media3 / ExoPlayer + Kotlin Foreground Service',
+    engine: 'AndroidX Media3 / ExoPlayer + Foreground MediaSession Service',
     isAvailable: true,
   });
+});
+
+// App Update Check Endpoint
+app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
+  const clientVersion = req.query.version || '1.0.0';
+  const latestVersion = '2.1.0';
+  const isUpdateAvailable = clientVersion !== latestVersion;
+
+  res.json({
+    status: 'success',
+    isUpdateAvailable,
+    currentVersion: clientVersion,
+    latestVersion,
+    buildNumber: 210,
+    releaseDate: '2026-08-24',
+    title: 'MRJ Music v2.1.0 Production Update',
+    changelog: [
+      '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
+      '🎵 Seamless Song / Video Switcher with interactive playback',
+      '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
+      '🚀 Up Next dynamic queue improvements and synchronized lyrics',
+      '🔒 In-App Silent Update System with FileProvider integration',
+      '🛠️ Stream resilience and performance improvements'
+    ],
+    apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+    apkFileName: 'mrj-music-v2.1.0.apk',
+    fileSize: '7.8 MB',
+    fileSizeBytes: 8178892,
+    isMandatory: false,
+    minAndroidVersion: 'Android 8.0+'
+  });
+});
+
+// Raw Stream Redirect for Native Players
+app.get(['/api/music/stream-raw/:id', '/music/stream-raw/:id'], async (req, res) => {
+  try {
+    const id = req.params.id;
+    const stream = await musicProvider.resolveAudioStream(id);
+    if (stream && stream.url && stream.url.startsWith('http') && !stream.url.includes('youtube.com/watch')) {
+      return res.redirect(302, stream.url);
+    }
+    return res.redirect(302, `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Database Health Check Endpoint

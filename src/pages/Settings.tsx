@@ -16,10 +16,11 @@ import {
   Smartphone
 } from 'lucide-react';
 import { AppSettings, AudioQuality } from '../types';
-import { APP_RELEASE } from '../config/appRelease';
 import { offlineStorage } from '../services/offlineStorage';
 import { backupService } from '../services/backup';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
+import { updateService, UpdateInfo } from '../services/updateService';
+import { UpdateModal } from '../components/UpdateModal';
 
 export const SettingsPage: React.FC = () => {
   const { audioQuality, setAudioQuality, refreshLibrary } = useMusicPlayer();
@@ -29,6 +30,8 @@ export const SettingsPage: React.FC = () => {
   const [storageInfo, setStorageInfo] = useState({ totalBytes: 0, formatted: '0 MB', count: 0 });
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const loadData = async () => {
     const s = await offlineStorage.getSettings();
@@ -270,33 +273,43 @@ export const SettingsPage: React.FC = () => {
         )}
       </section>
 
-      {/* 4. Native Android Application */}
+      {/* 4. Automatic Update & Central Release Management */}
       <section className="space-y-4 bg-gradient-to-r from-[#141417] via-[#1a1417] to-[#141417] border border-[#2c2226] p-6 rounded-3xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-[#ff0000]/10 border border-[#ff0000]/30 text-[#ff4e4e] flex items-center justify-center shrink-0">
-              <Smartphone className="w-6 h-6" />
+              <Sparkles className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-white">MRJ Music for Android</h3>
+                <h3 className="text-base font-black text-white">MRJ Music Engine</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  v{APP_RELEASE.version}
+                  v2.1.0 (Production)
                 </span>
               </div>
               <p className="text-xs text-[#888888] mt-0.5">
-                Download the official native Android APK for background lock screen controls and offline caching.
+                Centralized update system with automated background verification and Media3 audio engine.
               </p>
             </div>
           </div>
 
-          <Link
-            to="/download"
-            className="px-6 py-3 rounded-2xl bg-[#ff0000] hover:bg-[#cc0000] active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all shrink-0 min-h-[44px]"
+          <button
+            onClick={async () => {
+              const info = await updateService.checkForUpdates(true);
+              if (info) {
+                if (info.isUpdateAvailable) {
+                  setUpdateInfo(info);
+                  setShowUpdateModal(true);
+                } else {
+                  alert('🎉 You are using the latest version of MRJ Music (v2.1.0).');
+                }
+              }
+            }}
+            className="px-6 py-3 rounded-2xl bg-[#212126] hover:bg-[#2d2d35] active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/10 transition-all shrink-0 min-h-[44px]"
           >
-            <Download className="w-4 h-4 stroke-[2.5]" />
-            <span>Download APK ({APP_RELEASE.fileSizeFormatted})</span>
-          </Link>
+            <RefreshCw className="w-4 h-4 text-emerald-400" />
+            <span>Check for Updates</span>
+          </button>
         </div>
       </section>
 
@@ -304,15 +317,20 @@ export const SettingsPage: React.FC = () => {
       <section className="space-y-3 p-6 bg-[#0e0e0e] border border-[#1f1f1f] rounded-3xl text-center md:text-left">
         <div className="flex items-center gap-2 text-xs font-bold text-white">
           <Info className="w-4 h-4 text-[#ff0000]" />
-          <span>MRJ Music v2.0 Production</span>
+          <span>MRJ Music v2.1.0 High-Fi Stream Engine</span>
         </div>
         <p className="text-xs text-[#717171] leading-relaxed">
-          100% Free & Open Music Platform. Zero login, zero cookies, zero tracking. All playlists and downloads are securely stored in your device's local IndexedDB.
-        </p>
-        <p className="text-[10px] text-[#555555]">
-          Anonymous Client ID: {settings.anonymousInstallationId}
+          Open-source High-Fidelity Music Streaming System. Offline Vault, Synced Lyrics, and AndroidX Media3 Background Playback.
         </p>
       </section>
+
+      {updateInfo && (
+        <UpdateModal
+          isOpen={showUpdateModal}
+          onClose={() => setShowUpdateModal(false)}
+          updateInfo={updateInfo}
+        />
+      )}
     </div>
   );
 };

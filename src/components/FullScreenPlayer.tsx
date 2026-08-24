@@ -187,19 +187,41 @@ export const FullScreenPlayer: React.FC = () => {
 
       {/* 3. MAIN CENTER: ARTWORK & TRACK INFORMATION */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 max-w-md mx-auto w-full min-h-0 py-2">
-        {/* Animated Artwork Container */}
-        <div className="relative group my-auto flex items-center justify-center">
-          <div
-            className={`h-[30vh] max-h-[290px] aspect-square rounded-3xl overflow-hidden shadow-2xl bg-[#141416] border border-white/10 transition-all duration-500 ${
-              isPlaying ? 'scale-[1.02] shadow-[0_20px_50px_rgba(255,0,0,0.35)]' : 'scale-95 shadow-black/80'
-            }`}
-          >
-            <ArtworkImage
-              src={currentTrack.thumbnail}
-              alt={currentTrack.title}
-              className="w-full h-full object-cover shadow-inner"
-            />
-          </div>
+        {/* Animated Artwork or Interactive Video Container */}
+        <div className="relative group my-auto flex items-center justify-center w-full">
+          {playbackFormat === 'video' ? (
+            <div className="w-full max-w-[360px] aspect-video rounded-3xl overflow-hidden shadow-2xl bg-black border border-white/10 relative flex items-center justify-center">
+              {currentTrack.videoSource?.providerTrackId || currentTrack.providerTrackId || currentTrack.id ? (
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(
+                    (currentTrack.videoSource?.providerTrackId || currentTrack.providerTrackId || currentTrack.id).replace(/\|.*/, '')
+                  )}?autoplay=1&playsinline=1&controls=1&rel=0`}
+                  title={currentTrack.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <ArtworkImage
+                  src={currentTrack.thumbnail}
+                  alt={currentTrack.title}
+                  className="w-full h-full object-cover"
+                />
+              )}
+            </div>
+          ) : (
+            <div
+              className={`h-[30vh] max-h-[290px] aspect-square rounded-3xl overflow-hidden shadow-2xl bg-[#141416] border border-white/10 transition-all duration-500 ${
+                isPlaying ? 'scale-[1.02] shadow-[0_20px_50px_rgba(255,0,0,0.35)]' : 'scale-95 shadow-black/80'
+              }`}
+            >
+              <ArtworkImage
+                src={currentTrack.thumbnail}
+                alt={currentTrack.title}
+                className="w-full h-full object-cover shadow-inner"
+              />
+            </div>
+          )}
         </div>
 
         {/* Track Title & Primary Action Controls */}

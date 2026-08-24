@@ -48,9 +48,62 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
     fun isNativeAvailable(call: PluginCall) {
         val res = JSObject()
         res.put("available", true)
-        res.put("version", "2.0.0")
+        res.put("version", "2.1.0")
         res.put("engine", "AndroidX Media3 / ExoPlayer")
         call.resolve(res)
+    }
+
+    @PluginMethod
+    fun getAppVersion(call: PluginCall) {
+        val res = JSObject()
+        try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            val versionName = pInfo.versionName ?: "2.1.0"
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo.versionCode.toLong()
+            }
+            res.put("version", versionName)
+            res.put("buildNumber", versionCode)
+        } catch (e: Exception) {
+            res.put("version", "2.1.0")
+            res.put("buildNumber", 210)
+        }
+        call.resolve(res)
+    }
+
+    @PluginMethod
+    fun installApkUpdate(call: PluginCall) {
+        val filePath = call.getString("filePath")
+        if (filePath.isNullOrBlank()) {
+            call.reject("filePath is required")
+            return
+        }
+
+        try {
+            val file = java.io.File(filePath)
+            if (!file.exists()) {
+                call.reject("APK file does not exist: $filePath")
+                return
+            }
+
+            val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            context.startActivity(intent)
+            call.resolve(JSObject().put("success", true))
+        } catch (e: Exception) {
+            call.reject("Failed to launch APK installer: ${e.message}", e)
+        }
     }
 
     @PluginMethod

@@ -1,11 +1,13 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
 import { db } from '../db/schema.js';
 
-// JWT Secrets with safe fallback
-const JWT_SECRET = process.env.JWT_SECRET || 'mrj_prod_secure_jwt_secret_2026_super_key_fallback_key';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'mrj_prod_secure_refresh_secret_2026_super_key_fallback_key';
+dotenv.config({ path: '../.env' });
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
 const ACCESS_TOKEN_EXPIRY = '15m'; // Short-lived access token
 const REFRESH_TOKEN_EXPIRY = '30d'; // Refresh token
@@ -15,6 +17,19 @@ const hashToken = (token) => crypto.createHash('sha256').update(token).digest('h
 const otpStore = new Map();
 
 export const authService = {
+  validateEnv() {
+    const JWT_SECRET = process.env.JWT_SECRET;
+    const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+
+    if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+      throw new Error('FATAL: JWT_SECRET and JWT_REFRESH_SECRET must be set in environment variables.');
+    }
+
+    if (JWT_SECRET.length < 32 || JWT_REFRESH_SECRET.length < 32) {
+      throw new Error('FATAL: JWT secrets must be at least 32 characters long.');
+    }
+  },
+
   // 0. Send Signup OTP
   async sendSignupOtp(email, name = '') {
     if (!email || !email.trim()) throw new Error('Email is required');
@@ -31,8 +46,7 @@ export const authService = {
 
     return {
       status: 'success',
-      message: `6-digit verification code generated for ${normalizedEmail}`,
-      otp, // Provided for instant verification preview
+      message: `6-digit verification code sent to ${normalizedEmail}`,
       expiresAt,
     };
   },

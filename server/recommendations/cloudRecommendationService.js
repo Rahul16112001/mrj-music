@@ -40,16 +40,22 @@ export const cloudRecommendationService = {
 
   // 4. Generate Deep Music-First Home Contract
   async getPersonalizedHome(userId, userRegion = 'IN') {
-    // 1. Fetch Official Charts
-    const regionalTrending = await chartService.getTrending(userRegion);
-    const globalTrending = await chartService.getTrending('GLOBAL');
-    const topSongs = await chartService.getTopSongs(userRegion);
-    const topArtists = await chartService.getTopArtists(userRegion);
+    // 1. Fetch Official Charts in parallel
+    const [regionalTrending, globalTrending, topSongs, topArtists] = await Promise.all([
+      chartService.getTrending(userRegion),
+      chartService.getTrending('GLOBAL'),
+      chartService.getTopSongs(userRegion),
+      chartService.getTopArtists(userRegion),
+    ]);
 
-    // 2. Fetch User Profile Data & History from Database
-    const profile = userId ? await db.getTasteProfile(userId) : null;
-    const liked = userId ? await db.getLikedTracks(userId) : [];
-    const history = userId ? await db.getUserHistory(userId) : [];
+    // 2. Fetch User Profile Data & History from Database in parallel
+    const [profile, liked, history] = userId
+      ? await Promise.all([
+          db.getTasteProfile(userId),
+          db.getLikedTracks(userId),
+          db.getUserHistory(userId),
+        ])
+      : [null, [], []];
 
     // Music-first normalization & filtering
     const cleanLiked = liked.map(t => contentClassifier.normalizeTrack(t)).filter(t => !t.isCompilation && !t.isReaction);

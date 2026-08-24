@@ -3,6 +3,8 @@ import { Track } from '../types';
 
 export interface NativePlayerPlugin {
   isNativeAvailable(): Promise<{ available: boolean; version: string; engine: string }>;
+  getAppVersion(): Promise<{ version: string; buildNumber: number }>;
+  installApkUpdate(options: { filePath: string }): Promise<{ success: boolean }>;
   playTrack(options: { track: any; queue?: any[] }): Promise<void>;
   pause(): Promise<void>;
   resume(): Promise<void>;
@@ -191,6 +193,26 @@ class NativePlayerBridge {
       return await NativePlayer.getNativeStorageBreakdown();
     } catch {
       return null;
+    }
+  }
+
+  public async getAppVersion(): Promise<{ version: string; buildNumber: number }> {
+    if (!this.isNative) return { version: '2.1.0 (Web)', buildNumber: 210 };
+    try {
+      return await NativePlayer.getAppVersion();
+    } catch {
+      return { version: '2.1.0', buildNumber: 210 };
+    }
+  }
+
+  public async installApkUpdate(filePath: string): Promise<boolean> {
+    if (!this.isNative) return false;
+    try {
+      const res = await NativePlayer.installApkUpdate({ filePath });
+      return res.success;
+    } catch (err) {
+      console.error('[MRJ Native] installApkUpdate error:', err);
+      return false;
     }
   }
 }

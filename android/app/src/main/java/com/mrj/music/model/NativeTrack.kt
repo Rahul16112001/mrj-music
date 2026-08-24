@@ -62,10 +62,10 @@ data class NativeTrack(
             }
         }
 
-        // 3. Backend proxy URL as safe fallback — backend will resolve the real stream
+        // 3. Backend raw audio stream redirect as safe fallback
         val trackId = canonicalTrackId ?: providerTrackId ?: id
-        val fallbackUrl = "$BACKEND_BASE/music/stream/${Uri.encode(trackId)}"
-        Log.w(TAG, "Using backend proxy fallback for: $title -> $fallbackUrl")
+        val fallbackUrl = "$BACKEND_BASE/music/stream-raw/${Uri.encode(trackId)}"
+        Log.w(TAG, "Using backend raw audio stream for: $title -> $fallbackUrl")
         return Uri.parse(fallbackUrl)
     }
 

@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
+import { cacheMiddleware } from './utils/cache.js';
 import { authService } from './auth/authService.js';
 import { requireAuth, optionalAuth } from './auth/authMiddleware.js';
 import { db } from './db/schema.js';
@@ -13,29 +15,98 @@ import { searchSuggestionService } from './catalog/searchSuggestionService.js';
 import { trackIdentityManager } from './catalog/trackIdentityManager.js';
 import { musicProvider } from './providers/musicProvider.js';
 
-dotenv.config();
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.resolve(__dirname, '..', '.env');
+dotenv.config({ path: envPath });
+
+authService.validateEnv();
+
+const ALLOWED_ORIGINS = [
+  'https://mrj-music.vercel.app',
+  'https://www.mrj-music.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5005',
+];
 
 const app = express();
 const PORT = process.env.PORT || 5005;
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many authentication attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const strictAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // App Release Info Endpoint
 app.get('/api/app/release', (req, res) => {
   res.json({
     status: 'success',
-    version: '2.0.0',
-    buildNumber: 200,
+    version: '2.1.0',
+    buildNumber: 210,
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music.apk',
-    fileSize: '7.5 MB',
-    fileSizeBytes: 7894082,
+    apkFileName: 'mrj-music-v2.1.0.apk',
+    fileSize: '7.8 MB',
+    fileSizeBytes: 8178892,
     minAndroidVersion: 'Android 8.0+',
     targetAndroidVersion: 'Android 14',
-    sha256: '0b5b10208eaf383ef7f20e7dc88932803dee94d7a47c50032c0a7829dfe42b51',
-    engine: 'AndroidX Media3 / ExoPlayer + Kotlin Foreground Service',
+    engine: 'AndroidX Media3 / ExoPlayer + Foreground MediaSession Service',
     isAvailable: true,
+  });
+});
+
+// App Update Check Endpoint
+app.get('/api/app/check-update', (req, res) => {
+  const clientVersion = req.query.version || '1.0.0';
+  const latestVersion = '2.1.0';
+  const isUpdateAvailable = clientVersion !== latestVersion;
+
+  res.json({
+    status: 'success',
+    isUpdateAvailable,
+    currentVersion: clientVersion,
+    latestVersion,
+    buildNumber: 210,
+    releaseDate: '2026-08-24',
+    title: 'MRJ Music v2.1.0 Production Update',
+    changelog: [
+      '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
+      '🎵 Seamless Song / Video Switcher with interactive playback',
+      '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
+      '🚀 Up Next dynamic queue improvements and synchronized lyrics',
+      '🔒 In-App Silent Update System with FileProvider integration',
+      '🛠️ Stream resilience and performance improvements'
+    ],
+    apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+    apkFileName: 'mrj-music-v2.1.0.apk',
+    fileSize: '7.8 MB',
+    fileSizeBytes: 8178892,
+    isMandatory: false,
+    minAndroidVersion: 'Android 8.0+'
   });
 });
 
@@ -49,11 +120,58 @@ app.get('/api/health/db', async (req, res) => {
   });
 });
 
+// Raw Stream Proxy for Native Players (pipes audio directly)
+app.get('/api/music/stream-proxy/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const stream = await musicProvider.resolveAudioStream(id);
+    if (!stream || !stream.url || stream.url.includes('youtube.com/watch')) {
+      return res.status(404).json({
+        status: 'unavailable',
+        message: 'Direct audio stream unavailable for this track.',
+        videoId: id,
+      });
+    }
+
+    res.setHeader('Content-Type', stream.mimeType || 'audio/webm');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    const streamResp = await axios({
+      method: 'get',
+      url: stream.url,
+      responseType: 'stream',
+      timeout: 15000,
+    });
+
+    streamResp.data.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Raw Stream Redirect for Native Players
+app.get('/api/music/stream-raw/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const stream = await musicProvider.resolveAudioStream(id);
+    if (stream && stream.url && stream.url.startsWith('http') && !stream.url.includes('youtube.com/watch')) {
+      return res.redirect(302, stream.url);
+    }
+    return res.status(404).json({
+      status: 'unavailable',
+      message: 'Direct audio stream unavailable for this track.',
+      videoId: id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // 1. AUTHENTICATION ROUTES
 // ==========================================
 
-app.post('/api/auth/signup-otp', async (req, res) => {
+app.post('/api/auth/signup-otp', strictAuthLimiter, async (req, res) => {
   try {
     const { email, name } = req.body;
     const result = await authService.sendSignupOtp(email, name);
@@ -63,7 +181,7 @@ app.post('/api/auth/signup-otp', async (req, res) => {
   }
 });
 
-app.post('/api/auth/verify-otp', async (req, res) => {
+app.post('/api/auth/verify-otp', strictAuthLimiter, async (req, res) => {
   try {
     const { email, otp, password, name, ageGroup, gender } = req.body;
     const userAgent = req.headers['user-agent'] || '';
@@ -75,7 +193,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', strictAuthLimiter, async (req, res) => {
   try {
     const { name, email, password, ageGroup, gender } = req.body;
     const userAgent = req.headers['user-agent'] || '';
@@ -87,7 +205,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', strictAuthLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const userAgent = req.headers['user-agent'] || '';
@@ -99,7 +217,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/refresh', async (req, res) => {
+app.post('/api/auth/refresh', authLimiter, async (req, res) => {
   try {
     const { refreshToken } = req.body;
     const result = await authService.refreshAccessToken(refreshToken);
@@ -151,7 +269,7 @@ app.delete('/api/auth/account', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     const result = await authService.forgotPassword(email);
@@ -161,7 +279,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', strictAuthLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     const result = await authService.resetPassword(token, newPassword);
@@ -175,30 +293,30 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // 2. OFFICIAL CHARTS ROUTES (NON-PERSONALIZED)
 // ==========================================
 
-app.get('/api/charts/trending', async (req, res) => {
+app.get('/api/charts/trending', cacheMiddleware(5 * 60 * 1000), async (req, res) => {
   const region = req.query.region || 'GLOBAL';
   const data = await chartService.getTrending(region);
   res.json({ status: 'success', ...data });
 });
 
-app.get('/api/charts/top-songs', async (req, res) => {
+app.get('/api/charts/top-songs', cacheMiddleware(5 * 60 * 1000), async (req, res) => {
   const region = req.query.region || 'GLOBAL';
   const data = await chartService.getTopSongs(region);
   res.json({ status: 'success', ...data });
 });
 
-app.get('/api/charts/top-artists', async (req, res) => {
+app.get('/api/charts/top-artists', cacheMiddleware(10 * 60 * 1000), async (req, res) => {
   const region = req.query.region || 'GLOBAL';
   const data = await chartService.getTopArtists(region);
   res.json({ status: 'success', ...data });
 });
 
-app.get('/api/charts/categories', async (req, res) => {
+app.get('/api/charts/categories', cacheMiddleware(30 * 60 * 1000), async (req, res) => {
   const categories = chartService.getAllCategories();
   res.json({ status: 'success', categories });
 });
 
-app.get('/api/charts/category/:categoryId', async (req, res) => {
+app.get('/api/charts/category/:categoryId', cacheMiddleware(5 * 60 * 1000), async (req, res) => {
   const { categoryId } = req.params;
   const tracks = chartService.getTracksByCategory(categoryId);
   res.json({ status: 'success', categoryId, tracks });
@@ -511,14 +629,11 @@ app.get('/api/music/stream/:id', async (req, res) => {
     });
   }
 
-  res.json({
-    status: 'online_only',
+  res.status(404).json({
+    status: 'unavailable',
     canonicalTrackId: id,
     videoId,
-    streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
-    mimeType: 'audio/webm',
-    codec: 'opus',
-    bitrate: 'Quality information unavailable',
+    message: 'Direct audio stream unavailable for offline download.',
   });
 });
 
@@ -565,5 +680,16 @@ app.get('/api/ads/bundle', (req, res) => {
 app.listen(PORT, () => {
   console.log(`⚡ MRJ Music API running at http://localhost:${PORT}`);
 });
+
+setInterval(async () => {
+  try {
+    const cleaned = await db.cleanupExpiredSessions();
+    if (cleaned > 0) {
+      console.log(`🧹 Cleaned up ${cleaned} expired sessions`);
+    }
+  } catch (err) {
+    console.warn('Session cleanup notice:', err.message);
+  }
+}, 60 * 60 * 1000);
 
 export default app;

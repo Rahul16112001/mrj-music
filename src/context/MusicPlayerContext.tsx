@@ -102,6 +102,8 @@ declare global {
   }
 }
 
+const lyricsCache = new Map<string, LyricData>();
+
 // Fisher-Yates Shuffle Algorithm (Bag Model)
 function fisherYatesShuffle<T>(array: T[]): T[] {
   const copy = [...array];
@@ -341,6 +343,14 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, []);
 
+  useEffect(() => {
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+      try {
+        ytPlayerRef.current.setVolume(volume * 100);
+      } catch {}
+    }
+  }, [volume]);
+
   const acquireWakeLock = async () => {
     try {
       if ('wakeLock' in navigator && !wakeLockRef.current) {
@@ -445,8 +455,26 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }).catch(() => {});
     }
 
+    // 1. Android Native Background Engine Routing
+    if (nativePlayerBridge.isNativeAndroid()) {
+      const activeQ = newQueue && newQueue.length > 0 ? newQueue : (queue.length > 0 ? queue : [track]);
+      nativePlayerBridge.playTrack(track, activeQ);
+      const cacheKey = `${track.title}|${track.artist}`.toLowerCase();
+      const cachedLyrics = lyricsCache.get(cacheKey);
+      if (cachedLyrics) {
+        setActiveLyrics(cachedLyrics);
+      } else {
+        api.getLyrics(track.title, track.artist, track.duration).then(l => {
+          lyricsCache.set(cacheKey, l);
+          setActiveLyrics(l);
+        }).catch(() => {});
+      }
+      checkAndTriggerAutoplay(queueIndex, activeQ);
+      return;
+    }
+
     try {
-      // 1. Check Offline Storage first with automatic online fallback
+      // 2. Check Offline Storage first with automatic online fallback
       let playedOffline = false;
       const offlineRecord = await offlineStorage.getOfflineAudio(track.id);
       if (offlineRecord && offlineRecord.blobUrl && htmlAudioRef.current) {
@@ -466,7 +494,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       if (!playedOffline) {
-        // 2. Play Online Stream
+        // 3. Play Online Web Stream
         isUsingHtmlAudio.current = false;
         try { htmlAudioRef.current?.pause(); } catch {}
 
@@ -508,10 +536,17 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         }
 
-        // Fetch lyrics in background
-        api.getLyrics(track.title, track.artist, track.duration).then(l => {
-          setActiveLyrics(l);
-        }).catch(() => {});
+        // Fetch lyrics in background (with cache)
+        const cacheKey = `${track.title}|${track.artist}`.toLowerCase();
+        const cachedLyrics = lyricsCache.get(cacheKey);
+        if (cachedLyrics) {
+          setActiveLyrics(cachedLyrics);
+        } else {
+          api.getLyrics(track.title, track.artist, track.duration).then(l => {
+            lyricsCache.set(cacheKey, l);
+            setActiveLyrics(l);
+          }).catch(() => {});
+        }
       }
 
       setupMediaSession(track, {
@@ -533,7 +568,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       });
 
       nativePlayerBridge.updateMetadata(track, true);
-
       checkAndTriggerAutoplay(queueIndex, queue);
     } catch (err) {
       console.warn('Audio play notice:', err);
@@ -559,6 +593,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const togglePlay = () => {
     if (!currentTrack) return;
+    if (nativePlayerBridge.isNativeAndroid()) {
+      nativePlayerBridge.togglePlay();
+      return;
+    }
+
     if (isUsingHtmlAudio.current && htmlAudioRef.current) {
       if (isPlaying) {
         htmlAudioRef.current.pause();
@@ -651,6 +690,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // ==================== 3. NEXT & PREVIOUS BUTTONS ====================
 
   const handleNextTrack = async () => {
+    if (nativePlayerBridge.isNativeAndroid()) {
+      nativePlayerBridge.playNext();
+      return;
+    }
+
     if (queue.length === 0) return;
 
     if (currentTrack) {
@@ -719,6 +763,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const handlePreviousTrack = async () => {
+    if (nativePlayerBridge.isNativeAndroid()) {
+      nativePlayerBridge.playPrevious();
+      return;
+    }
+
     if (currentTime > 3) {
       seek(0);
       return;
@@ -745,6 +794,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     lastSeekTargetRef.current = seconds;
     lastSeekTimestampRef.current = Date.now();
     setCurrentTime(seconds);
+
+    if (nativePlayerBridge.isNativeAndroid()) {
+      nativePlayerBridge.seekTo(seconds);
+      return;
+    }
 
     if (isUsingHtmlAudio.current && htmlAudioRef.current) {
       try { htmlAudioRef.current.currentTime = seconds; } catch {}

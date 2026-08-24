@@ -3,6 +3,7 @@ import { contentClassifier, CONTENT_TYPES } from '../catalog/contentClassifier.j
 import { searchIntentEngine, INTENT_TYPES } from '../catalog/searchIntentEngine.js';
 import { canonicalMusicResolver } from '../catalog/canonicalMusicResolver.js';
 import { searchRelevanceEngine } from '../catalog/searchRelevanceEngine.js';
+import { trackIdentityManager } from '../catalog/trackIdentityManager.js';
 
 // Multiple resilient multi-region stream endpoints
 const PIPED_INSTANCES = [
@@ -10,6 +11,7 @@ const PIPED_INSTANCES = [
   'https://api.piped.privacydev.net',
   'https://pipedapi.leptons.xyz',
   'https://piped-api.lunar.icu',
+  'https://piped.video',
 ];
 
 const INVIDIOUS_INSTANCES = [
@@ -17,10 +19,13 @@ const INVIDIOUS_INSTANCES = [
   'https://invidious.jing.rocks',
   'https://invidious.nerdvpn.de',
   'https://inv.nadeko.net',
+  'https://invidious.snopyta.org',
 ];
 
-// Instance health tracking
+// Instance health tracking & caching
 const instanceHealth = new Map();
+const streamCache = new Map();
+const lyricsCache = new Map();
 
 function recordInstanceMetric(url, success, latencyMs) {
   const current = instanceHealth.get(url) || { successCount: 0, failCount: 0, avgLatency: 0, lastCheck: Date.now() };
@@ -231,50 +236,298 @@ export const musicProvider = {
     return Array.from(pool.values());
   },
 
-  // 3. Multi-Region Stream Resolvers with Failover
+  // 3. Artist Profile & Discography Resolver
+  async getArtist(artistName) {
+    if (!artistName || !artistName.trim()) return null;
+    const cleanName = artistName.trim();
+
+    try {
+      // Query iTunes for artist top songs & albums
+      const [artistLookupRes, songsSearchRes, ytSearchRes] = await Promise.allSettled([
+        axios.get(`https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=musicArtist&limit=3`, { timeout: 4500 }),
+        axios.get(`https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=song&limit=15`, { timeout: 4500 }),
+        axios.get(`https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=album&limit=8`, { timeout: 4500 }),
+      ]);
+
+      let artistThumbnail = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400';
+      let genre = 'Artist';
+      let artistId = `art_${encodeURIComponent(cleanName)}`;
+
+      if (artistLookupRes.status === 'fulfilled' && artistLookupRes.value.data?.results?.[0]) {
+        const art = artistLookupRes.value.data.results[0];
+        genre = art.primaryGenreName || genre;
+        artistId = `art_${art.artistId || cleanName}`;
+      }
+
+      // Parse Top Songs
+      const topSongs = [];
+      if (songsSearchRes.status === 'fulfilled' && songsSearchRes.value.data?.results) {
+        for (const item of songsSearchRes.value.data.results) {
+          const rawTitle = item.trackName || '';
+          const rawArtist = item.artistName || cleanName;
+          const cleanTitle = contentClassifier.cleanTitle(rawTitle);
+          const cleanArtist = contentClassifier.cleanArtist(rawArtist);
+          const canonicalTrackId = trackIdentityManager.generateCanonicalTrackId(cleanTitle, cleanArtist);
+          const artwork = (item.artworkUrl100 || '')
+            .replace('100x100bb.jpg', '600x600bb.jpg')
+            .replace('100x100bb.png', '600x600bb.png');
+
+          if (artistThumbnail.includes('unsplash') && artwork) {
+            artistThumbnail = artwork;
+          }
+
+          topSongs.push({
+            id: canonicalTrackId,
+            canonicalTrackId,
+            title: cleanTitle,
+            artist: cleanArtist,
+            album: item.collectionName || 'Single',
+            duration: Math.round((item.trackTimeMillis || 210000) / 1000),
+            thumbnail: artwork || artistThumbnail,
+            genre: item.primaryGenreName || genre,
+            releaseYear: item.releaseDate ? item.releaseDate.substring(0, 4) : '2024',
+            isOfficialMusic: true,
+            playbackFormat: 'audio',
+            provider: 'canonical',
+          });
+        }
+      }
+
+      // Parse Albums
+      const albums = [];
+      if (ytSearchRes.status === 'fulfilled' && ytSearchRes.value.data?.results) {
+        for (const alb of ytSearchRes.value.data.results) {
+          const art = (alb.artworkUrl100 || '')
+            .replace('100x100bb.jpg', '600x600bb.jpg')
+            .replace('100x100bb.png', '600x600bb.png');
+
+          albums.push({
+            id: `alb_${alb.collectionId}`,
+            title: alb.collectionName,
+            artist: alb.artistName || cleanName,
+            thumbnail: art,
+            year: alb.releaseDate ? alb.releaseDate.substring(0, 4) : '2024',
+            trackCount: alb.trackCount || 8,
+            genre: alb.primaryGenreName || genre,
+          });
+        }
+      }
+
+      // Fallback songs if none found
+      if (topSongs.length === 0) {
+        const ytResults = await this.search(`${cleanName} top songs`, 'songs', 10);
+        topSongs.push(...(ytResults.songs || []));
+      }
+
+      return {
+        id: artistId,
+        name: cleanName,
+        thumbnail: artistThumbnail,
+        genre,
+        monthlyListeners: `${(Math.floor(Math.random() * 20) + 10)}.${Math.floor(Math.random() * 9)}M Monthly Listeners`,
+        bio: `${cleanName} is a globally recognized artist with multiple top charting albums and trending releases.`,
+        topSongs: topSongs.slice(0, 10),
+        albums: albums.slice(0, 8),
+        relatedArtists: [
+          { id: 'rel_1', name: 'Arijit Singh', thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300' },
+          { id: 'rel_2', name: 'Shreya Ghoshal', thumbnail: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300' },
+          { id: 'rel_3', name: 'Diljit Dosanjh', thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300' },
+          { id: 'rel_4', name: 'The Weeknd', thumbnail: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=300' },
+          { id: 'rel_5', name: 'Taylor Swift', thumbnail: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300' },
+        ].filter(r => r.name.toLowerCase() !== cleanName.toLowerCase()),
+      };
+    } catch (err) {
+      console.warn('Artist provider error:', err.message);
+      return null;
+    }
+  },
+
+  // 4. Album & Tracklist Resolver
+  async getAlbum(albumId) {
+    if (!albumId) return null;
+
+    try {
+      let collectionId = albumId;
+      if (albumId.startsWith('alb_')) {
+        collectionId = albumId.replace('alb_', '');
+      }
+
+      const res = await axios.get(`https://itunes.apple.com/lookup?id=${encodeURIComponent(collectionId)}&entity=song`, { timeout: 4500 });
+      const results = res.data?.results || [];
+
+      if (results.length === 0) return null;
+
+      const albumMeta = results[0];
+      const artwork = (albumMeta.artworkUrl100 || '')
+        .replace('100x100bb.jpg', '600x600bb.jpg')
+        .replace('100x100bb.png', '600x600bb.png');
+
+      const tracks = [];
+      for (const item of results.slice(1)) {
+        const rawTitle = item.trackName || '';
+        const rawArtist = item.artistName || albumMeta.artistName || '';
+        const cleanTitle = contentClassifier.cleanTitle(rawTitle);
+        const cleanArtist = contentClassifier.cleanArtist(rawArtist);
+        const canonicalTrackId = trackIdentityManager.generateCanonicalTrackId(cleanTitle, cleanArtist);
+
+        tracks.push({
+          id: canonicalTrackId,
+          canonicalTrackId,
+          title: cleanTitle,
+          artist: cleanArtist,
+          album: albumMeta.collectionName || 'Album',
+          duration: Math.round((item.trackTimeMillis || 210000) / 1000),
+          thumbnail: artwork,
+          genre: item.primaryGenreName || albumMeta.primaryGenreName || 'Pop',
+          releaseYear: albumMeta.releaseDate ? albumMeta.releaseDate.substring(0, 4) : '2024',
+          isOfficialMusic: true,
+          playbackFormat: 'audio',
+          provider: 'canonical',
+        });
+      }
+
+      return {
+        id: albumId,
+        title: albumMeta.collectionName || 'Album',
+        artist: albumMeta.artistName || 'Artist',
+        thumbnail: artwork,
+        year: albumMeta.releaseDate ? albumMeta.releaseDate.substring(0, 4) : '2024',
+        trackCount: tracks.length || albumMeta.trackCount || 1,
+        genre: albumMeta.primaryGenreName || 'Pop',
+        tracks,
+      };
+    } catch (err) {
+      console.warn('Album provider error:', err.message);
+      return null;
+    }
+  },
+
+  // 5. Synced & Plain Lyrics Resolver (LRCLIB Integration)
+  async getLyrics(trackTitle, artistName, durationSec) {
+    if (!trackTitle) return { syncedLyrics: null, plainLyrics: null };
+    const cacheKey = `${trackTitle.toLowerCase().trim()}_${(artistName || '').toLowerCase().trim()}`;
+    if (lyricsCache.has(cacheKey)) {
+      return lyricsCache.get(cacheKey);
+    }
+
+    try {
+      const cleanTitle = contentClassifier.cleanTitle(trackTitle);
+      const cleanArtist = contentClassifier.cleanArtist(artistName || '');
+
+      // Direct LRCLIB get request
+      let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
+      if (durationSec && Number(durationSec) > 0) {
+        url += `&duration=${Math.round(Number(durationSec))}`;
+      }
+
+      const res = await axios.get(url, {
+        headers: { 'User-Agent': 'MRJMusic/2.0 (https://github.com/Rahul16112001/mrj-music)' },
+        timeout: 3500,
+      });
+
+      if (res.data && (res.data.syncedLyrics || res.data.plainLyrics)) {
+        const payload = {
+          syncedLyrics: res.data.syncedLyrics || null,
+          plainLyrics: res.data.plainLyrics || null,
+          track: res.data.trackName || cleanTitle,
+          artist: res.data.artistName || cleanArtist,
+          isSynced: !!res.data.syncedLyrics,
+        };
+        lyricsCache.set(cacheKey, payload);
+        return payload;
+      }
+    } catch {
+      // Search fallback
+      try {
+        const searchRes = await axios.get(
+          `https://lrclib.net/api/search?q=${encodeURIComponent(trackTitle + ' ' + (artistName || ''))}`,
+          {
+            headers: { 'User-Agent': 'MRJMusic/2.0 (https://github.com/Rahul16112001/mrj-music)' },
+            timeout: 3000,
+          }
+        );
+        if (Array.isArray(searchRes.data) && searchRes.data.length > 0) {
+          const first = searchRes.data[0];
+          const payload = {
+            syncedLyrics: first.syncedLyrics || null,
+            plainLyrics: first.plainLyrics || null,
+            track: first.trackName || trackTitle,
+            artist: first.artistName || artistName,
+            isSynced: !!first.syncedLyrics,
+          };
+          lyricsCache.set(cacheKey, payload);
+          return payload;
+        }
+      } catch {}
+    }
+
+    const empty = { syncedLyrics: null, plainLyrics: null };
+    lyricsCache.set(cacheKey, empty);
+    return empty;
+  },
+
+  // 6. Multi-Region Resilient Stream Resolver
   async resolveAudioStream(videoId) {
     if (!videoId) return null;
+    let actualId = videoId;
 
-    for (const base of PIPED_INSTANCES) {
-      const startTime = Date.now();
-      try {
-        const res = await axios.get(`${base}/streams/${videoId}`, { timeout: 3500 });
-        const latency = Date.now() - startTime;
-        recordInstanceMetric(base, true, latency);
-
-        const audioStreams = (res.data.audioStreams || []).sort(
-          (a, b) => (b.bitrate || 0) - (a.bitrate || 0)
-        );
-
-        if (audioStreams.length > 0) {
-          const best = audioStreams[0];
-          return {
-            url: best.url,
-            mimeType: best.mimeType || 'audio/webm',
-            codec: best.codec || 'opus',
-            bitrate: best.quality || `${Math.round((best.bitrate || 160000) / 1000)} kbps`,
-            sampleRate: '48000 Hz',
-            expiresAt: Date.now() + 6 * 3600 * 1000,
-            provider: 'piped-stream',
-          };
-        }
-      } catch (err) {
-        recordInstanceMetric(base, false, Date.now() - startTime);
+    // Resolve canonical string if needed
+    if (videoId.includes('|')) {
+      const parts = videoId.split('|');
+      const title = parts[0].replace(/-/g, ' ');
+      const artist = parts[1] ? parts[1].replace(/-/g, ' ') : '';
+      const searchRes = await this.search(`${title} ${artist}`, 'songs', 5);
+      const top = searchRes.songs[0];
+      if (top && top.providerTrackId && !top.providerTrackId.includes('|')) {
+        actualId = top.providerTrackId;
       }
     }
 
-    for (const base of INVIDIOUS_INSTANCES) {
-      const startTime = Date.now();
-      try {
-        const res = await axios.get(`${base}/api/v1/videos/${videoId}`, { timeout: 3500 });
-        const latency = Date.now() - startTime;
-        recordInstanceMetric(base, true, latency);
+    if (streamCache.has(actualId)) {
+      const cached = streamCache.get(actualId);
+      if (cached.expiresAt > Date.now()) {
+        return cached;
+      }
+    }
 
+    // Concurrent race on Piped & Invidious instances
+    const instancePromises = PIPED_INSTANCES.slice(0, 3).map(async (base) => {
+      const startTime = Date.now();
+      const res = await axios.get(`${base}/streams/${actualId}`, { timeout: 3000 });
+      recordInstanceMetric(base, true, Date.now() - startTime);
+      const audioStreams = (res.data.audioStreams || []).sort(
+        (a, b) => (b.bitrate || 0) - (a.bitrate || 0)
+      );
+      if (audioStreams.length > 0) {
+        const best = audioStreams[0];
+        return {
+          url: best.url,
+          mimeType: best.mimeType || 'audio/webm',
+          codec: best.codec || 'opus',
+          bitrate: best.quality || `${Math.round((best.bitrate || 160000) / 1000)} kbps`,
+          sampleRate: '48000 Hz',
+          expiresAt: Date.now() + 6 * 3600 * 1000,
+          provider: 'piped-stream',
+          videoId: actualId,
+        };
+      }
+      throw new Error('No audio streams');
+    });
+
+    try {
+      const stream = await Promise.any(instancePromises);
+      streamCache.set(actualId, stream);
+      return stream;
+    } catch {
+      // Invidious fallback race
+      const invidiousPromises = INVIDIOUS_INSTANCES.slice(0, 2).map(async (base) => {
+        const startTime = Date.now();
+        const res = await axios.get(`${base}/api/v1/videos/${actualId}`, { timeout: 3000 });
+        recordInstanceMetric(base, true, Date.now() - startTime);
         const formatStreams = (res.data.adaptiveFormats || []).filter((f) =>
           (f.type || '').startsWith('audio')
         );
         formatStreams.sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
-
         if (formatStreams.length > 0) {
           const best = formatStreams[0];
           return {
@@ -285,21 +538,19 @@ export const musicProvider = {
             sampleRate: '44100 Hz',
             expiresAt: Date.now() + 6 * 3600 * 1000,
             provider: 'invidious-stream',
+            videoId: actualId,
           };
         }
-      } catch (err) {
-        recordInstanceMetric(base, false, Date.now() - startTime);
+        throw new Error('No format streams');
+      });
+
+      try {
+        const stream = await Promise.any(invidiousPromises);
+        streamCache.set(actualId, stream);
+        return stream;
+      } catch {
+        return null;
       }
     }
-
-    return {
-      url: `https://www.youtube.com/watch?v=${videoId}`,
-      mimeType: 'audio/webm',
-      codec: 'opus',
-      bitrate: '320 kbps (Stream Encapsulated)',
-      sampleRate: '48000 Hz',
-      expiresAt: Date.now() + 24 * 3600 * 1000,
-      provider: 'youtube-direct',
-    };
   },
 };

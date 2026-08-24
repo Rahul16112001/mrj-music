@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -12,6 +13,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.mrj.music.model.NativeTrack
 import com.mrj.music.storage.NativeOfflineStorage
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.util.Collections
 
 private const val TAG = "MRJ_ExoPlayerManager"
@@ -24,7 +27,11 @@ interface PlayerEventListener {
     fun onError(errorMessage: String)
 }
 
-class MRJExoPlayerManager private constructor(private val context: Context) {
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class MRJExoPlayerManager @Inject constructor(private val context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setAudioAttributes(
@@ -42,8 +49,16 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
     private val listeners = mutableListOf<PlayerEventListener>()
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    var currentTrack: NativeTrack? = null
-        private set
+    private val _currentTrack = MutableStateFlow<NativeTrack?>(null)
+    val currentTrack: StateFlow<NativeTrack?> = _currentTrack
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying
+
+    private val _position = MutableStateFlow(0L)
+    private val _duration = MutableStateFlow(0L)
+    val positionFlow: StateFlow<Pair<Long, Long>> = _position.combine(_duration) { pos, dur -> pos to dur }
+
     val queue = mutableListOf<NativeTrack>()
     var queueIndex: Int = 0
         private set
@@ -57,7 +72,9 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
                 if (player.isPlaying) {
                     val pos = player.currentPosition
                     val dur = if (player.duration > 0) player.duration
-                              else ((currentTrack?.duration ?: 0.0) * 1000).toLong()
+                              else ((_currentTrack.value?.duration ?: 0.0) * 1000).toLong()
+                    _position.value = pos
+                    _duration.value = dur
                     listeners.forEach { it.onPositionChange(pos, dur) }
                 }
             } catch (e: Exception) {
@@ -154,7 +171,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
                 track
             }
 
-            currentTrack = trackToPlay
+            _currentTrack.value = trackToPlay
 
             // Build MediaItem safely — this will never produce an empty URI
             val mediaItem = try {
@@ -191,7 +208,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
 
     fun resume() {
         try {
-            val curr = currentTrack
+            val curr = _currentTrack.value
             if (player.playbackState == Player.STATE_IDLE && curr != null) {
                 playTrack(curr)
             } else {
@@ -207,7 +224,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
     }
 
     fun notifyTrackChange(track: NativeTrack, isPlaying: Boolean) {
-        currentTrack = track
+        _currentTrack.value = track
         listeners.forEach {
             it.onTrackChange(track)
             it.onPlaybackStateChange(isPlaying, false)
@@ -251,7 +268,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
     fun setShuffle(enabled: Boolean) {
         isShuffleEnabled = enabled
         if (enabled && queue.isNotEmpty()) {
-            val current = currentTrack
+            val current = _currentTrack.value
             Collections.shuffle(queue)
             if (current != null) {
                 queue.remove(current)
@@ -270,7 +287,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
         try {
             val downloads = offlineStorage.getAllDownloadedTracks()
             if (downloads.isEmpty()) return
-            val candidates = downloads.filter { it.id != currentTrack?.id }
+            val candidates = downloads.filter { it.id != _currentTrack.value?.id }
             if (candidates.isNotEmpty()) {
                 val nextTrack = candidates.random()
                 queue.add(nextTrack)

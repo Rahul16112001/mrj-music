@@ -4,6 +4,13 @@ const { Pool } = pg;
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
+if (!DATABASE_URL) {
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    throw new Error('FATAL: DATABASE_URL is required in production.');
+  }
+  console.warn('WARNING: DATABASE_URL not set. Running with in-memory fallback. Data will not persist.');
+}
+
 let pool = null;
 
 // If DATABASE_URL is provided, initialize pg.Pool

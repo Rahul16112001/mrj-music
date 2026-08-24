@@ -151,6 +151,14 @@ export const db = {
     );
   },
 
+  async cleanupExpiredSessions() {
+    const res = await dbClient.query(
+      'DELETE FROM sessions WHERE expires_at < $1;',
+      [Date.now()]
+    );
+    return res.rowCount || 0;
+  },
+
   // ==================== 3. SECURE PASSWORD RESET ====================
   async createPasswordResetToken(userId) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -240,7 +248,22 @@ export const db = {
       `INSERT INTO taste_profiles (
         user_id, preferred_artists, preferred_genres, preferred_moods, liked_artists, disliked_artists,
         liked_genres, disliked_genres, skip_rate, completion_rate, total_plays, total_skips, total_completions, recent_seeds, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ON CONFLICT (user_id) DO UPDATE SET
+        preferred_artists = EXCLUDED.preferred_artists,
+        preferred_genres = EXCLUDED.preferred_genres,
+        preferred_moods = EXCLUDED.preferred_moods,
+        liked_artists = EXCLUDED.liked_artists,
+        disliked_artists = EXCLUDED.disliked_artists,
+        liked_genres = EXCLUDED.liked_genres,
+        disliked_genres = EXCLUDED.disliked_genres,
+        skip_rate = EXCLUDED.skip_rate,
+        completion_rate = EXCLUDED.completion_rate,
+        total_plays = EXCLUDED.total_plays,
+        total_skips = EXCLUDED.total_skips,
+        total_completions = EXCLUDED.total_completions,
+        recent_seeds = EXCLUDED.recent_seeds,
+        updated_at = EXCLUDED.updated_at;`,
       [
         userId,
         JSON.stringify(profile.preferred_artists || {}),
@@ -465,7 +488,13 @@ export const db = {
     const now = Date.now();
     await dbClient.query(
       `INSERT INTO user_settings (user_id, audio_quality, autoplay_radio, theme, smart_downloads, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6);`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id) DO UPDATE SET
+         audio_quality = EXCLUDED.audio_quality,
+         autoplay_radio = EXCLUDED.autoplay_radio,
+         theme = EXCLUDED.theme,
+         smart_downloads = EXCLUDED.smart_downloads,
+         updated_at = EXCLUDED.updated_at;`,
       [
         userId,
         settings.audioQuality || 'high',

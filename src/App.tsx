@@ -16,19 +16,31 @@ import { ArtistPage } from './pages/Artist';
 import { AlbumPage } from './pages/Album';
 import { PlaylistPage } from './pages/Playlist';
 import { SettingsPage } from './pages/Settings';
-import { DownloadApp } from './pages/DownloadApp';
 import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { ProfilePage } from './pages/Profile';
 import { ForgotPasswordPage } from './pages/ForgotPassword';
 import { androidLifecycleService } from './services/androidLifecycleService';
+import { updateService, UpdateInfo } from './services/updateService';
+import { UpdateModal } from './components/UpdateModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const navigate = useNavigate();
+  const [updateInfo, setUpdateInfo] = React.useState<UpdateInfo | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = React.useState(false);
 
   useEffect(() => {
     // Initialize native Android hardware back button and lifecycle services
     androidLifecycleService.initialize(() => navigate(-1));
+
+    // Check for updates on launch
+    updateService.checkForUpdates().then((info) => {
+      if (info && info.isUpdateAvailable) {
+        setUpdateInfo(info);
+        setIsUpdateModalOpen(true);
+      }
+    }).catch(() => {});
   }, [navigate]);
 
   return (
@@ -43,23 +55,23 @@ const AppContent: React.FC = () => {
 
         {/* Routed Viewpages */}
         <main className="flex-1">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/explore" element={<Explore />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/downloads" element={<Downloads />} />
-            <Route path="/library" element={<Library />} />
-            <Route path="/artist/:name" element={<ArtistPage />} />
-            <Route path="/album/:id" element={<AlbumPage />} />
-            <Route path="/playlist/:id" element={<PlaylistPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/download" element={<DownloadApp />} />
-            <Route path="/download-app" element={<DownloadApp />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/explore" element={<Explore />} />
+              <Route path="/search" element={<Search />} />
+              <Route path="/downloads" element={<Downloads />} />
+              <Route path="/library" element={<Library />} />
+              <Route path="/artist/:name" element={<ArtistPage />} />
+              <Route path="/album/:id" element={<AlbumPage />} />
+              <Route path="/playlist/:id" element={<PlaylistPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            </Routes>
+          </ErrorBoundary>
         </main>
       </div>
 
@@ -71,6 +83,15 @@ const AppContent: React.FC = () => {
 
       {/* Immersive 3-Tab Fullscreen Player */}
       <FullScreenPlayer />
+
+      {/* Automatic In-App Update Prompt Modal */}
+      {updateInfo && (
+        <UpdateModal
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+          updateInfo={updateInfo}
+        />
+      )}
     </div>
   );
 };
