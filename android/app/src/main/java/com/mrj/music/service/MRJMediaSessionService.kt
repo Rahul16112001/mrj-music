@@ -135,7 +135,8 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
     override fun onDestroy() {
         playerManager.removeListener(this)
         mediaSession?.run {
-            player.release()
+            // Do NOT call player.release() here — the player is a singleton managed by
+            // MRJExoPlayerManager. Releasing it here would crash subsequent playback attempts.
             release()
             mediaSession = null
         }

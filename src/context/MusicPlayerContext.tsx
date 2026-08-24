@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Track, LyricData, AdCreative, PlaybackMode, AudioQuality, Playlist, PlaybackFormat, TuneConfig } from '../types';
-import { api } from '../services/api';
+import { api, API_BASE } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 import { offlineAdEngine } from '../services/offlineAdEngine';
 import { smartDownloadEngine } from '../services/smartDownloadEngine';
@@ -414,12 +414,61 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (nativePlayerBridge.isNativeAndroid()) {
       setIsLoading(true);
       setCurrentTrack(track);
-      const isPlayed = await nativePlayerBridge.playTrack(track, newQueue || queue);
+
+      // CRITICAL FIX: Resolve a real, playable stream URL before giving to ExoPlayer.
+      // ExoPlayer crashes on null/empty URI — we must supply a resolved direct audio URL.
+      let streamUrl: string | null = null;
+
+      try {
+        // Step 1: Try /api/music/stream/:id which returns a direct CDN audio URL
+        const streamId = track.canonicalTrackId || track.providerTrackId || track.id;
+        const streamRes = await fetch(`${API_BASE}/music/stream/${encodeURIComponent(streamId)}`);
+        if (streamRes.ok) {
+          const streamData = await streamRes.json();
+          if (streamData.streamUrl && !streamData.streamUrl.includes('youtube.com/watch')) {
+            streamUrl = streamData.streamUrl;
+          }
+        }
+      } catch (e) {
+        console.warn('[MRJ Native] Stream URL resolve step 1 failed:', e);
+      }
+
+      // Step 2: If step 1 returned a YouTube watch URL (not direct), try resolvePlaybackSource
+      if (!streamUrl) {
+        try {
+          const src = await api.resolvePlaybackSource(track, 'audio');
+          if (src && src.providerTrackId) {
+            // Fetch stream for the resolved provider track ID
+            const s2 = await fetch(`${API_BASE}/music/stream/${encodeURIComponent(src.providerTrackId)}`);
+            if (s2.ok) {
+              const d2 = await s2.json();
+              if (d2.streamUrl && !d2.streamUrl.includes('youtube.com/watch')) {
+                streamUrl = d2.streamUrl;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[MRJ Native] Stream URL resolve step 2 failed:', e);
+        }
+      }
+
+      // Step 3: Construct the backend proxy stream URL as a reliable final fallback
+      // The backend /api/music/stream/:id endpoint redirects to the actual audio CDN
+      if (!streamUrl) {
+        const streamId = track.canonicalTrackId || track.providerTrackId || track.id;
+        streamUrl = `https://mrj-music.vercel.app/api/music/stream/${encodeURIComponent(streamId)}`;
+      }
+
+      // Attach resolved stream URL to track before sending to Kotlin
+      const trackWithStream = { ...track, streamUrl };
+      const isPlayed = await nativePlayerBridge.playTrack(trackWithStream, newQueue || queue);
       if (isPlayed) {
         setIsLoading(false);
         setIsPlaying(true);
         return;
       }
+      // If native bridge failed (returned false), fall through to web playback
+      setIsLoading(false);
     }
 
     try {
