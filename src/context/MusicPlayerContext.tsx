@@ -161,6 +161,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
 
   const ytPlayerRef = useRef<any>(null);
+  const ytPlayerReadyRef = useRef<boolean>(false);
+  const pendingPlayIdRef = useRef<string | null>(null);
   const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
   const pollTimerRef = useRef<any>(null);
   const isUsingHtmlAudio = useRef<boolean>(false);
@@ -216,19 +218,21 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     // 2. Initialize YouTube Stream Player
     const setupYtPlayer = () => {
+      if (typeof window === 'undefined') return;
       if (window.YT && window.YT.Player && !ytPlayerRef.current) {
         try {
           let container = document.getElementById('mrj-yt-audio-container');
           if (!container) {
             container = document.createElement('div');
             container.id = 'mrj-yt-audio-container';
-            container.style.cssText = 'position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.01;pointer-events:none;z-index:-1;';
+            container.style.cssText = 'position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:9999;';
             document.body.appendChild(container);
           }
 
           ytPlayerRef.current = new window.YT.Player('mrj-yt-audio-container', {
             height: '200',
             width: '200',
+            host: 'https://www.youtube-nocookie.com',
             playerVars: {
               autoplay: 1,
               controls: 0,
@@ -236,10 +240,27 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               fs: 0,
               playsinline: 1,
               rel: 0,
+              enablejsapi: 1,
+              origin: window.location.origin,
             },
             events: {
               onReady: () => {
-                ytPlayerRef.current?.setVolume?.(volume * 100);
+                ytPlayerReadyRef.current = true;
+                try {
+                  ytPlayerRef.current?.setVolume?.(volume * 100);
+                } catch {}
+                if (pendingPlayIdRef.current) {
+                  const toPlay = pendingPlayIdRef.current;
+                  pendingPlayIdRef.current = null;
+                  try {
+                    ytPlayerRef.current?.loadVideoById(toPlay);
+                    ytPlayerRef.current?.playVideo();
+                    setIsPlaying(true);
+                    setIsLoading(false);
+                  } catch (e) {
+                    console.warn('Pending play execution notice:', e);
+                  }
+                }
               },
               onStateChange: (event: any) => {
                 if (event.data === 1) { // PLAYING
@@ -257,12 +278,15 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   setIsLoading(true);
                 }
               },
-              onError: () => {
+              onError: (err: any) => {
+                console.warn('YouTube player error event:', err);
                 setIsLoading(false);
               },
             },
           });
-        } catch {}
+        } catch (e) {
+          console.warn('YouTube player setup notice:', e);
+        }
       }
     };
 
@@ -270,10 +294,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setupYtPlayer();
     } else {
       window.onYouTubeIframeAPIReady = setupYtPlayer;
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      tag.async = true;
-      document.body.appendChild(tag);
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.async = true;
+        document.body.appendChild(tag);
+      }
     }
 
     // 3. Time polling
@@ -361,8 +387,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setCurrentTrack(track);
     setPlaybackFormat(format || track.playbackFormat || 'audio');
     milestoneRef.current.clear();
-    await offlineStorage.recordPlay(track);
 
+    // Background asynchronous tracking
+    offlineStorage.recordPlay(track).catch(() => {});
     syncService.queueEvent({
       eventType: 'PLAY_STARTED',
       trackId: track.id,
@@ -392,7 +419,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setSourceQueue([track]);
       setSourceType(source || 'single');
 
-      // Auto-populate seed radio / autoplay queue immediately
+      // Auto-populate seed radio / autoplay queue in background
       api.getNextRecommendations({
         currentTrack: track,
         playedTrackIds: [track.id],
@@ -405,70 +432,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             return [currentHead, ...fresh];
           });
         }
-      }).catch(err => {
-        console.warn('Initial autoplay queue seeding notice:', err);
-      });
-    }
-
-    // Android Native Media3 Execution
-    if (nativePlayerBridge.isNativeAndroid()) {
-      setIsLoading(true);
-      setCurrentTrack(track);
-
-      // CRITICAL FIX: Resolve a real, playable stream URL before giving to ExoPlayer.
-      // ExoPlayer crashes on null/empty URI — we must supply a resolved direct audio URL.
-      let streamUrl: string | null = null;
-
-      try {
-        // Step 1: Try /api/music/stream/:id which returns a direct CDN audio URL
-        const streamId = track.canonicalTrackId || track.providerTrackId || track.id;
-        const streamRes = await fetch(`${API_BASE}/music/stream/${encodeURIComponent(streamId)}`);
-        if (streamRes.ok) {
-          const streamData = await streamRes.json();
-          if (streamData.streamUrl && !streamData.streamUrl.includes('youtube.com/watch')) {
-            streamUrl = streamData.streamUrl;
-          }
-        }
-      } catch (e) {
-        console.warn('[MRJ Native] Stream URL resolve step 1 failed:', e);
-      }
-
-      // Step 2: If step 1 returned a YouTube watch URL (not direct), try resolvePlaybackSource
-      if (!streamUrl) {
-        try {
-          const src = await api.resolvePlaybackSource(track, 'audio');
-          if (src && src.providerTrackId) {
-            // Fetch stream for the resolved provider track ID
-            const s2 = await fetch(`${API_BASE}/music/stream/${encodeURIComponent(src.providerTrackId)}`);
-            if (s2.ok) {
-              const d2 = await s2.json();
-              if (d2.streamUrl && !d2.streamUrl.includes('youtube.com/watch')) {
-                streamUrl = d2.streamUrl;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[MRJ Native] Stream URL resolve step 2 failed:', e);
-        }
-      }
-
-      // Step 3: Construct the backend proxy stream URL as a reliable final fallback
-      // The backend /api/music/stream/:id endpoint redirects to the actual audio CDN
-      if (!streamUrl) {
-        const streamId = track.canonicalTrackId || track.providerTrackId || track.id;
-        streamUrl = `https://mrj-music.vercel.app/api/music/stream/${encodeURIComponent(streamId)}`;
-      }
-
-      // Attach resolved stream URL to track before sending to Kotlin
-      const trackWithStream = { ...track, streamUrl };
-      const isPlayed = await nativePlayerBridge.playTrack(trackWithStream, newQueue || queue);
-      if (isPlayed) {
-        setIsLoading(false);
-        setIsPlaying(true);
-        return;
-      }
-      // If native bridge failed (returned false), fall through to web playback
-      setIsLoading(false);
+      }).catch(() => {});
     }
 
     try {
@@ -478,67 +442,57 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isUsingHtmlAudio.current = true;
         try { ytPlayerRef.current?.pauseVideo?.(); } catch {}
         htmlAudioRef.current.src = offlineRecord.blobUrl;
-        await htmlAudioRef.current.play();
+        await htmlAudioRef.current.play().catch(() => {});
         setActiveLyrics(offlineRecord.lyrics || null);
         setIsPlaying(true);
         setIsLoading(false);
       } else {
-        // 2. Play via Stream Engine (Decoupled Playback Source)
+        // 2. Play Online Stream
         isUsingHtmlAudio.current = false;
         try { htmlAudioRef.current?.pause(); } catch {}
 
-        const targetFormat = format || 'audio';
-        let playableId: string | null = (targetFormat === 'video' ? track.videoSource?.providerTrackId : track.audioSource?.providerTrackId) ||
+        const targetFormat = format || track.playbackFormat || 'audio';
+        let streamId: string | null = (targetFormat === 'video' ? track.videoSource?.providerTrackId : track.audioSource?.providerTrackId) ||
           track.providerTrackId ||
-          null;
+          (!track.id.includes('|') && track.id.length >= 8 ? track.id : null);
 
-        // Clean ID check (YouTube ID must not contain '|' or composite slug)
-        if (!playableId || playableId.includes('|') || playableId.length < 5) {
-          // Use Strict Playback Source Resolver
+        // If streamId is not direct YouTube video ID, resolve it
+        if (!streamId || streamId.includes('|')) {
           try {
-            const resolvedSource = await api.resolvePlaybackSource(track, targetFormat);
-            if (resolvedSource && resolvedSource.providerTrackId) {
-              playableId = resolvedSource.providerTrackId;
-            }
-          } catch (err) {
-            console.warn('Strict source resolution notice:', err);
-          }
-        }
-
-        // Secondary safe fallback
-        if (!playableId || playableId.includes('|')) {
-          try {
-            const res = await api.search(`${track.title} ${track.artist}`);
-            const candidate = targetFormat === 'video' ? (res.videos[0] || res.songs[0]) : res.songs[0];
-            const found = candidate?.providerTrackId || candidate?.id;
-            if (found && !found.includes('|')) {
-              playableId = found;
-            }
-          } catch (err) {
-            console.warn('Playback ID fallback notice:', err);
-          }
-        }
-
-        if (playableId) {
-          const streamId = playableId;
-          if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-            ytPlayerRef.current.loadVideoById(streamId);
-            ytPlayerRef.current.playVideo();
-          } else {
-            setTimeout(() => {
-              if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-                ytPlayerRef.current.loadVideoById(streamId);
-                ytPlayerRef.current.playVideo();
+            const resolved = await api.resolvePlaybackSource(track, targetFormat);
+            if (resolved && resolved.providerTrackId) {
+              streamId = resolved.providerTrackId;
+            } else {
+              const res = await api.search(`${track.title} ${track.artist}`);
+              const candidate = targetFormat === 'video' ? (res.videos[0] || res.songs[0]) : res.songs[0];
+              const found = candidate?.providerTrackId || candidate?.id;
+              if (found && !found.includes('|')) {
+                streamId = found;
               }
-            }, 500);
+            }
+          } catch (err) {
+            console.warn('Source resolve notice:', err);
           }
         }
 
+        if (streamId) {
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+            try {
+              ytPlayerRef.current.loadVideoById(streamId);
+              ytPlayerRef.current.playVideo();
+              setIsPlaying(true);
+            } catch (err) {
+              console.warn('YT loadVideoById error:', err);
+            }
+          } else {
+            pendingPlayIdRef.current = streamId;
+          }
+        }
+
+        // Fetch lyrics in background
         api.getLyrics(track.title, track.artist, track.duration).then(l => {
           setActiveLyrics(l);
-        });
-
-        setIsPlaying(true);
+        }).catch(() => {});
       }
 
       setupMediaSession(track, {
@@ -582,10 +536,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const togglePlay = () => {
     if (!currentTrack) return;
-    if (nativePlayerBridge.isNativeAndroid()) {
-      nativePlayerBridge.togglePlay();
-      return;
-    }
     if (isUsingHtmlAudio.current && htmlAudioRef.current) {
       if (isPlaying) {
         htmlAudioRef.current.pause();
@@ -593,14 +543,16 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       } else {
         htmlAudioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
       }
-    } else if (ytPlayerRef.current) {
+    } else if (ytPlayerRef.current && typeof ytPlayerRef.current.playVideo === 'function') {
       if (isPlaying) {
-        try { ytPlayerRef.current.pauseVideo?.(); } catch {}
+        try { ytPlayerRef.current.pauseVideo(); } catch {}
         setIsPlaying(false);
       } else {
-        try { ytPlayerRef.current.playVideo?.(); } catch {}
+        try { ytPlayerRef.current.playVideo(); } catch {}
         setIsPlaying(true);
       }
+    } else {
+      setIsPlaying(!isPlaying);
     }
   };
 
@@ -676,10 +628,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // ==================== 3. NEXT & PREVIOUS BUTTONS ====================
 
   const handleNextTrack = async () => {
-    if (nativePlayerBridge.isNativeAndroid()) {
-      await nativePlayerBridge.playNext();
-      return;
-    }
     if (queue.length === 0) return;
 
     if (currentTrack) {
@@ -748,10 +696,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const handlePreviousTrack = async () => {
-    if (nativePlayerBridge.isNativeAndroid()) {
-      await nativePlayerBridge.playPrevious();
-      return;
-    }
     if (currentTime > 3) {
       seek(0);
       return;
@@ -775,9 +719,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const seek = (seconds: number) => {
-    if (nativePlayerBridge.isNativeAndroid()) {
-      nativePlayerBridge.seekTo(seconds);
-    } else if (isUsingHtmlAudio.current && htmlAudioRef.current) {
+    if (isUsingHtmlAudio.current && htmlAudioRef.current) {
       htmlAudioRef.current.currentTime = seconds;
     } else if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
       try { ytPlayerRef.current.seekTo(seconds, true); } catch {}
@@ -1075,6 +1017,19 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }}
     >
       {children}
+      <div
+        id="mrj-yt-audio-container"
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          right: 0,
+          width: '200px',
+          height: '200px',
+          opacity: 0.001,
+          pointerEvents: 'none',
+          zIndex: 9999,
+        }}
+      />
     </MusicPlayerContext.Provider>
   );
 };
