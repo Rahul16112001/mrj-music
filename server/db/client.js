@@ -4,13 +4,6 @@ const { Pool } = pg;
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!DATABASE_URL) {
-  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
-    throw new Error('FATAL: DATABASE_URL is required in production.');
-  }
-  console.warn('WARNING: DATABASE_URL not set. Running with in-memory fallback. Data will not persist.');
-}
-
 let pool = null;
 
 // If DATABASE_URL is provided, initialize pg.Pool
@@ -406,7 +399,14 @@ class EmbeddedRelationalStore {
 const embeddedStore = new EmbeddedRelationalStore();
 
 export const dbClient = {
+  requireDatabase() {
+    if (!DATABASE_URL && (process.env.NODE_ENV === 'production' || process.env.VERCEL)) {
+      throw new Error('FATAL: DATABASE_URL is required in production.');
+    }
+  },
+
   async query(text, params) {
+    this.requireDatabase();
     if (pool) {
       try {
         return await pool.query(text, params);
@@ -418,6 +418,7 @@ export const dbClient = {
   },
 
   async getClient() {
+    this.requireDatabase();
     if (pool) {
       try {
         return await pool.connect();
@@ -433,6 +434,7 @@ export const dbClient = {
 
   async healthCheck() {
     try {
+      this.requireDatabase();
       const res = await this.query('SELECT 1;');
       return {
         status: 'connected',
@@ -444,6 +446,9 @@ export const dbClient = {
         status: 'error',
         message: err.message,
         driver: pool ? 'postgresql' : 'embedded-relational-sql',
+      };
+    }
+  },
       };
     }
   },
