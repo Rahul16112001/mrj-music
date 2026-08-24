@@ -169,6 +169,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const wakeLockRef = useRef<any>(null);
   const milestoneRef = useRef<Set<number>>(new Set());
   const autoplayGenerationId = useRef<number>(0);
+  const lastSeekTargetRef = useRef<number | null>(null);
+  const lastSeekTimestampRef = useRef<number>(0);
   const isFetchingAutoplay = useRef<boolean>(false);
   const sessionIdRef = useRef<string>('sess_' + Math.random().toString(36).substring(2, 9));
 
@@ -302,12 +304,20 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
     }
 
-    // 3. Time polling
+    // 3. Time polling with seek stabilization filter
     pollTimerRef.current = setInterval(() => {
       if (!isUsingHtmlAudio.current && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         try {
           const curr = ytPlayerRef.current.getCurrentTime() || 0;
           const dur = ytPlayerRef.current.getDuration() || 0;
+
+          // Anti-jitter: If user seeked within last 1200ms, prevent snapping back to old position
+          if (Date.now() - lastSeekTimestampRef.current < 1200 && lastSeekTargetRef.current !== null) {
+            if (Math.abs(curr - lastSeekTargetRef.current) > 2) {
+              return;
+            }
+          }
+
           setCurrentTime(curr);
           if (dur > 0) setDuration(dur);
           checkMilestones(curr, dur);
@@ -732,12 +742,15 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const seek = (seconds: number) => {
+    lastSeekTargetRef.current = seconds;
+    lastSeekTimestampRef.current = Date.now();
+    setCurrentTime(seconds);
+
     if (isUsingHtmlAudio.current && htmlAudioRef.current) {
-      htmlAudioRef.current.currentTime = seconds;
+      try { htmlAudioRef.current.currentTime = seconds; } catch {}
     } else if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
       try { ytPlayerRef.current.seekTo(seconds, true); } catch {}
     }
-    setCurrentTime(seconds);
   };
 
   const setVolume = (val: number) => {

@@ -8,7 +8,9 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, ageGroup?: string, gender?: string) => Promise<void>;
+  sendSignupOtp: (email: string, name?: string) => Promise<{ status: string; message: string; otp?: string; expiresAt?: number }>;
+  verifySignupOtp: (email: string, otp: string, password: string, name: string, ageGroup?: string, gender?: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   deleteAccount: (password: string) => Promise<{ success: boolean; message: string }>;
@@ -160,13 +162,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (name: string, email: string, password: string) => {
+  const sendSignupOtp = async (email: string, name?: string) => {
+    return await api.sendSignupOtp(email, name);
+  };
+
+  const verifySignupOtp = async (
+    email: string,
+    otp: string,
+    password: string,
+    name: string,
+    ageGroup?: string,
+    gender?: string
+  ) => {
+    setIsLoading(true);
+    const normEmail = email.trim().toLowerCase();
+    try {
+      const data = await api.verifySignupOtp(normEmail, otp, password, name, ageGroup, gender);
+      if (data && data.token) {
+        localStorage.setItem('MRJ_AUTH_TOKEN', data.token);
+        localStorage.setItem('MRJ_LAST_AUTH_EMAIL', normEmail);
+        if (data.refreshToken) {
+          localStorage.setItem('MRJ_REFRESH_TOKEN', data.refreshToken);
+        }
+        setUser(data.user);
+        saveToLocalVault(normEmail, name, data.user, password);
+        await handlePostAuthMigration();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (name: string, email: string, password: string, ageGroup?: string, gender?: string) => {
     setIsLoading(true);
     const normEmail = email.trim().toLowerCase();
     try {
       let data: any = null;
       try {
-        data = await api.register(name, normEmail, password);
+        data = await api.register(name, normEmail, password, ageGroup, gender);
       } catch (err: any) {
         // If account already exists on backend, try logging in
         if (err.message && err.message.includes('already exists')) {
@@ -225,6 +258,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         login,
         register,
+        sendSignupOtp,
+        verifySignupOtp,
         logout,
         changePassword,
         deleteAccount,

@@ -30,8 +30,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   audioQuality: 'high',
   autoplayRadio: true,
   smartDownloads: {
-    enabled: true,
-    maxTracks: 50,
+    enabled: false,
+    maxTracks: 25,
     storageLimitMB: 500,
     wifiOnly: true,
     preferredQuality: 'high',

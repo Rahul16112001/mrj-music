@@ -12,9 +12,56 @@ const REFRESH_TOKEN_EXPIRY = '30d'; // Refresh token
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
+const otpStore = new Map();
+
 export const authService = {
-  // 1. Register User
-  async register(name, email, password, userAgent = '', ip = '') {
+  // 0. Send Signup OTP
+  async sendSignupOtp(email, name = '') {
+    if (!email || !email.trim()) throw new Error('Email is required');
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existing = await db.findUserByEmail(normalizedEmail);
+    if (existing) {
+      throw new Error('An account with this email address already exists.');
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    otpStore.set(normalizedEmail, { otp, expiresAt, name });
+
+    return {
+      status: 'success',
+      message: `6-digit verification code generated for ${normalizedEmail}`,
+      otp, // Provided for instant verification preview
+      expiresAt,
+    };
+  },
+
+  // 1. Verify OTP & Register User
+  async verifySignupOtp(email, otp, password, name, ageGroup = '18-24', gender = 'Prefer not to say', userAgent = '', ip = '') {
+    if (!email || !email.trim()) throw new Error('Email is required');
+    if (!otp || !otp.trim()) throw new Error('OTP is required');
+    if (!password || password.length < 6) throw new Error('Password must be at least 6 characters');
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const stored = otpStore.get(normalizedEmail);
+
+    if (!stored || stored.otp !== otp.trim()) {
+      throw new Error('Invalid verification code. Please check and try again.');
+    }
+
+    if (Date.now() > stored.expiresAt) {
+      otpStore.delete(normalizedEmail);
+      throw new Error('Verification code has expired. Please request a new code.');
+    }
+
+    otpStore.delete(normalizedEmail);
+
+    return this.register(name || stored.name || 'User', normalizedEmail, password, ageGroup, gender, userAgent, ip);
+  },
+
+  // 2. Register User
+  async register(name, email, password, ageGroup = '18-24', gender = 'Prefer not to say', userAgent = '', ip = '') {
     if (!name || !name.trim()) throw new Error('Name is required');
     if (!email || !email.trim()) throw new Error('Email is required');
     if (!password || password.length < 6) throw new Error('Password must be at least 6 characters');
@@ -32,6 +79,8 @@ export const authService = {
       name: name.trim(),
       email: normalizedEmail,
       password_hash: passwordHash,
+      age_group: ageGroup,
+      gender: gender,
     });
 
     const tokens = this.generateTokenPair(user);
@@ -39,7 +88,14 @@ export const authService = {
     await db.createSession(user.id, tokenHash, userAgent, ip);
 
     return {
-      user: { id: user.id, name: user.name, email: user.email, createdAt: Number(user.created_at) },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        ageGroup: user.age_group || ageGroup,
+        gender: user.gender || gender,
+        createdAt: Number(user.created_at),
+      },
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };

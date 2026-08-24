@@ -2,6 +2,8 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  ageGroup?: string;
+  gender?: string;
   createdAt: number;
 }
 

@@ -41,11 +41,46 @@ export interface SearchSuggestionsResult {
 
 export const api = {
   // ==================== AUTH API ====================
-  async register(name: string, email: string, password: string): Promise<{ user: User; token: string; refreshToken: string }> {
+  async sendSignupOtp(email: string, name?: string): Promise<{ status: string; message: string; otp?: string; expiresAt?: number }> {
+    const res = await fetch(`${API_BASE}/auth/signup-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send verification code');
+    return data;
+  },
+
+  async verifySignupOtp(
+    email: string,
+    otp: string,
+    password: string,
+    name: string,
+    ageGroup?: string,
+    gender?: string
+  ): Promise<{ user: User; token: string; refreshToken: string }> {
+    const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp, password, name, ageGroup, gender }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Verification failed');
+    return data;
+  },
+
+  async register(
+    name: string,
+    email: string,
+    password: string,
+    ageGroup?: string,
+    gender?: string
+  ): Promise<{ user: User; token: string; refreshToken: string }> {
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name, email, password, ageGroup, gender }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');

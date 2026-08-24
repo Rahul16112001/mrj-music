@@ -188,55 +188,64 @@ export const Downloads: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. SMART DOWNLOADS 2.0 CONTROL PANEL */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-[#141417] border border-[#26262a] space-y-4">
+      {/* 2. SMART DOWNLOADS CONTROL PANEL */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-[#141417] border border-white/10 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#ff0000]/10 border border-[#ff0000]/30 text-[#ff0000] flex items-center justify-center shrink-0">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#ff0000]/10 border border-[#ff0000]/30 text-[#ff0000] flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-white">Smart Downloads</h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${settings?.smartDownloads.enabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
-                  {settings?.smartDownloads.enabled ? 'ACTIVE' : 'OFF'}
+                <h3 className="text-sm sm:text-base font-bold text-white">Auto Smart Downloads</h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${settings?.smartDownloads.enabled ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400 border border-zinc-700'}`}>
+                  {settings?.smartDownloads.enabled ? 'ON' : 'OFF'}
                 </span>
               </div>
               <p className="text-xs text-[#888888] mt-0.5">
-                Automatically downloads your favorite songs and daily mixes based on your taste profile.
+                {settings?.smartDownloads.enabled
+                  ? 'Active: Automatically keeps your favorite tracks available for offline listening.'
+                  : 'Turned Off: Only tracks you explicitly click Download on will be saved.'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {/* Direct Switch Toggle */}
             <button
               onClick={handleToggleSmartDownloads}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all min-h-[38px] ${
-                settings?.smartDownloads.enabled
-                  ? 'bg-white/10 text-white hover:bg-white/20'
-                  : 'bg-[#ff0000] text-white hover:bg-[#cc0000]'
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                settings?.smartDownloads.enabled ? 'bg-[#ff0000]' : 'bg-[#2a2a30]'
               }`}
+              role="switch"
+              aria-checked={settings?.smartDownloads.enabled}
             >
-              {settings?.smartDownloads.enabled ? 'Disable' : 'Enable'}
+              <span
+                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  settings?.smartDownloads.enabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
             </button>
 
-            <button
-              onClick={handleUpdateSmartDownloads}
-              disabled={smartStatus.isUpdating}
-              className="px-4 py-2 rounded-xl bg-[#ff0000] hover:bg-[#cc0000] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all min-h-[38px]"
-            >
-              {smartStatus.isUpdating ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Updating ({smartStatus.progressPercent}%)</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Update Now</span>
-                </>
-              )}
-            </button>
+            {settings?.smartDownloads.enabled && (
+              <button
+                onClick={handleUpdateSmartDownloads}
+                disabled={smartStatus.isUpdating}
+                className="px-3.5 py-1.5 rounded-xl bg-[#ff0000] hover:bg-[#cc0000] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+              >
+                {smartStatus.isUpdating ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Syncing...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Sync Now</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {smartTracks.length > 0 && (
               <button

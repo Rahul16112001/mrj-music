@@ -30,10 +30,10 @@ app.get('/api/app/release', (req, res) => {
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
     apkFileName: 'mrj-music.apk',
     fileSize: '7.5 MB',
-    fileSizeBytes: 7891676,
+    fileSizeBytes: 7894082,
     minAndroidVersion: 'Android 8.0+',
     targetAndroidVersion: 'Android 14',
-    sha256: 'e4ac8dc611d194ab09146cbfcc9174d1c3134293318f9b20ccaafb7c1e7ee1e9',
+    sha256: '0b5b10208eaf383ef7f20e7dc88932803dee94d7a47c50032c0a7829dfe42b51',
     engine: 'AndroidX Media3 / ExoPlayer + Kotlin Foreground Service',
     isAvailable: true,
   });
@@ -53,12 +53,34 @@ app.get('/api/health/db', async (req, res) => {
 // 1. AUTHENTICATION ROUTES
 // ==========================================
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/signup-otp', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { email, name } = req.body;
+    const result = await authService.sendSignupOtp(email, name);
+    res.json({ status: 'success', ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/verify-otp', async (req, res) => {
+  try {
+    const { email, otp, password, name, ageGroup, gender } = req.body;
     const userAgent = req.headers['user-agent'] || '';
     const ip = req.ip || req.socket.remoteAddress || '';
-    const result = await authService.register(name, email, password, userAgent, ip);
+    const result = await authService.verifySignupOtp(email, otp, password, name, ageGroup, gender, userAgent, ip);
+    res.status(201).json({ status: 'success', ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password, ageGroup, gender } = req.body;
+    const userAgent = req.headers['user-agent'] || '';
+    const ip = req.ip || req.socket.remoteAddress || '';
+    const result = await authService.register(name, email, password, ageGroup, gender, userAgent, ip);
     res.status(201).json({ status: 'success', ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
