@@ -65,6 +65,12 @@ export interface Track {
   fileSize?: number;
   quality?: string;
   bitrate?: string;
+  downloadType?: 'manual' | 'smart';
+  priorityScore?: number;
+  downloadCategory?: string;
+  downloadReason?: string;
+  offlineEligible?: boolean;
+  lastPlayedAt?: number;
 }
 
 export interface Artist {

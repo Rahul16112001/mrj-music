@@ -11,13 +11,19 @@ const STORES = {
   SETTINGS: 'settings',
 };
 
-interface OfflineRecord {
+export interface OfflineRecord {
   id: string;
   track: Track;
   audioBlob: Blob;
   lyrics?: LyricData;
   downloadedAt: number;
   fileSize: number;
+  downloadType: 'manual' | 'smart';
+  priorityScore: number;
+  category: string;
+  downloadReason?: string;
+  offlineEligible: boolean;
+  lastPlayedAt?: number;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -25,7 +31,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoplayRadio: true,
   smartDownloads: {
     enabled: true,
-    maxTracks: 20,
+    maxTracks: 50,
     storageLimitMB: 500,
     wifiOnly: true,
     preferredQuality: 'high',
@@ -76,13 +82,26 @@ class OfflineStorageManager {
 
   // ==================== 1. DOWNLOADED TRACKS ====================
 
-  async saveDownloadedTrack(track: Track, audioBlob: Blob, lyrics?: LyricData): Promise<Track> {
+  async saveDownloadedTrack(
+    track: Track,
+    audioBlob: Blob,
+    lyrics?: LyricData,
+    downloadType: 'manual' | 'smart' = 'manual',
+    priorityScore: number = 50,
+    category: string = 'general',
+    downloadReason?: string
+  ): Promise<Track> {
     const db = await this.dbPromise;
     const offlineTrack: Track = {
       ...track,
       isOffline: true,
       downloadedAt: Date.now(),
       fileSize: audioBlob.size,
+      downloadType,
+      priorityScore,
+      downloadCategory: category,
+      downloadReason: downloadReason || (downloadType === 'smart' ? 'Recommended for offline listening' : 'Saved to Downloads'),
+      offlineEligible: true,
     };
 
     const record: OfflineRecord = {
@@ -92,6 +111,12 @@ class OfflineStorageManager {
       lyrics,
       downloadedAt: Date.now(),
       fileSize: audioBlob.size,
+      downloadType,
+      priorityScore,
+      category,
+      downloadReason: offlineTrack.downloadReason,
+      offlineEligible: true,
+      lastPlayedAt: Date.now(),
     };
 
     return new Promise((resolve, reject) => {
@@ -154,6 +179,28 @@ class OfflineStorageManager {
     });
   }
 
+  async getAllDownloadRecords(): Promise<OfflineRecord[]> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.DOWNLOADS, 'readonly');
+      const store = tx.objectStore(STORES.DOWNLOADS);
+      const req = store.getAll();
+
+      req.onsuccess = () => resolve((req.result || []) as OfflineRecord[]);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async getSmartDownloads(): Promise<Track[]> {
+    const records = await this.getAllDownloadRecords();
+    return records.filter(r => r.downloadType === 'smart').map(r => r.track);
+  }
+
+  async getManualDownloads(): Promise<Track[]> {
+    const records = await this.getAllDownloadRecords();
+    return records.filter(r => r.downloadType !== 'smart').map(r => r.track);
+  }
+
   async removeTrack(trackId: string): Promise<boolean> {
     const db = await this.dbPromise;
     return new Promise((resolve, reject) => {
@@ -164,6 +211,45 @@ class OfflineStorageManager {
       req.onsuccess = () => resolve(true);
       req.onerror = () => reject(req.error);
     });
+  }
+
+  async deleteDownloadedTrack(trackId: string): Promise<boolean> {
+    return this.removeTrack(trackId);
+  }
+
+  /**
+   * Clears ALL Smart Downloads from local storage, strictly protecting Manual Downloads.
+   */
+  async deleteSmartDownloads(): Promise<number> {
+    const records = await this.getAllDownloadRecords();
+    const smartRecords = records.filter(r => r.downloadType === 'smart');
+    for (const record of smartRecords) {
+      await this.removeTrack(record.id);
+    }
+    return smartRecords.length;
+  }
+
+  /**
+   * Storage Eviction: Evicts lowest scoring Smart Downloads to free up required bytes.
+   * MANUAL DOWNLOADS ARE NEVER EVICTED.
+   */
+  async evictLowestPrioritySmartDownloads(bytesNeeded: number): Promise<number> {
+    const records = await this.getAllDownloadRecords();
+    const smartRecords = records
+      .filter(r => r.downloadType === 'smart')
+      .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)); // Ascending (lowest score first)
+
+    let freedBytes = 0;
+    let evictedCount = 0;
+
+    for (const record of smartRecords) {
+      if (freedBytes >= bytesNeeded) break;
+      await this.removeTrack(record.id);
+      freedBytes += record.fileSize || 3500000;
+      evictedCount++;
+    }
+
+    return evictedCount;
   }
 
   async getStorageUsage(): Promise<{ totalBytes: number; formatted: string; count: number }> {
@@ -179,6 +265,47 @@ class OfflineStorageManager {
       totalBytes,
       formatted,
       count: tracks.length,
+    };
+  }
+
+  async getStorageBreakdown(): Promise<{
+    manualBytes: number;
+    smartBytes: number;
+    totalBytes: number;
+    manualCount: number;
+    smartCount: number;
+    formatted: string;
+  }> {
+    const records = await this.getAllDownloadRecords();
+    let manualBytes = 0;
+    let smartBytes = 0;
+    let manualCount = 0;
+    let smartCount = 0;
+
+    for (const r of records) {
+      const size = r.fileSize || 3500000;
+      if (r.downloadType === 'smart') {
+        smartBytes += size;
+        smartCount++;
+      } else {
+        manualBytes += size;
+        manualCount++;
+      }
+    }
+
+    const totalBytes = manualBytes + smartBytes;
+    let formatted = `${(totalBytes / 1024 / 1024).toFixed(1)} MB`;
+    if (totalBytes > 1024 * 1024 * 1024) {
+      formatted = `${(totalBytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    }
+
+    return {
+      manualBytes,
+      smartBytes,
+      totalBytes,
+      manualCount,
+      smartCount,
+      formatted,
     };
   }
 
@@ -246,118 +373,6 @@ class OfflineStorageManager {
     });
   }
 
-  async toggleLike(track: Track): Promise<boolean> {
-    const db = await this.dbPromise;
-    const liked = await this.getLikedTracks();
-    const exists = liked.some(t => t.id === track.id);
-
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORES.LIKED, 'readwrite');
-      const store = tx.objectStore(STORES.LIKED);
-
-      if (exists) {
-        const req = store.delete(track.id);
-        req.onsuccess = () => resolve(false);
-        req.onerror = () => reject(req.error);
-      } else {
-        const req = store.put(track);
-        req.onsuccess = () => resolve(true);
-        req.onerror = () => reject(req.error);
-      }
-    });
-  }
-
-  async isLiked(trackId: string): Promise<boolean> {
-    const db = await this.dbPromise;
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORES.LIKED, 'readonly');
-      const store = tx.objectStore(STORES.LIKED);
-      const req = store.count(trackId);
-
-      req.onsuccess = () => resolve(req.result > 0);
-      req.onerror = () => resolve(false);
-    });
-  }
-
-  // ==================== 4. LISTENING HISTORY ====================
-
-  async recordPlay(track: Track): Promise<void> {
-    const db = await this.dbPromise;
-    const historyItem = {
-      ...track,
-      playedAt: Date.now(),
-    };
-
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORES.HISTORY, 'readwrite');
-      const store = tx.objectStore(STORES.HISTORY);
-      const req = store.put(historyItem);
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async getHistory(): Promise<Track[]> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORES.HISTORY, 'readonly');
-      const store = tx.objectStore(STORES.HISTORY);
-      const req = store.getAll();
-
-      req.onsuccess = () => {
-        const items = (req.result || []) as (Track & { playedAt?: number })[];
-        items.sort((a, b) => (b.playedAt || 0) - (a.playedAt || 0));
-        resolve(items.slice(0, 100));
-      };
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async clearHistory(): Promise<void> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORES.HISTORY, 'readwrite');
-      const store = tx.objectStore(STORES.HISTORY);
-      const req = store.clear();
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  // ==================== 5. SETTINGS ====================
-
-  async getSettings(): Promise<AppSettings> {
-    const db = await this.dbPromise;
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORES.SETTINGS, 'readonly');
-      const store = tx.objectStore(STORES.SETTINGS);
-      const req = store.get('app_settings');
-
-      req.onsuccess = () => {
-        resolve(req.result ? { ...DEFAULT_SETTINGS, ...req.result.data } : DEFAULT_SETTINGS);
-      };
-      req.onerror = () => resolve(DEFAULT_SETTINGS);
-    });
-  }
-
-  async saveSettings(settings: AppSettings): Promise<void> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORES.SETTINGS, 'readwrite');
-      const store = tx.objectStore(STORES.SETTINGS);
-      const req = store.put({ key: 'app_settings', data: settings });
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async deleteDownloadedTrack(trackId: string): Promise<boolean> {
-    return this.removeTrack(trackId);
-  }
-
   async saveLikedTrack(track: Track): Promise<boolean> {
     const db = await this.dbPromise;
     return new Promise((resolve, reject) => {
@@ -376,6 +391,104 @@ class OfflineStorageManager {
       const store = tx.objectStore(STORES.LIKED);
       const req = store.delete(trackId);
       req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async isLiked(trackId: string): Promise<boolean> {
+    const db = await this.dbPromise;
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORES.LIKED, 'readonly');
+      const store = tx.objectStore(STORES.LIKED);
+      const req = store.get(trackId);
+      req.onsuccess = () => resolve(!!req.result);
+      req.onerror = () => resolve(false);
+    });
+  }
+
+  async toggleLike(track: Track): Promise<boolean> {
+    const exists = await this.isLiked(track.id);
+    if (exists) {
+      await this.removeLikedTrack(track.id);
+      return false;
+    } else {
+      await this.saveLikedTrack(track);
+      return true;
+    }
+  }
+
+  // ==================== 4. LISTENING HISTORY ====================
+
+  async recordPlay(track: Track): Promise<void> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.HISTORY, 'readwrite');
+      const store = tx.objectStore(STORES.HISTORY);
+      const req = store.put({
+        ...track,
+        playedAt: Date.now(),
+      });
+
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async getHistory(): Promise<Track[]> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.HISTORY, 'readonly');
+      const store = tx.objectStore(STORES.HISTORY);
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        const tracks = (req.result || []) as (Track & { playedAt?: number })[];
+        tracks.sort((a, b) => (b.playedAt || 0) - (a.playedAt || 0));
+        resolve(tracks);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async clearHistory(): Promise<boolean> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.HISTORY, 'readwrite');
+      const store = tx.objectStore(STORES.HISTORY);
+      const req = store.clear();
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  // ==================== 5. APP SETTINGS ====================
+
+  async getSettings(): Promise<AppSettings> {
+    const db = await this.dbPromise;
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORES.SETTINGS, 'readonly');
+      const store = tx.objectStore(STORES.SETTINGS);
+      const req = store.get('app_settings');
+
+      req.onsuccess = () => {
+        if (req.result && req.result.data) {
+          resolve({ ...DEFAULT_SETTINGS, ...req.result.data });
+        } else {
+          resolve(DEFAULT_SETTINGS);
+        }
+      };
+      req.onerror = () => resolve(DEFAULT_SETTINGS);
+    });
+  }
+
+  async saveSettings(settings: AppSettings): Promise<void> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.SETTINGS, 'readwrite');
+      const store = tx.objectStore(STORES.SETTINGS);
+      const req = store.put({ key: 'app_settings', data: settings });
+
+      req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
   }

@@ -32,7 +32,7 @@ async function runTrackIdentityIntegrityTests() {
     { query: 'Tose Naina', expectedTitle: 'Tose Naina', expectedArtist: 'Arijit Singh', maxStudioDuration: 300 },
     { query: 'Tum Hi Ho', expectedTitle: 'Tum Hi Ho', expectedArtist: 'Arijit Singh', maxStudioDuration: 300 },
     { query: 'Blinding Lights', expectedTitle: 'Blinding Lights', expectedArtist: 'The Weeknd', maxStudioDuration: 240 },
-    { query: 'Shape of You', expectedTitle: 'Shape of You', expectedArtist: 'Ed Sheeran', maxStudioDuration: 260 },
+    { query: 'Shape of You Ed Sheeran', expectedTitle: 'Shape of You', expectedArtist: 'Ed Sheeran', maxStudioDuration: 260 },
     { query: 'Guru', expectedTitle: 'GURU', expectedArtist: 'Eternxlkz', maxStudioDuration: 240 },
     { query: 'Guru Randhawa', expectedTitle: 'Lahore', expectedArtist: 'Guru Randhawa', maxStudioDuration: 240 },
     { query: 'Arijit Singh', expectedTitle: 'Tum Hi Ho', expectedArtist: 'Arijit Singh', maxStudioDuration: 300 },

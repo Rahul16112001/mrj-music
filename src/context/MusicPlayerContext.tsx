@@ -3,7 +3,8 @@ import { Track, LyricData, AdCreative, PlaybackMode, AudioQuality, Playlist, Pla
 import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 import { offlineAdEngine } from '../services/offlineAdEngine';
-import { smartDownloads } from '../services/smartDownloads';
+import { smartDownloadEngine } from '../services/smartDownloadEngine';
+import { offlineRecommendationEngine } from '../services/offlineRecommendationEngine';
 import { setupMediaSession, updateMediaSessionPosition } from '../services/mediaSession';
 import { syncService } from '../services/syncService';
 
@@ -543,7 +544,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // ==================== 2. PROACTIVE AUTOPLAY GENERATION ====================
 
   const checkAndTriggerAutoplay = useCallback(async (currentIndex: number, currentQueue: Track[]) => {
-    if (!autoplayEnabled || !navigator.onLine || isFetchingAutoplay.current) return;
+    if (!autoplayEnabled || isFetchingAutoplay.current) return;
     const remaining = currentQueue.length - (currentIndex + 1);
 
     if (remaining <= 5) {
@@ -551,19 +552,32 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const genId = ++autoplayGenerationId.current;
 
       try {
-        const nextBatch = await api.getNextRecommendations({
-          currentTrack,
-          playedTrackIds: playbackHistory.map(t => t.id),
-          currentQueueIds: currentQueue.map(t => t.id),
-        });
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          const nextBatch = await api.getNextRecommendations({
+            currentTrack,
+            playedTrackIds: playbackHistory.map(t => t.id),
+            currentQueueIds: currentQueue.map(t => t.id),
+          });
 
-        if (genId === autoplayGenerationId.current && nextBatch.tracks.length > 0) {
-          const uniqueNewTracks = nextBatch.tracks.filter(
-            nt => !currentQueue.some(cq => cq.id === nt.id)
+          if (genId === autoplayGenerationId.current && nextBatch.tracks.length > 0) {
+            const uniqueNewTracks = nextBatch.tracks.filter(
+              nt => !currentQueue.some(cq => cq.id === nt.id)
+            );
+
+            if (uniqueNewTracks.length > 0) {
+              setQueue(prev => [...prev, ...uniqueNewTracks]);
+            }
+          }
+        } else {
+          // Zero-Network Offline Autoplay
+          const offlineNext = await offlineRecommendationEngine.getNextOfflineTracks(
+            currentTrack,
+            5,
+            [...playbackHistory.map(t => t.id), ...currentQueue.map(t => t.id)]
           );
 
-          if (uniqueNewTracks.length > 0) {
-            setQueue(prev => [...prev, ...uniqueNewTracks]);
+          if (genId === autoplayGenerationId.current && offlineNext.length > 0) {
+            setQueue(prev => [...prev, ...offlineNext]);
           }
         }
       } catch (e) {
@@ -576,7 +590,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // ==================== 3. NEXT & PREVIOUS BUTTONS ====================
 
-  const handleNextTrack = () => {
+  const handleNextTrack = async () => {
     if (queue.length === 0) return;
 
     if (currentTrack) {
@@ -599,21 +613,39 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (nextIdx >= queue.length) {
       if (repeatMode === 'all') {
         nextIdx = 0;
-      } else if (autoplayEnabled && navigator.onLine) {
-        api.getNextRecommendations({
+      } else if (autoplayEnabled) {
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          try {
+            const res = await api.getNextRecommendations({
+              currentTrack,
+              playedTrackIds: playbackHistory.map(t => t.id),
+              currentQueueIds: queue.map(t => t.id),
+            });
+            if (res.tracks.length > 0) {
+              const nextTrackItem = res.tracks[0];
+              setQueue(prev => [...prev, ...res.tracks]);
+              setQueueIndex(queue.length);
+              playTrack(nextTrackItem);
+              return;
+            }
+          } catch {}
+        }
+
+        // Offline Fallback Autoplay
+        const offlineTracks = await offlineRecommendationEngine.getNextOfflineTracks(
           currentTrack,
-          playedTrackIds: playbackHistory.map(t => t.id),
-          currentQueueIds: queue.map(t => t.id),
-        }).then(res => {
-          if (res.tracks.length > 0) {
-            const nextTrackItem = res.tracks[0];
-            setQueue(prev => [...prev, ...res.tracks]);
-            setQueueIndex(queue.length);
-            playTrack(nextTrackItem);
-          } else {
-            setIsPlaying(false);
-          }
-        });
+          5,
+          playbackHistory.map(t => t.id)
+        );
+        if (offlineTracks.length > 0) {
+          const nextTrackItem = offlineTracks[0];
+          setQueue(prev => [...prev, ...offlineTracks]);
+          setQueueIndex(queue.length);
+          playTrack(nextTrackItem);
+          return;
+        }
+
+        setIsPlaying(false);
         return;
       } else {
         setIsPlaying(false);
@@ -802,12 +834,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return likedTrackIds.has(trackId);
   };
 
-  const downloadTrack = async (track: Track): Promise<boolean> => {
+  const downloadTrack = async (track: Track, type: 'manual' | 'smart' = 'manual'): Promise<boolean> => {
     try {
       const blob = await api.downloadAudioBlob(track.id);
       if (!blob) return false;
       const lyrics = await api.getLyrics(track.title, track.artist, track.duration);
-      await offlineStorage.saveDownloadedTrack(track, blob, lyrics);
+      await offlineStorage.saveDownloadedTrack(track, blob, lyrics, type);
       setDownloadedTrackIds(prev => new Set(prev).add(track.id));
       return true;
     } catch {
