@@ -118,6 +118,21 @@ class MRJNativePlayerPlugin : Plugin(), PlayerEventListener {
     }
 
     @PluginMethod
+    fun updateMetadata(call: PluginCall) {
+        val trackObj = call.getObject("track")
+        val isPlaying = call.getBoolean("isPlaying") ?: true
+        if (trackObj != null) {
+            try {
+                val track = gson.fromJson(trackObj.toString(), NativeTrack::class.java)
+                playerManager.notifyTrackChange(track, isPlaying)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        call.resolve()
+    }
+
+    @PluginMethod
     fun getNativeStorageBreakdown(call: PluginCall) {
         val breakdown = offlineStorage.getStorageBreakdown()
         val res = JSObject()

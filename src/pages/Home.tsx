@@ -70,9 +70,13 @@ export const Home: React.FC = () => {
 
   useEffect(() => {
     fetchHomeData(selectedRegion);
-    const onboardingDone = localStorage.getItem('MRJ_ONBOARDING_DONE');
-    if (user && !onboardingDone) {
+    const globalDone = localStorage.getItem('MRJ_ONBOARDING_DONE');
+    const userDone = user?.id ? localStorage.getItem(`MRJ_ONBOARDING_DONE_${user.id}`) : null;
+    const isNewSignup = localStorage.getItem('MRJ_JUST_SIGNED_UP');
+
+    if (user && isNewSignup && !globalDone && !userDone) {
       setShowTasteModal(true);
+      localStorage.removeItem('MRJ_JUST_SIGNED_UP');
     }
   }, [user, selectedRegion]);
 

@@ -206,6 +206,14 @@ class MRJExoPlayerManager private constructor(private val context: Context) {
         if (player.isPlaying) pause() else resume()
     }
 
+    fun notifyTrackChange(track: NativeTrack, isPlaying: Boolean) {
+        currentTrack = track
+        listeners.forEach {
+            it.onTrackChange(track)
+            it.onPlaybackStateChange(isPlaying, false)
+        }
+    }
+
     fun seekTo(positionMs: Long) {
         try { player.seekTo(positionMs) } catch (e: Exception) { Log.w(TAG, "seekTo() error: ${e.message}") }
     }

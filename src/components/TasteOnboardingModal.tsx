@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, Check, Music, X } from 'lucide-react';
 import { syncService } from '../services/syncService';
+import { useAuth } from '../context/AuthContext';
 
 interface TasteOnboardingModalProps {
   isOpen: boolean;
@@ -9,14 +10,14 @@ interface TasteOnboardingModalProps {
 }
 
 const ARTIST_OPTIONS = [
-  'Arijit Singh', 'The Weeknd', 'Taylor Swift', 'Drake', 'Bad Bunny',
-  'Diljit Dosanjh', 'Coldplay', 'Billie Eilish', 'Ed Sheeran', 'Shreya Ghoshal',
-  'Sidhu Moosewala', 'Karan Aujla', 'Bruno Mars', 'Pritam', 'Anirudh Ravichander'
+  'Arijit Singh', 'The Weeknd', 'Taylor Swift', 'Diljit Dosanjh', 'Karan Aujla',
+  'Shreya Ghoshal', 'Anirudh Ravichander', 'Pritam', 'Sidhu Moosewala', 'Ed Sheeran',
+  'Dua Lipa', 'Pawan Singh', 'Masoom Sharma', 'Anuv Jain', 'The Local Train'
 ];
 
 const GENRE_OPTIONS = [
-  'Bollywood', 'Pop', 'Punjabi', 'Hip-Hop / Rap', 'Lo-Fi',
-  'EDM / Dance', 'Romantic', 'Rock', 'Acoustic', 'K-Pop', 'R&B / Soul'
+  'Bollywood', 'Punjabi', 'Hollywood', 'Tollywood', 'Haryanvi',
+  'Bhojpuri', 'Indie', 'Lo-Fi', 'Pop', 'Hip-Hop / Rap', 'Acoustic'
 ];
 
 export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
@@ -24,10 +25,20 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
   onClose,
   onComplete,
 }) => {
+  const { user } = useAuth();
   const [selectedArtists, setSelectedArtists] = useState<string[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
 
   if (!isOpen) return null;
+
+  const markOnboardingDone = () => {
+    try {
+      localStorage.setItem('MRJ_ONBOARDING_DONE', 'true');
+      if (user?.id) {
+        localStorage.setItem(`MRJ_ONBOARDING_DONE_${user.id}`, 'true');
+      }
+    } catch {}
+  };
 
   const toggleArtist = (artist: string) => {
     setSelectedArtists(prev =>
@@ -41,12 +52,19 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
     );
   };
 
+  const handleSkip = () => {
+    markOnboardingDone();
+    onClose();
+  };
+
   const handleSave = () => {
-    // Commit initial seed preferences as LIKE events
+    markOnboardingDone();
+
+    // Commit initial seed preferences as LIKE events to user taste profile dataset
     for (const artist of selectedArtists) {
       syncService.queueEvent({
         eventType: 'LIKE',
-        trackId: 'onboard_' + artist,
+        trackId: 'onboard_artist_' + encodeURIComponent(artist),
         title: artist,
         artist,
       });
@@ -54,9 +72,10 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
     for (const genre of selectedGenres) {
       syncService.queueEvent({
         eventType: 'LIKE',
-        trackId: 'onboard_' + genre,
+        trackId: 'onboard_genre_' + encodeURIComponent(genre),
         title: genre,
         artist: genre,
+        genre,
       });
     }
     syncService.flushEvents();
@@ -65,7 +84,7 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-[#141414] border border-[#282828] rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
+      <div className="w-full max-w-lg bg-[#141418] border border-white/10 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -74,9 +93,12 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
               <span>Personalize Your Experience</span>
             </div>
             <h2 className="text-2xl font-black text-white tracking-tight">What do you listen to?</h2>
-            <p className="text-xs text-[#aaaaaa]">Select 3 or more to build your personalized mixes and radio</p>
+            <p className="text-xs text-[#aaaaaa]">Select your favorite artists & genres to tune your daily mixes</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-[#222222] text-[#888888] hover:text-white">
+          <button
+            onClick={handleSkip}
+            className="p-1.5 rounded-full hover:bg-white/10 text-[#888888] hover:text-white transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -84,7 +106,7 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
         {/* Artists Selection */}
         <div className="space-y-2.5">
           <h4 className="text-xs font-bold uppercase tracking-wider text-[#717171]">Favorite Artists</h4>
-          <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto scrollbar-thin">
+          <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto no-scrollbar">
             {ARTIST_OPTIONS.map((artist) => {
               const isSelected = selectedArtists.includes(artist);
               return (
@@ -94,7 +116,7 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
                   className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
                     isSelected
                       ? 'bg-white text-black font-bold shadow-md scale-105'
-                      : 'bg-[#202020] hover:bg-[#282828] text-white border border-[#303030]'
+                      : 'bg-[#202024] hover:bg-[#28282c] text-white border border-[#303036]'
                   }`}
                 >
                   {isSelected && <Check className="w-3.5 h-3.5 text-black" />}
@@ -118,7 +140,7 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
                   className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
                     isSelected
                       ? 'bg-[#ff0000] text-white font-bold shadow-lg shadow-red-600/30 scale-105'
-                      : 'bg-[#202020] hover:bg-[#282828] text-white border border-[#303030]'
+                      : 'bg-[#202024] hover:bg-[#28282c] text-white border border-[#303036]'
                   }`}
                 >
                   {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
@@ -130,9 +152,9 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-between pt-2 border-t border-[#202020]">
+        <div className="flex items-center justify-between pt-2 border-t border-white/10">
           <button
-            onClick={onClose}
+            onClick={handleSkip}
             className="text-xs font-semibold text-[#888888] hover:text-white transition-colors"
           >
             Skip for now

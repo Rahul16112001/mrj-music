@@ -14,6 +14,7 @@ export interface NativePlayerPlugin {
   getNativeStorageBreakdown(): Promise<any>;
   getNativeDownloads(): Promise<{ tracks: any[] }>;
   deleteDownloadedTrack(options: { trackId: string }): Promise<{ success: boolean }>;
+  updateMetadata?(options: { track: any; isPlaying: boolean }): Promise<void>;
   addListener(eventName: string, listenerFunc: (data: any) => void): Promise<any>;
   removeAllListeners(): Promise<void>;
 }
@@ -93,6 +94,15 @@ class NativePlayerBridge {
       console.error('[MRJ Native] playTrack error:', err);
       return false;
     }
+  }
+
+  public async updateMetadata(track: Track, isPlaying: boolean = true): Promise<void> {
+    if (!this.isNative) return;
+    try {
+      if (NativePlayer.updateMetadata) {
+        await NativePlayer.updateMetadata({ track, isPlaying });
+      }
+    } catch {}
   }
 
   public async pause(): Promise<boolean> {

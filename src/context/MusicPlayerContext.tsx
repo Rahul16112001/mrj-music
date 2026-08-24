@@ -500,16 +500,20 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           if (isUsingHtmlAudio.current && htmlAudioRef.current) htmlAudioRef.current.play();
           else if (ytPlayerRef.current) ytPlayerRef.current.playVideo?.();
           setIsPlaying(true);
+          nativePlayerBridge.updateMetadata(track, true);
         },
         onPause: () => {
           if (isUsingHtmlAudio.current && htmlAudioRef.current) htmlAudioRef.current.pause();
           else if (ytPlayerRef.current) ytPlayerRef.current.pauseVideo?.();
           setIsPlaying(false);
+          nativePlayerBridge.updateMetadata(track, false);
         },
         onNext: handleNextTrack,
         onPrevious: handlePreviousTrack,
         onSeek: seek,
       });
+
+      nativePlayerBridge.updateMetadata(track, true);
 
       checkAndTriggerAutoplay(queueIndex, queue);
     } catch (err) {

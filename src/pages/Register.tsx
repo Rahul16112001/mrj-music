@@ -37,9 +37,11 @@ export const RegisterPage: React.FC = () => {
 
     setIsLoading(true);
     try {
+      localStorage.setItem('MRJ_JUST_SIGNED_UP', 'true');
       await register(name.trim(), email.trim(), password);
       navigate('/');
     } catch (err: any) {
+      localStorage.removeItem('MRJ_JUST_SIGNED_UP');
       setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
