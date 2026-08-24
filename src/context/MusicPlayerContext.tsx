@@ -405,30 +405,35 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isUsingHtmlAudio.current = false;
         try { htmlAudioRef.current?.pause(); } catch {}
 
-        let playableId: string | null = (format === 'video' ? track.videoSource?.providerTrackId : null) ||
+        const targetFormat = format || 'audio';
+        let playableId: string | null = (targetFormat === 'video' ? track.videoSource?.providerTrackId : track.audioSource?.providerTrackId) ||
           track.providerTrackId ||
-          track.audioSource?.providerTrackId ||
-          track.id;
+          null;
 
-        // Clean ID check (YouTube ID must not contain '|' or spaces)
+        // Clean ID check (YouTube ID must not contain '|' or composite slug)
         if (!playableId || playableId.includes('|') || playableId.length < 5) {
-          if (track.providerTrackId && !track.providerTrackId.includes('|')) {
-            playableId = track.providerTrackId;
-          } else if (track.id && !track.id.includes('|')) {
-            playableId = track.id;
+          // Use Strict Playback Source Resolver
+          try {
+            const resolvedSource = await api.resolvePlaybackSource(track, targetFormat);
+            if (resolvedSource && resolvedSource.providerTrackId) {
+              playableId = resolvedSource.providerTrackId;
+            }
+          } catch (err) {
+            console.warn('Strict source resolution notice:', err);
           }
         }
 
-        // On-the-fly resolution if track.id was a composite slug and providerTrackId was missing
+        // Secondary safe fallback
         if (!playableId || playableId.includes('|')) {
           try {
             const res = await api.search(`${track.title} ${track.artist}`);
-            const found = res.songs[0]?.providerTrackId || res.videos[0]?.id || res.results[0]?.id;
+            const candidate = targetFormat === 'video' ? (res.videos[0] || res.songs[0]) : res.songs[0];
+            const found = candidate?.providerTrackId || candidate?.id;
             if (found && !found.includes('|')) {
               playableId = found;
             }
           } catch (err) {
-            console.warn('Playback ID on-the-fly resolution notice:', err);
+            console.warn('Playback ID fallback notice:', err);
           }
         }
 

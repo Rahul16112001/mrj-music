@@ -1,4 +1,4 @@
-import { Track, MoodStation, LyricData, AdCreative, Artist, Album, User, Playlist, AppSettings, ListeningEvent } from '../types';
+import { Track, MoodStation, LyricData, AdCreative, Artist, Album, User, Playlist, AppSettings, ListeningEvent, PlaybackFormat } from '../types';
 
 const API_BASE = '/api';
 
@@ -534,6 +534,34 @@ export const api = {
       if (!res.ok) throw new Error('Album fetch failed');
       const data = await res.json();
       return data.album || null;
+    } catch {
+      return null;
+    }
+  },
+
+  async resolvePlaybackSource(
+    track: Track,
+    format: PlaybackFormat = 'audio'
+  ): Promise<{
+    sourceId: string;
+    canonicalTrackId: string;
+    provider: string;
+    providerTrackId: string;
+    title: string;
+    artist: string;
+    duration: number;
+    format: string;
+    sourceType: string;
+    confidenceScore: number;
+  } | null> {
+    try {
+      const canonId = track.canonicalTrackId || track.id;
+      const res = await fetch(
+        `${API_BASE}/music/resolve-source?id=${encodeURIComponent(canonId)}&title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&duration=${track.duration || 210}&format=${format}`
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.source || null;
     } catch {
       return null;
     }

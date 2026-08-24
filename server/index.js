@@ -10,6 +10,7 @@ import { chartService } from './charts/chartService.js';
 import { cloudRecommendationService } from './recommendations/cloudRecommendationService.js';
 import { nextTrackService } from './recommendations/nextTrackService.js';
 import { searchSuggestionService } from './catalog/searchSuggestionService.js';
+import { trackIdentityManager } from './catalog/trackIdentityManager.js';
 import { musicProvider } from './providers/musicProvider.js';
 
 dotenv.config();
@@ -386,7 +387,44 @@ app.get('/api/music/artist/:name', async (req, res) => {
 
 app.get('/api/music/album/:id', async (req, res) => {
   const albumData = await musicProvider.getAlbum(req.params.id);
+  if (!albumData) return res.status(404).json({ error: 'Album not found' });
   res.json({ status: 'success', album: albumData });
+});
+
+app.get('/api/music/resolve-source', async (req, res) => {
+  try {
+    const { id, title, artist, duration, format = 'audio' } = req.query;
+    if (!id && !title) {
+      return res.status(400).json({ error: 'id or title parameter is required' });
+    }
+
+    const canonicalTrack = {
+      id: id || trackIdentityManager.generateCanonicalTrackId(title, artist),
+      canonicalTrackId: id || trackIdentityManager.generateCanonicalTrackId(title, artist),
+      title: title || (id ? id.split('|')[0].replace(/-/g, ' ') : 'Song'),
+      artist: artist || (id && id.includes('|') ? id.split('|')[1].replace(/-/g, ' ') : ''),
+      duration: duration ? Number(duration) : 210,
+    };
+
+    const source = await trackIdentityManager.fetchAndResolveSource(canonicalTrack, format);
+
+    if (source) {
+      return res.json({
+        status: 'success',
+        canonicalTrackId: canonicalTrack.canonicalTrackId,
+        source,
+      });
+    }
+
+    return res.status(404).json({
+      status: 'error',
+      code: 'SOURCE_IDENTITY_MISMATCH',
+      canonicalTrackId: canonicalTrack.canonicalTrackId,
+      message: 'No verified playback source found matching this canonical track',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/music/stream/:id', async (req, res) => {
