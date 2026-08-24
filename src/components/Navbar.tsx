@@ -153,10 +153,12 @@ export const Navbar: React.FC = () => {
           onClick={() => navigate('/')}
           className="flex items-center gap-2 cursor-pointer lg:hidden"
         >
-          <div className="w-7 h-7 rounded-full bg-[#ff0000] flex items-center justify-center shadow-lg shadow-red-600/30">
-            <div className="w-0 h-0 border-t-[4px] border-t-transparent border-l-[7px] border-l-white border-b-[4px] border-b-transparent ml-0.5" />
-          </div>
-          <span className="font-black text-base text-white tracking-tight">Music</span>
+          <img
+            src="/logo.png"
+            alt="MRJ Music"
+            className="w-8 h-8 rounded-full object-cover shadow-lg shadow-red-600/30"
+          />
+          <span className="font-black text-base text-white tracking-tight">MRJ Music</span>
         </div>
       </div>
 

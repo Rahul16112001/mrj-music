@@ -288,6 +288,27 @@ export const Home: React.FC = () => {
         </section>
       )}
 
+      {/* 7. EMPTY / RECONNECT RETRY STATE */}
+      {!isLoading && quickPicks.length === 0 && dailyMixes.length === 0 && trendingRegional.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
+          <div className="w-14 h-14 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+            <Music2 className="w-7 h-7 text-[#ff0000]" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-white">Connecting to MRJ Music...</h3>
+            <p className="text-xs text-zinc-400 max-w-xs">
+              Fetching your personalized mixes, trending charts, and daily stations.
+            </p>
+          </div>
+          <button
+            onClick={() => fetchHomeData()}
+            className="px-6 py-2.5 rounded-full bg-white text-black font-bold text-xs hover:bg-zinc-200 active:scale-95 transition-all shadow-lg"
+          >
+            Refresh Feed
+          </button>
+        </div>
+      )}
+
       {/* Taste Onboarding Modal */}
       {showTasteModal && (
         <TasteOnboardingModal

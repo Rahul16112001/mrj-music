@@ -1,6 +1,21 @@
+import { Capacitor } from '@capacitor/core';
 import { Track, MoodStation, LyricData, AdCreative, Artist, Album, User, Playlist, AppSettings, ListeningEvent, PlaybackFormat } from '../types';
 
-const API_BASE = '/api';
+export const getApiBase = (): string => {
+  if (typeof window !== 'undefined') {
+    const isNativeApp = Capacitor.isNativePlatform() ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:' ||
+      (window.location.hostname === 'localhost' && window.location.port !== '5173' && window.location.port !== '3000');
+
+    if (isNativeApp) {
+      return 'https://mrj-music.vercel.app/api';
+    }
+  }
+  return '/api';
+};
+
+export const API_BASE = getApiBase();
 
 const getAuthHeaders = () => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('MRJ_AUTH_TOKEN') : null;

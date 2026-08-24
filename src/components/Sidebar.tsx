@@ -30,16 +30,15 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside className="w-64 bg-[#030303] border-r border-[#1f1f1f] h-screen flex flex-col shrink-0 select-none hidden lg:flex">
-      {/* YouTube Music Logo Header */}
-      <div className="h-16 px-6 flex items-center gap-2.5 cursor-pointer" onClick={() => navigate('/')}>
-        <div className="w-8 h-8 rounded-full bg-[#ff0000] flex items-center justify-center shadow-lg shadow-red-600/30">
-          <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[9px] border-l-white border-b-[5px] border-b-transparent ml-0.5" />
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="font-bold text-lg tracking-tight text-white font-sans">Music</span>
-          <span className="text-[9px] font-black uppercase tracking-wider bg-[#ff0000]/20 text-[#ff4e4e] px-1.5 py-0.5 rounded border border-[#ff0000]/30 ml-1">
-            Free
-          </span>
+      {/* MRJ Music Logo Header */}
+      <div className="h-16 px-5 flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+        <img
+          src="/logo.png"
+          alt="MRJ Music"
+          className="w-9 h-9 rounded-full object-cover shadow-lg shadow-red-600/30 shrink-0"
+        />
+        <div className="flex items-center gap-1.5">
+          <span className="font-black text-base tracking-tight text-white">MRJ Music</span>
         </div>
       </div>
 

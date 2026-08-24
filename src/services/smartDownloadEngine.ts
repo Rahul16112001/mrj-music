@@ -1,6 +1,6 @@
 import { Track, AppSettings, SmartDownloadConfig } from '../types';
 import { offlineStorage } from './offlineStorage';
-import { api } from './api';
+import { api, API_BASE } from './api';
 import { Network } from '@capacitor/network';
 import { Capacitor } from '@capacitor/core';
 
@@ -311,7 +311,7 @@ class SmartDownloadEngine {
     track: Track
   ): Promise<{ success: boolean; blob?: Blob; lyrics?: any }> {
     try {
-      const streamUrl = `/api/music/stream/${encodeURIComponent(track.canonicalTrackId || track.id)}?format=audio`;
+      const streamUrl = `${API_BASE}/music/stream/${encodeURIComponent(track.canonicalTrackId || track.id)}?format=audio`;
       const response = await fetch(streamUrl);
 
       if (!response.ok) {

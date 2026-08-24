@@ -1,0 +1,5 @@
+android/
+.gradle
+build
+node_modules
+.git
