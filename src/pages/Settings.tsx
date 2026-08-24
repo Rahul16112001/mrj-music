@@ -19,7 +19,7 @@ import { AppSettings, AudioQuality } from '../types';
 import { offlineStorage } from '../services/offlineStorage';
 import { backupService } from '../services/backup';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
-import { updateService, UpdateInfo } from '../services/updateService';
+import { updateService, UpdateCheckResult } from '../services/updateService';
 import { UpdateModal } from '../components/UpdateModal';
 
 export const SettingsPage: React.FC = () => {
@@ -30,7 +30,7 @@ export const SettingsPage: React.FC = () => {
   const [storageInfo, setStorageInfo] = useState({ totalBytes: 0, formatted: '0 MB', count: 0 });
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const loadData = async () => {
