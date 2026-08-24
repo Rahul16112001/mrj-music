@@ -449,7 +449,4 @@ export const dbClient = {
       };
     }
   },
-      };
-    }
-  },
 };
