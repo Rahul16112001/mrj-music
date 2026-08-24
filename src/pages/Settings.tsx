@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Settings as SettingsIcon,
   Volume2,
@@ -11,9 +12,11 @@ import {
   ShieldCheck,
   Check,
   RefreshCw,
-  Info
+  Info,
+  Smartphone
 } from 'lucide-react';
 import { AppSettings, AudioQuality } from '../types';
+import { APP_RELEASE } from '../config/appRelease';
 import { offlineStorage } from '../services/offlineStorage';
 import { backupService } from '../services/backup';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
@@ -267,7 +270,37 @@ export const SettingsPage: React.FC = () => {
         )}
       </section>
 
-      {/* 4. About & Privacy */}
+      {/* 4. Native Android Application */}
+      <section className="space-y-4 bg-gradient-to-r from-[#141417] via-[#1a1417] to-[#141417] border border-[#2c2226] p-6 rounded-3xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-[#ff0000]/10 border border-[#ff0000]/30 text-[#ff4e4e] flex items-center justify-center shrink-0">
+              <Smartphone className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-white">MRJ Music for Android</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  v{APP_RELEASE.version}
+                </span>
+              </div>
+              <p className="text-xs text-[#888888] mt-0.5">
+                Download the official native Android APK for background lock screen controls and offline caching.
+              </p>
+            </div>
+          </div>
+
+          <Link
+            to="/download"
+            className="px-6 py-3 rounded-2xl bg-[#ff0000] hover:bg-[#cc0000] active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all shrink-0 min-h-[44px]"
+          >
+            <Download className="w-4 h-4 stroke-[2.5]" />
+            <span>Download APK ({APP_RELEASE.fileSizeFormatted})</span>
+          </Link>
+        </div>
+      </section>
+
+      {/* 5. About & Privacy */}
       <section className="space-y-3 p-6 bg-[#0e0e0e] border border-[#1f1f1f] rounded-3xl text-center md:text-left">
         <div className="flex items-center gap-2 text-xs font-bold text-white">
           <Info className="w-4 h-4 text-[#ff0000]" />

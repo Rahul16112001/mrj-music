@@ -10,7 +10,8 @@ import {
   Settings,
   Disc3,
   ListMusic,
-  Sparkles
+  Sparkles,
+  Smartphone
 } from 'lucide-react';
 import { useMusicPlayer } from '../context/MusicPlayerContext';
 import { CreatePlaylistModal } from './CreatePlaylistModal';
@@ -143,6 +144,37 @@ export const Sidebar: React.FC = () => {
             <span>New Playlist</span>
           </button>
         </div>
+      </div>
+
+      {/* Download Android App Card */}
+      <div className="p-3 border-t border-[#1f1f1f]">
+        <NavLink
+          to="/download"
+          className={({ isActive }) =>
+            `flex items-center gap-3 p-3 rounded-2xl border transition-all group ${
+              isActive
+                ? 'bg-[#18181c] border-[#ff0000]/50 text-white shadow-lg shadow-red-950/20'
+                : 'bg-[#111114] hover:bg-[#18181c] border-[#222226] text-[#cccccc] hover:text-white hover:border-[#333338]'
+            }`
+          }
+        >
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#ff0000]/20 to-emerald-500/10 border border-[#ff0000]/30 text-[#ff4e4e] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+            <Smartphone className="w-5 h-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black tracking-tight text-white group-hover:text-[#ff4e4e] transition-colors">
+                Download App
+              </span>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-400">
+                APK
+              </span>
+            </div>
+            <p className="text-[10px] text-[#717171] truncate mt-0.5">
+              Get MRJ Music for Android
+            </p>
+          </div>
+        </NavLink>
       </div>
 
       <CreatePlaylistModal

@@ -15,6 +15,7 @@ import { ArtistPage } from './pages/Artist';
 import { AlbumPage } from './pages/Album';
 import { PlaylistPage } from './pages/Playlist';
 import { SettingsPage } from './pages/Settings';
+import { DownloadApp } from './pages/DownloadApp';
 import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { ProfilePage } from './pages/Profile';
@@ -50,6 +51,8 @@ const AppContent: React.FC = () => {
             <Route path="/album/:id" element={<AlbumPage />} />
             <Route path="/playlist/:id" element={<PlaylistPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/download" element={<DownloadApp />} />
+            <Route path="/download-app" element={<DownloadApp />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/profile" element={<ProfilePage />} />

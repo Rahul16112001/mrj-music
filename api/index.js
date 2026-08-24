@@ -17,6 +17,22 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// App Release Info Endpoint
+app.get(['/api/app/release', '/app/release'], (req, res) => {
+  res.json({
+    status: 'success',
+    version: '2.0.0',
+    buildNumber: 200,
+    apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+    apkFileName: 'mrj-music.apk',
+    fileSize: '961 KB',
+    minAndroidVersion: 'Android 8.0+',
+    targetAndroidVersion: 'Android 14',
+    sha256: 'ad1836ce4a0739e418d8335477e06a590a6083c0720c6e5ccccd9ed807fb82be',
+    isAvailable: true,
+  });
+});
+
 // Database Health Check Endpoint
 app.get(['/api/health/db', '/health/db'], async (req, res) => {
   try {
