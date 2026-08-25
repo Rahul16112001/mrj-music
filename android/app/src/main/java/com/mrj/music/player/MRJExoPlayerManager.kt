@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
+import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -35,6 +36,35 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.util.Collections
+
+@SuppressLint("SetJavaScriptEnabled")
+class BackgroundMediaWebView(context: Context) : WebView(context.applicationContext ?: context) {
+    init {
+        resumeTimers()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        // Force VISIBLE so Chromium never throttles timers or pauses media on lockscreen/minimize
+        super.onWindowVisibilityChanged(View.VISIBLE)
+    }
+
+    override fun dispatchWindowVisibilityChanged(visibility: Int) {
+        super.dispatchWindowVisibilityChanged(View.VISIBLE)
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, View.VISIBLE)
+    }
+
+    override fun onPause() {
+        // Do NOT call super.onPause() to keep background audio thread and JS engine actively running
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        // Retain focus state so HTML5 player never detects window blur
+        super.onWindowFocusChanged(true)
+    }
+}
 
 private const val TAG = "MRJ_ExoPlayerManager"
 
@@ -532,7 +562,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
     fun getOrCreatePlayerEngineView(ctx: Context): WebView {
         if (webView == null) {
             val appContext = ctx.applicationContext ?: ctx
-            val wv = WebView(appContext).apply {
+            val wv = BackgroundMediaWebView(appContext).apply {
                 layoutParams = android.view.ViewGroup.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -596,6 +626,46 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
             if (wifiLock?.isHeld == true) wifiLock?.release()
         } catch (e: Exception) {
             Log.w(TAG, "Error releasing hardware locks: ${e.message}")
+        }
+    }
+
+    fun addListener(listener: PlayerEventListener) {
+        if (!listeners.contains(listener)) listeners.add(listener)
+    }
+
+    fun removeListener(listener: PlayerEventListener) {
+        listeners.remove(listener)
+    }
+
+    private fun dispatchPlayVideo(videoId: String) {
+        currentPlayingVideoId = videoId
+        trackStartTimestamp = System.currentTimeMillis()
+        audioFocusManager.onPlaybackStarted()
+        acquireHardwareLocks()
+
+        // Keep native ExoPlayer AudioTrack active in background with silence so Android OS & OEM battery optimizers never suspend audio thread
+        try {
+            val silenceSource = androidx.media3.exoplayer.source.SilenceMediaSource(86400000000L) // 24 hours of silence
+            player.stop()
+            player.clearMediaItems()
+            player.setMediaSource(silenceSource)
+            player.prepare()
+            player.play()
+        } catch (e: Exception) {
+            Log.w(TAG, "SilenceMediaSource setup notice: ${e.message}")
+        }
+
+        mainHandler.post {
+            getOrCreatePlayerEngineView(context)
+            setVolume(0.05f)
+            if (isHtmlReady && webView != null) {
+                Log.d(TAG, "Executing JS playVideo('$videoId')")
+                webView?.evaluateJavascript("playVideo('$videoId');", null)
+            } else {
+                Log.d(TAG, "HTML engine not ready yet, queuing pending video ID: $videoId")
+                pendingYouTubeId = videoId
+            }
+            fadeVolume(from = 0.05f, to = 1.0f, durationMs = 300L)
         }
     }
 
@@ -667,33 +737,6 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
                 }
             }
         })
-    }
-
-    fun addListener(listener: PlayerEventListener) {
-        if (!listeners.contains(listener)) listeners.add(listener)
-    }
-
-    fun removeListener(listener: PlayerEventListener) {
-        listeners.remove(listener)
-    }
-
-    private fun dispatchPlayVideo(videoId: String) {
-        currentPlayingVideoId = videoId
-        trackStartTimestamp = System.currentTimeMillis()
-        audioFocusManager.onPlaybackStarted()
-        acquireHardwareLocks()
-        mainHandler.post {
-            getOrCreatePlayerEngineView(context)
-            setVolume(0.05f)
-            if (isHtmlReady && webView != null) {
-                Log.d(TAG, "Executing JS playVideo('$videoId')")
-                webView?.evaluateJavascript("playVideo('$videoId');", null)
-            } else {
-                Log.d(TAG, "HTML engine not ready yet, queuing pending video ID: $videoId")
-                pendingYouTubeId = videoId
-            }
-            fadeVolume(from = 0.05f, to = 1.0f, durationMs = 300L)
-        }
     }
 
     fun setVolume(volume: Float) {
@@ -1183,7 +1226,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
             try { player.pause() } catch (e: Exception) { Log.w(TAG, "pause() error: ${e.message}") }
         } else {
             _isPlaying.value = false
-            try { player.playWhenReady = false } catch (_: Exception) {}
+            try { player.pause() } catch (_: Exception) {}
             mainHandler.post { webView?.evaluateJavascript("pauseVideo();", null) }
             listeners.forEach { it.onPlaybackStateChange(false, false) }
         }
@@ -1206,7 +1249,14 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
             }
         } else {
             _isPlaying.value = true
-            try { player.playWhenReady = true } catch (_: Exception) {}
+            try {
+                if (player.playbackState == Player.STATE_IDLE) {
+                    val silenceSource = androidx.media3.exoplayer.source.SilenceMediaSource(86400000000L)
+                    player.setMediaSource(silenceSource)
+                    player.prepare()
+                }
+                player.play()
+            } catch (_: Exception) {}
             mainHandler.post { webView?.evaluateJavascript("resumeVideo();", null) }
             listeners.forEach { it.onPlaybackStateChange(true, false) }
         }
