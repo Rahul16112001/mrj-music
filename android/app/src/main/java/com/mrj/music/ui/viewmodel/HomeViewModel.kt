@@ -52,17 +52,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     val discovery = body["discovery"] as? Map<*, *>
                     val charts = body["charts"] as? Map<*, *>
 
-                    val quickPicksRaw = (personalized?.get("quickPicks") as? List<Map<String, Any>>)
-                        ?: (personalized?.get("listenAgain") as? List<Map<String, Any>>)
-                        ?: emptyList()
+                    val timeOfDay = personalized?.get("timeOfDay") as? Map<*, *>
+                    val timeOfDayTracks = (timeOfDay?.get("tracks") as? List<Map<String, Any>>) ?: emptyList()
+                    val qpList = (personalized?.get("quickPicks") as? List<Map<String, Any>>) ?: emptyList()
+                    val dailyMixes = (personalized?.get("dailyMixes") as? List<Map<String, Any>>) ?: emptyList()
+                    val listenAgain = (personalized?.get("listenAgain") as? List<Map<String, Any>>) ?: emptyList()
+                    val recList = (personalized?.get("recommendedForYou") as? List<Map<String, Any>>) ?: emptyList()
+                    val newReleases = (discovery?.get("newReleases") as? List<Map<String, Any>>) ?: emptyList()
+                    val trendingReg = (charts?.get("trendingRegional") as? List<Map<String, Any>>) ?: emptyList()
+                    val trendingWorld = (charts?.get("trendingWorldwide") as? List<Map<String, Any>>) ?: emptyList()
 
-                    val recommendedRaw = (personalized?.get("recommendedForYou") as? List<Map<String, Any>>)
-                        ?: (discovery?.get("newReleases") as? List<Map<String, Any>>)
-                        ?: (charts?.get("trendingRegional") as? List<Map<String, Any>>)
-                        ?: emptyList()
+                    val combinedQuickRaw = if (qpList.isNotEmpty()) qpList else if (timeOfDayTracks.isNotEmpty()) timeOfDayTracks else (dailyMixes + listenAgain)
+                    val combinedRecRaw = if (recList.isNotEmpty()) recList else (newReleases + trendingReg + trendingWorld)
 
-                    val quickPicks = quickPicksRaw.mapNotNull { parseTrack(it) }
-                    val recommended = recommendedRaw.mapNotNull { parseTrack(it) }
+                    val quickPicks = combinedQuickRaw.mapNotNull { parseTrack(it) }
+                    val recommended = combinedRecRaw.mapNotNull { parseTrack(it) }
 
                     val rawArtists = (charts?.get("topArtists") as? List<Map<String, Any>>)
                         ?: (discovery?.get("topArtists") as? List<Map<String, Any>>)

@@ -5,7 +5,7 @@ import { musicProvider } from '../providers/musicProvider.js';
 export const MOOD_DEFINITIONS = {
   workout: {
     name: 'Workout & High Energy',
-    query: 'gym workout high energy edm hip hop',
+    queries: ['imagine dragons high energy songs', 'anirudh motivational songs', 'gym workout phonk music', 'eminem motivation hits'],
     color: 'from-red-600 to-orange-900',
     count: '50+ Songs',
     fallbackTracks: [
@@ -18,7 +18,7 @@ export const MOOD_DEFINITIONS = {
   },
   chill: {
     name: 'Chill & Relax',
-    query: 'chill lofi acoustic relaxing songs',
+    queries: ['arijit singh chill songs', 'prateek kuhad songs', 'jasleen royal acoustic', 'the weeknd acoustic hits'],
     color: 'from-blue-600 to-indigo-900',
     count: '45+ Songs',
     fallbackTracks: [
@@ -30,7 +30,7 @@ export const MOOD_DEFINITIONS = {
   },
   romance: {
     name: 'Romance & Love',
-    query: 'romantic love songs ballad acoustic',
+    queries: ['arijit singh romantic songs', 'shreya ghoshal love songs', 'darshan raval romantic', 'ed sheeran romantic songs'],
     color: 'from-rose-600 to-pink-900',
     count: '60+ Songs',
     fallbackTracks: [
@@ -42,7 +42,7 @@ export const MOOD_DEFINITIONS = {
   },
   focus: {
     name: 'Focus & Study',
-    query: 'focus study lofi instrumental piano',
+    queries: ['lofi hip hop study beats', 'ambient focus study piano', 'peaceful instrumental guitar songs'],
     color: 'from-emerald-600 to-teal-900',
     count: '40+ Songs',
     fallbackTracks: [
@@ -50,38 +50,125 @@ export const MOOD_DEFINITIONS = {
       { id: 'T1tl66trXTQ', title: 'Hello', artist: 'Adele', genre: 'Focus', duration: 296, thumbnail: 'https://i.ytimg.com/vi/T1tl66trXTQ/hqdefault.jpg' },
     ],
   },
-  energy: { name: 'Pure Energy', query: 'energy dance edm electronic club hits', color: 'from-amber-600 to-yellow-800', count: '50+ Songs' },
-  party: { name: 'Party & Club Hits', query: 'party dance club hits reggaeton pop', color: 'from-fuchsia-600 to-pink-900', count: '65+ Songs' },
-  sleep: { name: 'Deep Sleep & Ambient', query: 'sleep ambient peaceful calm piano', color: 'from-slate-700 to-indigo-950', count: '35+ Songs' },
-  commute: { name: 'Daily Commute', query: 'daily commute road trip indie pop hits', color: 'from-cyan-600 to-blue-900', count: '50+ Songs' },
-  sad: { name: 'Melancholy & Healing', query: 'sad emotional acoustic slow songs', color: 'from-gray-700 to-slate-900', count: '40+ Songs' },
-  happy: { name: 'Feel Good & Uplifting', query: 'happy feel good upbeat pop funk hits', color: 'from-yellow-500 to-orange-700', count: '55+ Songs' },
-  motivation: { name: 'Motivation & Drive', query: 'motivation epic rock hip hop drive', color: 'from-violet-600 to-purple-900', count: '45+ Songs' },
-  nostalgia: { name: 'Throwback & Classics', query: 'throwback classics 90s 2000s retro hits', color: 'from-teal-600 to-emerald-900', count: '60+ Songs' },
-  instrumental: { name: 'Pure Instrumental', query: 'instrumental guitar violin piano soundtrack', color: 'from-zinc-700 to-neutral-900', count: '40+ Songs' },
-  relax: { name: 'Relax & Unwind', query: 'relaxing acoustic soul soft pop unwind', color: 'from-sky-600 to-blue-950', count: '45+ Songs' },
-  study: { name: 'Deep Study', query: 'deep study lofi beats binaural focus', color: 'from-green-700 to-emerald-950', count: '40+ Songs' },
+  energy: {
+    name: 'Pure Energy',
+    queries: ['anirudh ravichander high energy songs', 'karan aujla fast beats', 'skrillex david guetta edm'],
+    color: 'from-amber-600 to-yellow-800',
+    count: '50+ Songs'
+  },
+  party: {
+    name: 'Party & Club Hits',
+    queries: ['badshah party songs', 'honey singh party hits', 'karan aujla party tracks', 'diljit dosanjh bhangra songs'],
+    color: 'from-fuchsia-600 to-pink-900',
+    count: '65+ Songs'
+  },
+  sleep: {
+    name: 'Deep Sleep & Ambient',
+    queries: ['peaceful sleep ambient music', 'calm piano sleep sounds', 'late night lofi beats'],
+    color: 'from-slate-700 to-indigo-950',
+    count: '35+ Songs'
+  },
+  commute: {
+    name: 'Daily Commute',
+    queries: ['road trip travel songs hindi', 'indie travel vibes hindi', 'feel good driving songs'],
+    color: 'from-cyan-600 to-blue-900',
+    count: '50+ Songs'
+  },
+  sad: {
+    name: 'Melancholy & Healing',
+    queries: ['arijit singh sad songs', 'b praak emotional sad songs', 'sad acoustic hindi songs'],
+    color: 'from-gray-700 to-slate-900',
+    count: '40+ Songs'
+  },
+  happy: {
+    name: 'Feel Good & Uplifting',
+    queries: ['upbeat feel good hindi songs', 'happy bollywood dance songs', 'pharrell williams happy vibes'],
+    color: 'from-yellow-500 to-orange-700',
+    count: '55+ Songs'
+  },
+  motivation: {
+    name: 'Motivation & Drive',
+    queries: ['powerful motivational songs hindi', 'neffex motivational songs', 'rock motivation tracks'],
+    color: 'from-violet-600 to-purple-900',
+    count: '45+ Songs'
+  },
+  nostalgia: {
+    name: 'Throwback & Classics',
+    queries: ['90s bollywood superhit songs', 'udit narayan kumar sanu romantic songs', '2000s bollywood hit songs'],
+    color: 'from-teal-600 to-emerald-900',
+    count: '60+ Songs'
+  },
+  instrumental: {
+    name: 'Pure Instrumental',
+    queries: ['beautiful instrumental guitar piano music', 'indian classical flute instrumental', 'cinematic violin instrumental'],
+    color: 'from-zinc-700 to-neutral-900',
+    count: '40+ Songs'
+  },
+  relax: {
+    name: 'Relax & Unwind',
+    queries: ['relaxing soft acoustic songs', 'anuv jain soothing songs', 'cozy acoustic guitar songs'],
+    color: 'from-sky-600 to-blue-950',
+    count: '45+ Songs'
+  },
+  study: {
+    name: 'Deep Study',
+    queries: ['deep study lofi beats music', 'binaural study beats focus', 'lofi study relaxing sounds'],
+    color: 'from-green-700 to-emerald-950',
+    count: '40+ Songs'
+  },
 };
+
+const moodCache = new Map();
 
 export const moodEngine = {
   async getMoodStation(userId, moodId, customPool = null) {
     const key = (moodId || 'chill').toLowerCase();
     const moodMeta = MOOD_DEFINITIONS[key] || MOOD_DEFINITIONS.chill;
 
-    // 1. Gather Candidate Pool for Mood
+    // 1. Gather Candidate Pool for Mood (from cache, live provider, or fallback)
     let candidates = customPool;
-    if (!candidates || candidates.length < 5) {
-      try {
-        const searchRes = await musicProvider.search(moodMeta.query, 'songs', 30);
-        candidates = searchRes?.results || [];
-      } catch {}
+    const cacheKey = `mood_${key}`;
+    const cached = moodCache.get(cacheKey);
+
+    if (!candidates || candidates.length < 10) {
+      if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000 && cached.tracks.length >= 10) {
+        candidates = cached.tracks;
+      } else {
+        try {
+          const queries = moodMeta.queries || [moodMeta.query, `${moodMeta.name} songs`];
+          const searchPromises = queries.map(q =>
+            musicProvider.searchDiscovery(q, 30).catch(() => [])
+          );
+          const results = await Promise.allSettled(searchPromises);
+          const pool = [];
+          const seen = new Set();
+
+          for (const res of results) {
+            if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+              for (const t of res.value) {
+                if (t && t.id && !seen.has(t.id)) {
+                  seen.add(t.id);
+                  pool.push(t);
+                }
+              }
+            }
+          }
+
+          if (pool.length >= 8) {
+            candidates = pool;
+            moodCache.set(cacheKey, { timestamp: Date.now(), tracks: pool });
+          }
+        } catch (e) {
+          console.warn(`Mood ${key} search error:`, e.message);
+        }
+      }
     }
 
     if (!candidates || candidates.length === 0) {
       candidates = moodMeta.fallbackTracks || MOOD_DEFINITIONS.chill.fallbackTracks;
     }
 
-    // 2. Fetch User Taste Profile
+    // 2. Fetch User Taste Profile & Re-Rank
     const profile = userId ? await db.getTasteProfile(userId) : null;
     const dislikedArtists = new Set(profile?.disliked_artists || []);
 
@@ -91,10 +178,10 @@ export const moodEngine = {
       .map(track => {
         let score = 0;
         if (profile?.preferred_artists?.[track.artist]) {
-          score += Math.min(20, profile.preferred_artists[track.artist] * 3);
+          score += Math.min(30, profile.preferred_artists[track.artist] * 5);
         }
         if (profile?.liked_artists?.includes(track.artist)) {
-          score += 25;
+          score += 35;
         }
         return { track, score };
       })
@@ -108,7 +195,7 @@ export const moodEngine = {
     return {
       moodId: key,
       mood: moodMeta.name,
-      tracks: filtered.slice(0, 30),
+      tracks: filtered.slice(0, 45),
     };
   },
 

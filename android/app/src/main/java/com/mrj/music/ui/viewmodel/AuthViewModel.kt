@@ -73,9 +73,15 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         preferredName = secureStorage.getPreferredName()
                     )
                 } else {
+                    val errBody = res.errorBody()?.string() ?: ""
+                    val msg = if (errBody.contains("Invalid email or password")) {
+                        "Invalid email or password. Please check and try again."
+                    } else {
+                        "Login failed. Please verify your credentials."
+                    }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        errorMessage = "Invalid email or password. Please try again."
+                        errorMessage = msg
                     )
                 }
             } catch (e: Exception) {
@@ -104,13 +110,19 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         successMessage = "6-digit verification code sent to $email"
                     )
                 } else {
+                    val errBody = res.errorBody()?.string() ?: ""
+                    val msg = if (errBody.contains("already exists")) {
+                        "An account with this email address already exists. Please Sign In."
+                    } else {
+                        "Failed to send code. Please try again."
+                    }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        errorMessage = "Failed to send code. Account may already exist."
+                        errorMessage = msg
                     )
                 }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message)
+                _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message ?: "Failed to send code.")
             }
         }
     }
@@ -147,13 +159,69 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         preferredName = preferredCalloutName.ifBlank { null }
                     )
                 } else {
+                    val errBody = res.errorBody()?.string() ?: ""
+                    val msg = if (errBody.contains("Invalid verification code")) {
+                        "Invalid verification code. Please check your email and try again."
+                    } else if (errBody.contains("expired")) {
+                        "Verification code has expired. Please request a new code."
+                    } else {
+                        "Verification failed. Please try again."
+                    }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        errorMessage = "Invalid verification code."
+                        errorMessage = msg
                     )
                 }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message)
+                _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message ?: "Verification failed.")
+            }
+        }
+    }
+
+    fun registerDirect(name: String, email: String, password: String, preferredCalloutName: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            try {
+                val res = MRJApiClient.apiService.register(mapOf(
+                    "name" to name.trim(),
+                    "email" to email.trim(),
+                    "password" to password,
+                    "ageGroup" to "18-24",
+                    "gender" to "Prefer not to say"
+                ))
+                if (res.isSuccessful && res.body() != null) {
+                    val body = res.body()!!
+                    val token = body["token"] as? String ?: ""
+                    val refreshToken = body["refreshToken"] as? String ?: ""
+                    val user = (body["user"] as? Map<String, Any>) ?: emptyMap()
+
+                    secureStorage.saveTokens(token, refreshToken)
+                    secureStorage.saveUserProfile(user)
+                    if (preferredCalloutName.isNotBlank()) {
+                        secureStorage.savePreferredName(preferredCalloutName.trim())
+                    }
+
+                    _uiState.value = AuthUiState(
+                        isAuthenticated = true,
+                        isLoading = false,
+                        userName = user["name"] as? String,
+                        userEmail = user["email"] as? String,
+                        preferredName = preferredCalloutName.ifBlank { null }
+                    )
+                } else {
+                    val errBody = res.errorBody()?.string() ?: ""
+                    val msg = if (errBody.contains("already exists")) {
+                        "An account with this email address already exists. Please Sign In."
+                    } else {
+                        "Registration failed. Please try again."
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = msg
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message ?: "Registration failed.")
             }
         }
     }

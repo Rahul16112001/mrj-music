@@ -210,6 +210,95 @@ export const musicProvider = {
     }
   },
 
+  // Direct High-Yield Discovery Search without strict keyword filtering
+  async searchDiscovery(query, limit = 30) {
+    if (!query || !query.trim()) return [];
+    try {
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query.trim())}`;
+      const ytResponse = await axios.get(searchUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        timeout: 7000,
+      });
+
+      const tracks = [];
+      if (ytResponse.data) {
+        const match = ytResponse.data.match(/var ytInitialData = ({.+?});<\/script>/);
+        if (match) {
+          const data = JSON.parse(match[1]);
+          const contents =
+            data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+          for (const section of contents) {
+            const items = section?.itemSectionRenderer?.contents || [];
+            for (const item of items) {
+              if (item.videoRenderer) {
+                const v = item.videoRenderer;
+                const videoId = v.videoId;
+                const rawTitle = v.title?.runs?.[0]?.text || v.title?.accessibility?.accessibilityData?.label || 'Untitled';
+                const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
+                const lengthText = v.lengthText?.simpleText || '3:30';
+
+                const parts = lengthText.split(':').map(Number);
+                const durationSec =
+                  parts.length === 2
+                    ? parts[0] * 60 + parts[1]
+                    : parts.length === 3
+                    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+                    : 210;
+
+                // Exclude long compilations (> 10 mins) and shorts (< 45s)
+                if (durationSec > 600 || durationSec < 45) continue;
+
+                // Clean title
+                const cleanTitle = rawTitle
+                  .replace(/\s*\([^)]*(official|video|audio|lyrics|hd|4k|full song|visualizer)[^)]*\)/gi, '')
+                  .replace(/\s*\[[^\]]*(official|video|audio|lyrics|hd|4k|full song|visualizer)[^\]]*\]/gi, '')
+                  .trim();
+
+                tracks.push({
+                  id: videoId,
+                  videoId,
+                  providerTrackId: videoId,
+                  canonicalTrackId: videoId,
+                  title: cleanTitle || rawTitle,
+                  rawTitle,
+                  artist,
+                  duration: durationSec,
+                  thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                  views: v.viewCountText?.simpleText || null,
+                  playbackFormat: 'audio',
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Prioritize studio audio & Topic releases before music videos
+      tracks.sort((a, b) => {
+        const aIsAudio =
+          a.rawTitle.toLowerCase().includes('audio') ||
+          a.rawTitle.toLowerCase().includes('official track') ||
+          a.artist.toLowerCase().endsWith('- topic');
+        const bIsAudio =
+          b.rawTitle.toLowerCase().includes('audio') ||
+          b.rawTitle.toLowerCase().includes('official track') ||
+          b.artist.toLowerCase().endsWith('- topic');
+        if (aIsAudio && !bIsAudio) return -1;
+        if (!aIsAudio && bIsAudio) return 1;
+        return 0;
+      });
+
+      return tracks.slice(0, limit);
+    } catch (e) {
+      console.warn('searchDiscovery failed for ' + query + ':', e.message);
+      return [];
+    }
+  },
+
   // 2. Build High-Precision Candidate Pool for Recommendations
   async getCandidatePool(seedTrack) {
     if (!seedTrack) return [];

@@ -355,6 +355,49 @@ class EmbeddedRelationalStore {
       return { rows: [record], rowCount: 1 };
     }
 
+    if (/UPDATE playlists SET title = \$1/i.test(sql)) {
+      const [title, description, updated_at, id, userId] = params;
+      const pl = this.tables.playlists.get(id);
+      if (pl && pl.user_id === userId) {
+        pl.title = title;
+        pl.description = description || '';
+        pl.updated_at = updated_at;
+        return { rows: [pl], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }
+
+    if (/UPDATE playlists SET thumbnail = \$1/i.test(sql)) {
+      const [thumbnail, updated_at, id, userId] = params;
+      const pl = this.tables.playlists.get(id);
+      if (pl && pl.user_id === userId) {
+        pl.thumbnail = thumbnail;
+        pl.updated_at = updated_at;
+        return { rows: [pl], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }
+
+    if (/UPDATE playlists SET updated_at = \$1/i.test(sql)) {
+      const [updated_at, id, userId] = params;
+      const pl = this.tables.playlists.get(id);
+      if (pl && pl.user_id === userId) {
+        pl.updated_at = updated_at;
+        return { rows: [pl], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }
+
+    if (/DELETE FROM playlist_tracks WHERE playlist_id = \$1 AND track_id = \$2/i.test(sql)) {
+      const [playlist_id, track_id] = params;
+      for (const [id, t] of this.tables.playlist_tracks.entries()) {
+        if (t.playlist_id === playlist_id && t.track_id === track_id) {
+          this.tables.playlist_tracks.delete(id);
+        }
+      }
+      return { rows: [], rowCount: 1 };
+    }
+
     if (/DELETE FROM playlist_tracks WHERE playlist_id = \$1/i.test(sql)) {
       const playlist_id = params[0];
       for (const [id, t] of this.tables.playlist_tracks.entries()) {

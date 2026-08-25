@@ -165,9 +165,10 @@ export const trackIdentityManager = {
    * Resolves the verified playback source from candidate streams
    */
   resolvePlaybackSource(canonicalTrack, candidates = [], targetFormat = 'audio') {
-    if (!canonicalTrack) return null;
-
-    const canonId = canonicalTrack.canonicalTrackId || canonicalTrack.id;
+    const canonId =
+      canonicalTrack.canonicalTrackId ||
+      canonicalTrack.id ||
+      this.generateCanonicalTrackId(canonicalTrack.title, canonicalTrack.artist);
     const cacheKey = `source:${canonId}:${targetFormat}`;
     const cached = sourceCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SOURCE_CACHE_TTL_MS) {
@@ -226,9 +227,10 @@ export const trackIdentityManager = {
    * Active Targeted Source Resolution: If pre-bound source is missing or unverified, queries YouTube with audio-first intent
    */
   async fetchAndResolveSource(canonicalTrack, targetFormat = 'audio') {
-    if (!canonicalTrack) return null;
-
-    const canonId = canonicalTrack.canonicalTrackId || canonicalTrack.id;
+    const canonId =
+      canonicalTrack.canonicalTrackId ||
+      canonicalTrack.id ||
+      this.generateCanonicalTrackId(canonicalTrack.title, canonicalTrack.artist);
     const cacheKey = `source:${canonId}:${targetFormat}`;
     const cached = sourceCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SOURCE_CACHE_TTL_MS) {
@@ -236,62 +238,161 @@ export const trackIdentityManager = {
     }
 
     try {
-      const queryTerm =
-        targetFormat === 'audio'
-          ? `${canonicalTrack.title} ${canonicalTrack.artist} audio`
-          : `${canonicalTrack.title} ${canonicalTrack.artist} official video`;
+      const audioQueries = [
+        `${canonicalTrack.title} ${canonicalTrack.artist} official audio`,
+        `${canonicalTrack.artist} - Topic ${canonicalTrack.title}`,
+        `${canonicalTrack.title} ${canonicalTrack.artist} audio`,
+      ];
+      const videoQueries = [
+        `${canonicalTrack.title} ${canonicalTrack.artist} official video`,
+        `${canonicalTrack.title} ${canonicalTrack.artist}`,
+      ];
 
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(queryTerm)}`;
-      const res = await axios.get(searchUrl, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        timeout: 4500,
+      const queries = targetFormat === 'audio' ? audioQueries : videoQueries;
+
+      const scrapePromises = queries.map(async (queryTerm) => {
+        try {
+          const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(queryTerm)}`;
+          const res = await axios.get(searchUrl, {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+            timeout: 5000,
+          });
+
+          const candidates = [];
+          const match = res.data?.match(/var ytInitialData = ({.+?});<\/script>/);
+          if (match) {
+            const data = JSON.parse(match[1]);
+            const contents =
+              data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+
+            for (const section of contents) {
+              const items = section?.itemSectionRenderer?.contents || [];
+              for (const item of items) {
+                if (item.videoRenderer) {
+                  const v = item.videoRenderer;
+                  const videoId = v.videoId;
+                  const rawTitle =
+                    v.title?.runs?.[0]?.text || v.title?.accessibility?.accessibilityData?.label || 'Untitled';
+                  const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
+                  const lengthText =
+                    v.lengthText?.simpleText ||
+                    v.thumbnailOverlays?.[0]?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
+                    '3:30';
+
+                  const parts = lengthText.split(':').map(Number);
+                  const durationSec =
+                    parts.length === 2
+                      ? parts[0] * 60 + parts[1]
+                      : parts.length === 3
+                      ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+                      : 210;
+
+                  candidates.push({
+                    id: videoId,
+                    videoId,
+                    providerTrackId: videoId,
+                    rawTitle,
+                    title: rawTitle,
+                    artist,
+                    duration: durationSec,
+                    thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                  });
+                }
+              }
+            }
+          }
+          return candidates;
+        } catch {
+          return [];
+        }
       });
 
-      const rawCandidates = [];
-      const match = res.data?.match(/var ytInitialData = ({.+?});<\/script>/);
-      if (match) {
-        const data = JSON.parse(match[1]);
-        const contents =
-          data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+      const queryResults = await Promise.allSettled(scrapePromises);
+      const allCandidates = [];
+      const seenIds = new Set();
 
-        for (const section of contents) {
-          const items = section?.itemSectionRenderer?.contents || [];
-          for (const item of items) {
-            if (item.videoRenderer) {
-              const v = item.videoRenderer;
-              const videoId = v.videoId;
-              const rawTitle = v.title?.runs?.[0]?.text || v.title?.accessibility?.accessibilityData?.label || 'Untitled';
-              const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
-              const lengthText = v.lengthText?.simpleText || '3:30';
-
-              const parts = lengthText.split(':').map(Number);
-              const durationSec =
-                parts.length === 2
-                  ? parts[0] * 60 + parts[1]
-                  : parts.length === 3
-                  ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-                  : 210;
-
-              rawCandidates.push({
-                id: videoId,
-                videoId,
-                providerTrackId: videoId,
-                rawTitle,
-                title: rawTitle,
-                artist,
-                duration: durationSec,
-                thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              });
+      for (const res of queryResults) {
+        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+          for (const cand of res.value) {
+            if (cand && cand.id && !seenIds.has(cand.id)) {
+              seenIds.add(cand.id);
+              allCandidates.push(cand);
             }
           }
         }
       }
 
-      return this.resolvePlaybackSource(canonicalTrack, rawCandidates, targetFormat);
+      let resolved = this.resolvePlaybackSource(canonicalTrack, allCandidates, targetFormat);
+
+      // If audio format was requested but no audio candidate matched, fallback to video queries
+      if (!resolved && targetFormat === 'audio') {
+        const videoResults = await Promise.allSettled(
+          videoQueries.map(async (vq) => {
+            try {
+              const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(vq)}`;
+              const res = await axios.get(searchUrl, {
+                headers: {
+                  'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                  'Accept-Language': 'en-US,en;q=0.9',
+                },
+                timeout: 5000,
+              });
+              const cands = [];
+              const match = res.data?.match(/var ytInitialData = ({.+?});<\/script>/);
+              if (match) {
+                const data = JSON.parse(match[1]);
+                const contents =
+                  data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+                for (const section of contents) {
+                  const items = section?.itemSectionRenderer?.contents || [];
+                  for (const item of items) {
+                    if (item.videoRenderer) {
+                      const v = item.videoRenderer;
+                      const videoId = v.videoId;
+                      const rawTitle = v.title?.runs?.[0]?.text || 'Untitled';
+                      const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
+                      cands.push({
+                        id: videoId,
+                        videoId,
+                        providerTrackId: videoId,
+                        rawTitle,
+                        title: rawTitle,
+                        artist,
+                        duration: 210,
+                        thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                      });
+                    }
+                  }
+                }
+              }
+              return cands;
+            } catch {
+              return [];
+            }
+          })
+        );
+
+        const fallbackCandidates = [];
+        for (const r of videoResults) {
+          if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+            for (const c of r.value) {
+              if (c && c.id && !seenIds.has(c.id)) {
+                seenIds.add(c.id);
+                fallbackCandidates.push(c);
+              }
+            }
+          }
+        }
+
+        resolved = this.resolvePlaybackSource(canonicalTrack, fallbackCandidates, 'video');
+      }
+
+      return resolved;
     } catch (err) {
       console.warn('Targeted source resolution error:', err.message);
       return null;

@@ -170,7 +170,17 @@ fun AuthModalScreen(
                 )
 
                 Button(
-                    onClick = { authViewModel.requestSignupOtp(email, name) },
+                    onClick = {
+                        if (name.isBlank() || email.isBlank() || password.isBlank()) {
+                            return@Button
+                        }
+                        authViewModel.registerDirect(
+                            name = name,
+                            email = email,
+                            password = password,
+                            preferredCalloutName = preferredName
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
                     enabled = !authState.isLoading
@@ -178,7 +188,7 @@ fun AuthModalScreen(
                     if (authState.isLoading) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Continue (Send OTP)", fontWeight = FontWeight.Bold)
+                        Text("Create Account", fontWeight = FontWeight.Bold)
                     }
                 }
 

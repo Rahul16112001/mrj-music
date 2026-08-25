@@ -13,3 +13,4 @@ dist/
 android/gradle.properties
 android/*.keystore
 android/*.jks
+*.apk

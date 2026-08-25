@@ -21,7 +21,7 @@ const GENDER_OPTIONS = ['Male', 'Female', 'Non-Binary', 'Prefer not to say'];
 
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
-  const { sendSignupOtp, verifySignupOtp } = useAuth();
+  const { sendSignupOtp, verifySignupOtp, register } = useAuth();
 
   const [step, setStep] = useState<'details' | 'otp'>('details');
 
@@ -43,10 +43,27 @@ export const RegisterPage: React.FC = () => {
 
   // Countdown timer for OTP resend
   useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => setResendCooldown(prev => prev - 1), 1000);
-    return () => clearInterval(timer);
+    let timer: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  const handleDirectRegister = async () => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      localStorage.setItem('MRJ_JUST_SIGNED_UP', 'true');
+      await register(name.trim(), email.trim(), password, ageGroup, gender);
+      navigate('/');
+    } catch (err: any) {
+      localStorage.removeItem('MRJ_JUST_SIGNED_UP');
+      setError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +95,11 @@ export const RegisterPage: React.FC = () => {
       setResendCooldown(60);
       setStep('otp');
     } catch (err: any) {
+      // Fall back directly to instant register if OTP service is not available
+      if (err.message && (err.message.includes('send') || err.message.includes('email') || err.message.includes('failed'))) {
+        await handleDirectRegister();
+        return;
+      }
       setError(err.message || 'Failed to send verification code. Please try again.');
     } finally {
       setIsLoading(false);
@@ -353,6 +375,15 @@ export const RegisterPage: React.FC = () => {
                   <span>Verify & Create Account</span>
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDirectRegister}
+              disabled={isLoading}
+              className="w-full text-xs text-[#888888] hover:text-white underline pt-1 text-center transition-colors"
+            >
+              Didn't receive email? Click here to complete sign up instantly
             </button>
           </form>
         )}

@@ -1,18 +1,18 @@
 {
-  "version": "3.3.0",
-  "build": "303",
+  "version": "3.16.0",
+  "build": "321",
   "updatedAt": "2026-08-25T00:00:00Z",
-  "latestVersion": "3.3.0",
+  "latestVersion": "3.16.0",
   "isUpdateAvailable": true,
-  "apkDownloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk",
-  "apkFileName": "mrj-music-v3.3.0.apk",
-  "downloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk",
-  "title": "MRJ Music v3.3.0 Update",
+  "apkDownloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.16.0/mrj-music-v3.16.0.apk",
+  "apkFileName": "mrj-music-v3.16.0.apk",
+  "downloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.16.0/mrj-music-v3.16.0.apk",
+  "title": "MRJ Music v3.16.0 Equalizer, Dynamic Palette & Player Gestures",
   "changelog": [
-    "🚀 Connected with all cloud backend services & scrapers",
-    "⚡ Instant search suggestions with debounced query resolution",
-    "🎵 Complete song streaming & unplayable track auto-recovery",
-    "🔄 Continuous smart autoplay recommendations engine",
-    "☁️ Cloud library & favorites synchronization"
+    "🎛️ Native 5-Band Audio Equalizer, Sub-Bass Boost & 3D Spatializer with presets",
+    "🎨 Dynamic Palette Theming (automatically morphs player ambient glow & waveform colors to album artwork)",
+    "👆 4-Way Swipe Gestures on Full-Screen Player (Swipe Right: Next, Left: Prev, Up: Auto Queue, Down: Minimize)",
+    "🔍 Real-Time Search Suggestions & Instant Results Engine",
+    "📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber"
   ]
 }

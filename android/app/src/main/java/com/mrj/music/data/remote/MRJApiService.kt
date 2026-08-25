@@ -6,6 +6,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -45,6 +46,21 @@ interface MRJApiService {
     @GET("api/charts/top-artists")
     suspend fun getTopArtists(
         @Query("region") region: String = "GLOBAL"
+    ): Response<Map<String, Any>>
+
+    @GET("api/charts/categories")
+    suspend fun getCategories(): Response<Map<String, Any>>
+
+    @GET("api/charts/category/{categoryId}")
+    suspend fun getCategoryTracks(
+        @Path("categoryId") categoryId: String,
+        @Header("Authorization") authHeader: String? = null
+    ): Response<Map<String, Any>>
+
+    @GET("api/recommendations/mood/{moodId}")
+    suspend fun getMoodTracks(
+        @Path("moodId") moodId: String,
+        @Header("Authorization") authHeader: String? = null
     ): Response<Map<String, Any>>
 
     // ==================== SEARCH & SUGGESTIONS ====================
@@ -98,6 +114,17 @@ interface MRJApiService {
         @Query("duration") duration: Long? = null
     ): Response<Map<String, Any>>
 
+    // ==================== ARTIST & ALBUM DISCOGRAPHY ====================
+    @GET("api/music/artist/{name}")
+    suspend fun getArtist(
+        @Path("name") name: String
+    ): Response<Map<String, Any>>
+
+    @GET("api/music/album/{id}")
+    suspend fun getAlbum(
+        @Path("id") id: String
+    ): Response<Map<String, Any>>
+
     // ==================== USER CLOUD LIBRARY ====================
     @GET("api/user/likes")
     suspend fun getUserLikes(
@@ -121,9 +148,22 @@ interface MRJApiService {
         @Header("Authorization") authHeader: String
     ): Response<Map<String, Any>>
 
+    @GET("api/user/playlists/{playlistId}")
+    suspend fun getPlaylistDetail(
+        @Header("Authorization") authHeader: String,
+        @Path("playlistId") playlistId: String
+    ): Response<Map<String, Any>>
+
     @POST("api/user/playlists")
     suspend fun saveUserPlaylist(
         @Header("Authorization") authHeader: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any?>
+    ): Response<Map<String, Any>>
+
+    @PUT("api/user/playlists/{playlistId}")
+    suspend fun updateUserPlaylist(
+        @Header("Authorization") authHeader: String,
+        @Path("playlistId") playlistId: String,
         @Body body: Map<String, @JvmSuppressWildcards Any?>
     ): Response<Map<String, Any>>
 
@@ -131,6 +171,20 @@ interface MRJApiService {
     suspend fun deleteUserPlaylist(
         @Header("Authorization") authHeader: String,
         @Path("playlistId") playlistId: String
+    ): Response<Map<String, Any>>
+
+    @POST("api/user/playlists/{playlistId}/tracks")
+    suspend fun addTrackToPlaylist(
+        @Header("Authorization") authHeader: String,
+        @Path("playlistId") playlistId: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any?>
+    ): Response<Map<String, Any>>
+
+    @DELETE("api/user/playlists/{playlistId}/tracks/{trackId}")
+    suspend fun removeTrackFromPlaylist(
+        @Header("Authorization") authHeader: String,
+        @Path("playlistId") playlistId: String,
+        @Path("trackId") trackId: String
     ): Response<Map<String, Any>>
 
     @POST("api/user/events")

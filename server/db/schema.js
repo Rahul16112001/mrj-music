@@ -463,6 +463,72 @@ export const db = {
     return res.rowCount > 0;
   },
 
+  async updatePlaylistMeta(userId, playlistId, { title, description }) {
+    const now = Date.now();
+    await dbClient.query(
+      'UPDATE playlists SET title = $1, description = $2, updated_at = $3 WHERE id = $4 AND user_id = $5;',
+      [title, description || '', now, playlistId, userId]
+    );
+    return await this.getPlaylist(userId, playlistId);
+  },
+
+  async addTrackToPlaylist(userId, playlistId, track) {
+    const playlist = await this.getPlaylist(userId, playlistId);
+    if (!playlist) throw new Error('Playlist not found');
+
+    const tracks = playlist.tracks || [];
+    const exists = tracks.some(t => t.id === track.id || (t.canonicalTrackId && t.canonicalTrackId === track.canonicalTrackId));
+    if (exists) {
+      return playlist; // Already in playlist
+    }
+
+    const now = Date.now();
+    const position = tracks.length;
+    const thumbnail = playlist.thumbnail || track.thumbnail || '';
+
+    await dbClient.query(
+      `INSERT INTO playlist_tracks (id, playlist_id, track_id, title, artist, album, thumbnail, duration, position, added_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+      [
+        'pt_' + crypto.randomUUID(),
+        playlistId,
+        track.id,
+        track.title,
+        track.artist || 'Unknown Artist',
+        track.album || '',
+        track.thumbnail || '',
+        track.duration || 210,
+        position,
+        now
+      ]
+    );
+
+    await dbClient.query(
+      'UPDATE playlists SET thumbnail = $1, updated_at = $2 WHERE id = $3 AND user_id = $4;',
+      [thumbnail, now, playlistId, userId]
+    );
+
+    return await this.getPlaylist(userId, playlistId);
+  },
+
+  async removeTrackFromPlaylist(userId, playlistId, trackId) {
+    const playlist = await this.getPlaylist(userId, playlistId);
+    if (!playlist) throw new Error('Playlist not found');
+
+    await dbClient.query(
+      'DELETE FROM playlist_tracks WHERE playlist_id = $1 AND track_id = $2;',
+      [playlistId, trackId]
+    );
+
+    const now = Date.now();
+    await dbClient.query(
+      'UPDATE playlists SET updated_at = $1 WHERE id = $2 AND user_id = $3;',
+      [now, playlistId, userId]
+    );
+
+    return await this.getPlaylist(userId, playlistId);
+  },
+
   // ==================== 8. USER SETTINGS ====================
   async getUserSettings(userId) {
     const res = await dbClient.query(

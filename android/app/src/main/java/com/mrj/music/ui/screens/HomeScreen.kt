@@ -10,13 +10,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Autorenew
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,9 +35,12 @@ import com.mrj.music.ui.viewmodel.PlayerViewModel
 fun HomeScreen(
     homeViewModel: HomeViewModel,
     playerViewModel: PlayerViewModel,
+    onArtistClick: (String) -> Unit = {},
+    onStationClick: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val uiState by homeViewModel.uiState.collectAsState()
+    var selectedTrackForActions by remember { mutableStateOf<NativeTrack?>(null) }
 
     LazyColumn(
         modifier = modifier
@@ -139,7 +138,8 @@ fun HomeScreen(
                         uiState.quickPicks.take(6).forEach { track ->
                             QuickPickCard(
                                 track = track,
-                                onPlay = { playerViewModel.playTrack(track, uiState.quickPicks) }
+                                onPlay = { playerViewModel.playTrack(track, uiState.quickPicks) },
+                                onOptionsClick = { selectedTrackForActions = track }
                             )
                         }
                     }
@@ -169,7 +169,7 @@ fun HomeScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .width(96.dp)
-                                    .clickable { }
+                                    .clickable { onArtistClick(name) }
                             ) {
                                 AsyncImage(
                                     model = image,
@@ -229,12 +229,12 @@ fun HomeScreen(
 
             item {
                 val genres = listOf(
-                    "Bollywood Hits" to Brush.horizontalGradient(listOf(Color(0xFF831843), Color(0xFFBE185D))),
-                    "Punjabi Beats" to Brush.horizontalGradient(listOf(Color(0xFF7C2D12), Color(0xFFC2410C))),
-                    "Bhojpuri Tadka" to Brush.horizontalGradient(listOf(Color(0xFF701A75), Color(0xFFA21CAF))),
-                    "Haryanvi Ragni" to Brush.horizontalGradient(listOf(Color(0xFF1E3A8A), Color(0xFF2563EB))),
-                    "Lo-Fi Chill" to Brush.horizontalGradient(listOf(Color(0xFF134E4A), Color(0xFF0F766E))),
-                    "Global Pop" to Brush.horizontalGradient(listOf(Color(0xFF4C1D95), Color(0xFF7C3AED)))
+                    Triple("bollywood", "Bollywood Hits", Brush.horizontalGradient(listOf(Color(0xFF831843), Color(0xFFBE185D)))),
+                    Triple("punjabi", "Punjabi Beats", Brush.horizontalGradient(listOf(Color(0xFF7C2D12), Color(0xFFC2410C)))),
+                    Triple("bhojpuri", "Bhojpuri Tadka", Brush.horizontalGradient(listOf(Color(0xFF701A75), Color(0xFFA21CAF)))),
+                    Triple("haryanvi", "Haryanvi Superhits", Brush.horizontalGradient(listOf(Color(0xFF1E3A8A), Color(0xFF2563EB)))),
+                    Triple("hollywood", "Global Pop", Brush.horizontalGradient(listOf(Color(0xFF4C1D95), Color(0xFF7C3AED)))),
+                    Triple("indie", "Indie & Acoustic", Brush.horizontalGradient(listOf(Color(0xFF134E4A), Color(0xFF0F766E))))
                 )
 
                 Column(
@@ -246,14 +246,14 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            row.forEach { (genreTitle, gradient) ->
+                            row.forEach { (genreId, genreTitle, gradient) ->
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(72.dp)
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(gradient)
-                                        .clickable { }
+                                        .clickable { onStationClick("genre", genreId, genreTitle) }
                                         .padding(14.dp),
                                     contentAlignment = Alignment.CenterStart
                                 ) {
@@ -270,18 +270,29 @@ fun HomeScreen(
             }
         }
     }
+
+    selectedTrackForActions?.let { track ->
+        com.mrj.music.ui.components.TrackActionSheet(
+            track = track,
+            playerViewModel = playerViewModel,
+            onDismiss = { selectedTrackForActions = null },
+            onArtistClick = onArtistClick,
+            onStationClick = onStationClick
+        )
+    }
 }
 
 @Composable
 fun QuickPickCard(
     track: NativeTrack,
-    onPlay: () -> Unit
+    onPlay: () -> Unit,
+    onOptionsClick: (() -> Unit)? = null
 ) {
     Surface(
+        onClick = onPlay,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .clickable { onPlay() },
+            .clip(RoundedCornerShape(14.dp)),
         color = SurfaceDark,
         tonalElevation = 2.dp
     ) {
@@ -328,6 +339,20 @@ fun QuickPickCard(
                     tint = CrimsonRed,
                     modifier = Modifier.size(24.dp)
                 )
+            }
+
+            if (onOptionsClick != null) {
+                IconButton(
+                    onClick = onOptionsClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

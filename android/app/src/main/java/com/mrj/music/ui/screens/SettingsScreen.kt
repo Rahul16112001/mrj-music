@@ -14,11 +14,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mrj.music.ui.components.EqualizerSheet
 import com.mrj.music.ui.theme.*
 import com.mrj.music.ui.viewmodel.AuthViewModel
+import com.mrj.music.ui.viewmodel.PlayerViewModel
 import com.mrj.music.ui.viewmodel.UpdateViewModel
 
 @Composable
@@ -26,14 +29,17 @@ fun SettingsScreen(
     authViewModel: AuthViewModel,
     updateViewModel: UpdateViewModel,
     onNavigateToAuth: () -> Unit,
+    playerViewModel: PlayerViewModel? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val authState by authViewModel.uiState.collectAsState()
     val updateState by updateViewModel.uiState.collectAsState()
 
     var audioQuality by remember { mutableStateOf("High (320 kbps)") }
     var smartDownloads by remember { mutableStateOf(true) }
     var showNameDialog by remember { mutableStateOf(false) }
+    var showEqualizerSheet by remember { mutableStateOf(false) }
     var preferredNameInput by remember { mutableStateOf(authState.preferredName ?: "") }
 
     LazyColumn(
@@ -139,6 +145,15 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     SettingRow(
+                        icon = Icons.Default.Tune,
+                        title = "Equalizer & Sound Effects",
+                        subtitle = "5-Band EQ, Bass Boost & 3D Spatializer",
+                        onClick = { showEqualizerSheet = true }
+                    )
+
+                    Divider(color = SurfaceBorder)
+
+                    SettingRow(
                         icon = Icons.Default.HighQuality,
                         title = "Streaming Quality",
                         subtitle = audioQuality,
@@ -202,7 +217,8 @@ fun SettingsScreen(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = SurfaceDark
+                color = if (updateState.isUpdateAvailable) SurfaceElevated else SurfaceDark,
+                border = if (updateState.isUpdateAvailable) androidx.compose.foundation.BorderStroke(1.dp, CrimsonRed) else null
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
@@ -211,23 +227,71 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text("MRJ Music Native Android", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("MRJ Music Native Android", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                                if (updateState.isUpdateAvailable) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = CrimsonRed.copy(alpha = 0.2f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, CrimsonRed)
+                                    ) {
+                                        Text(
+                                            "v${updateState.latestVersion ?: "3.3.0"}",
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            color = CrimsonRed,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                             Text(installedVersionText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
 
                         Button(
-                            onClick = { updateViewModel.checkForUpdate(isUserInitiated = true) },
+                            onClick = {
+                                if (updateState.isUpdateAvailable) {
+                                    updateViewModel.startDownloadAndInstall()
+                                } else {
+                                    updateViewModel.checkForUpdate(isUserInitiated = true)
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
                             enabled = !updateState.isChecking && !updateState.isDownloading
                         ) {
                             if (updateState.isChecking) {
                                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else if (updateState.isDownloading) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Text("${(updateState.downloadProgress * 100).toInt()}%", fontSize = 12.sp)
+                            } else if (updateState.isUpdateAvailable) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Install Update", fontSize = 12.sp)
                             } else {
                                 Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Check Update", fontSize = 12.sp)
                             }
                         }
+                    }
+
+                    if (updateState.isDownloading) {
+                        LinearProgressIndicator(
+                            progress = { updateState.downloadProgress },
+                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                            color = CrimsonRed,
+                            trackColor = SurfaceDark
+                        )
+                    }
+
+                    if (updateState.isUpdateAvailable && !updateState.isDownloading) {
+                        Text(
+                            text = "🎉 A new version (v${updateState.latestVersion}) is ready with background fixes and cloud sync! Tap 'Install Update' to upgrade instantly.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AccentGreen
+                        )
                     }
 
                     if (updateState.statusMessage != null) {
@@ -291,6 +355,23 @@ fun SettingsScreen(
                 }
             },
             containerColor = SurfaceElevated
+        )
+    }
+
+    if (showEqualizerSheet) {
+        val effectManager = remember { com.mrj.music.audiofx.MRJAudioEffectManager.getInstance(context) }
+        val eqState by effectManager.equalizerState.collectAsState()
+
+        EqualizerSheet(
+            equalizerState = eqState,
+            accentColor = CrimsonRed,
+            onEnabledChange = { effectManager.setEnabled(it) },
+            onPresetSelect = { effectManager.setPreset(it) },
+            onBandGainChange = { band, gain -> effectManager.setBandGain(band, gain) },
+            onBassBoostChange = { effectManager.setBassBoost(it) },
+            onVirtualizerChange = { effectManager.setVirtualizer(it) },
+            onReset = { effectManager.resetToFlat() },
+            onDismiss = { showEqualizerSheet = false }
         )
     }
 }

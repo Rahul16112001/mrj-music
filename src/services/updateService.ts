@@ -28,7 +28,7 @@ export interface UpdateCheckResult {
 class UpdateService {
   private lastCheckTime = 0;
   private cachedUpdateInfo: UpdateCheckResult | null = null;
-  public readonly LATEST_APK_URL = 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk';
+  public readonly LATEST_APK_URL = 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.7.0/mrj-music-v3.7.0.apk';
 
   async checkForUpdates(force = false): Promise<UpdateCheckResult | null> {
     if (!force && this.cachedUpdateInfo && Date.now() - this.lastCheckTime < 5 * 60 * 1000) {
@@ -56,7 +56,7 @@ class UpdateService {
       }
 
       const currentVersion = this.getCurrentWebVersion();
-      const latestVersion = remoteData?.latestVersion || remoteData?.version || '3.1.0';
+      const latestVersion = remoteData?.latestVersion || remoteData?.version || '3.7.0';
       const isUpdateAvailable = latestVersion !== currentVersion;
       const isApk = isAndroid || Boolean(remoteData?.apkDownloadUrl);
       const apkUrl = remoteData?.apkDownloadUrl || this.LATEST_APK_URL;
@@ -66,14 +66,14 @@ class UpdateService {
         isUpdateAvailable,
         currentVersion,
         latestVersion,
-        build: remoteData?.build || '301',
-        title: isApk ? 'MRJ Music v3.1.0 Native Update' : 'MRJ Music Web Update',
+        build: remoteData?.build || '307',
+        title: isApk ? 'MRJ Music v3.7.0 Full Update' : 'MRJ Music Web Update',
         changelog: remoteData?.changelog || [
-          '⚡ 100% Native Jetpack Compose & Media3 playback',
-          '🎵 Complete song streaming & background audio focus',
-          '🚀 Autoplay toggle on music player card only',
-          '🎨 Edge-to-edge OLED dark theme for all Android devices',
-          '🛠️ Direct in-app update and installation'
+          '❤️ Cloud Favorites & Liked Songs Library Sync with 1-Tap Play All',
+          '🎤 Real-Time Synced Lyrics Engine with Auto-Scroll & Tap-to-Seek',
+          '🚀 100% Uninterrupted Background & Lockscreen Playback across all devices',
+          '⚡ Instant in-app update & direct one-tap install',
+          '🎵 Complete song streaming & unplayable track auto-recovery'
         ],
         action: isApk ? 'apk' : 'reload',
         apkDownloadUrl: apkUrl,

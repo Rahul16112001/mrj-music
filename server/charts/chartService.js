@@ -1,6 +1,8 @@
 import axios from 'axios';
+import { musicProvider } from '../providers/musicProvider.js';
+import { db } from '../db/schema.js';
 
-// 100% Verified Multi-Genre Stream Catalog (All tested and playable with valid thumbnails)
+// 100% Verified Multi-Genre Stream Catalog
 const VERIFIED_CATALOG = [
   // 1. Bollywood & Hindi Melodies
   { id: '6RdS6wLu7RY', title: 'Kesariya', artist: 'Arijit Singh & Pritam', album: 'Brahmastra', genre: 'Bollywood', duration: 268 },
@@ -68,6 +70,46 @@ const VERIFIED_CATALOG = [
   { id: 'gPpQNzQP6gE', title: 'Nadaaniyan', artist: 'Akshath', album: 'Single', genre: 'Indie', duration: 165 },
 ];
 
+const GENRE_QUERIES = {
+  bollywood: [
+    'latest bollywood romantic songs 2026',
+    'trending arijit singh shreya ghoshal hindi songs',
+    'top bollywood chartbusters songs'
+  ],
+  punjabi: [
+    'latest punjabi songs 2026',
+    'karan aujla diljit dosanjh shubh hits',
+    'top punjabi chartbusters'
+  ],
+  hollywood: [
+    'billboard hot 100 top pop hits',
+    'the weeknd taylor swift dua lipa pop songs',
+    'global viral english songs'
+  ],
+  tollywood: [
+    'latest telugu songs 2026',
+    'anirudh ravichander south hits',
+    'top trending tamil superhits'
+  ],
+  haryanvi: [
+    'latest haryanvi songs 2026',
+    'masoom sharma haryanvi superhits',
+    'top haryanvi dj songs'
+  ],
+  bhojpuri: [
+    'latest bhojpuri hits 2026',
+    'pawan singh khesari lal superhits',
+    'trending bhojpuri gana'
+  ],
+  indie: [
+    'latest hindi indie acoustic songs',
+    'anuv jain prateek kuhad soulful songs',
+    'chill indian indie pop'
+  ],
+};
+
+const categoryCache = new Map();
+
 function normalize(t) {
   return {
     id: t.id,
@@ -75,7 +117,7 @@ function normalize(t) {
     rawTitle: t.title,
     artist: t.artist,
     album: t.album || null,
-    thumbnail: `https://i.ytimg.com/vi/${t.id}/hqdefault.jpg`,
+    thumbnail: t.thumbnail || `https://i.ytimg.com/vi/${t.id}/hqdefault.jpg`,
     duration: t.duration || 210,
     genre: t.genre || 'Pop',
     isExplicit: false,
@@ -144,12 +186,77 @@ export const chartService = {
     };
   },
 
-  // Get Genre / Category Tracks
-  getTracksByCategory(categoryId) {
-    const cat = (categoryId || '').toLowerCase();
-    const filtered = VERIFIED_CATALOG.filter(t => t.genre.toLowerCase().includes(cat) || cat.includes(t.genre.toLowerCase()));
-    const result = (filtered.length > 0 ? filtered : VERIFIED_CATALOG).map(normalize);
-    return shuffle(result);
+  // Get Dynamic Non-Repetitive Genre / Category Tracks
+  async getTracksByCategory(categoryId, userId = null) {
+    const cat = (categoryId || 'bollywood').toLowerCase();
+    const cacheKey = `cat_${cat}`;
+    const cached = categoryCache.get(cacheKey);
+
+    let rawTracks = [];
+
+    if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000 && cached.tracks.length >= 10) {
+      rawTracks = cached.tracks;
+    } else {
+      const queries = GENRE_QUERIES[cat] || [`${cat} superhit top songs`];
+      const searchPromises = queries.map(q =>
+        musicProvider.searchDiscovery(q, 30).catch(() => [])
+      );
+
+      const results = await Promise.allSettled(searchPromises);
+      const combined = [];
+      const seenIds = new Set();
+
+      for (const res of results) {
+        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+          for (const item of res.value) {
+            if (item && item.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              combined.push(item);
+            }
+          }
+        }
+      }
+
+      if (combined.length >= 8) {
+        rawTracks = combined;
+        categoryCache.set(cacheKey, { timestamp: Date.now(), tracks: combined });
+      } else {
+        // Fallback to verified catalog matching genre
+        const filtered = VERIFIED_CATALOG.filter(t => t.genre.toLowerCase().includes(cat) || cat.includes(t.genre.toLowerCase()));
+        rawTracks = (filtered.length > 0 ? filtered : VERIFIED_CATALOG).map(normalize);
+      }
+    }
+
+    // Personalize by user's preferred artists if authenticated
+    if (userId && rawTracks.length > 0) {
+      try {
+        const profile = await db.getTasteProfile(userId);
+        if (profile) {
+          const preferredMap = profile.preferred_artists || {};
+          const likedArtists = new Set(profile.liked_artists || []);
+          const dislikedArtists = new Set(profile.disliked_artists || []);
+
+          rawTracks = rawTracks
+            .filter(t => !dislikedArtists.has(t.artist))
+            .map(track => {
+              let score = 0;
+              if (preferredMap[track.artist]) {
+                score += preferredMap[track.artist] * 5;
+              }
+              if (likedArtists.has(track.artist)) {
+                score += 30;
+              }
+              return { track, score };
+            })
+            .sort((a, b) => b.score - a.score)
+            .map(item => item.track);
+        }
+      } catch (err) {
+        console.warn('Taste ranking failed:', err.message);
+      }
+    }
+
+    return rawTracks.map(normalize);
   },
 
   getAllCategories() {

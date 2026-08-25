@@ -24,49 +24,50 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val offlineStorage = NativeOfflineStorage.getInstance(application)
     private val secureStorage = SecureAuthStorage.getInstance(application)
+    val favoritesRepo = com.mrj.music.data.repository.FavoritesRepository.getInstance(application)
+
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            favoritesRepo.likedTracks.collect { likes ->
+                val downloaded = offlineStorage.getAllDownloadedTracks()
+                val breakdown = offlineStorage.getStorageBreakdown()
+                val formatted = breakdown["formatted"] as? String ?: "0 MB"
+
+                _uiState.value = _uiState.value.copy(
+                    likedTracks = likes,
+                    offlineTracks = downloaded,
+                    totalStorageFormatted = formatted,
+                    totalTracksCount = downloaded.size,
+                    isLoading = false
+                )
+            }
+        }
         refreshLibrary()
     }
 
     fun refreshLibrary() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
+            favoritesRepo.syncWithCloud()
             val downloaded = offlineStorage.getAllDownloadedTracks()
             val breakdown = offlineStorage.getStorageBreakdown()
             val formatted = breakdown["formatted"] as? String ?: "0 MB"
 
-            var cloudLikes: List<NativeTrack> = emptyList()
-            try {
-                val token = secureStorage.getAccessToken()
-                if (token != null) {
-                    val res = MRJApiClient.apiService.getUserLikes("Bearer $token")
-                    if (res.isSuccessful && res.body() != null) {
-                        val rawLikes = (res.body()!!["likes"] as? List<Map<String, Any>>) ?: emptyList()
-                        cloudLikes = rawLikes.mapNotNull { parseTrack(it) }
-                    }
-                }
-            } catch (_: Exception) {}
-
-            val unifiedLikes = if (cloudLikes.isNotEmpty()) {
-                val downloadedIds = downloaded.map { it.id }.toSet()
-                val merged = downloaded.toMutableList()
-                cloudLikes.forEach { if (it.id !in downloadedIds) merged.add(it) }
-                merged
-            } else {
-                downloaded
-            }
-
-            _uiState.value = LibraryUiState(
+            _uiState.value = _uiState.value.copy(
                 offlineTracks = downloaded,
-                likedTracks = unifiedLikes,
+                likedTracks = favoritesRepo.likedTracks.value,
                 totalStorageFormatted = formatted,
                 totalTracksCount = downloaded.size,
                 isLoading = false
             )
         }
+    }
+
+    fun toggleLike(track: NativeTrack) {
+        favoritesRepo.toggleLike(track)
     }
 
     fun deleteTrack(trackId: String) {

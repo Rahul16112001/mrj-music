@@ -52,24 +52,24 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
   next();
 };
 
-// Web & Android Version Check — returns latest version 3.3.0 with direct APK link
+// Web & Android Version Check — returns latest version 3.14.0 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.3.0',
-    build: '303',
+    version: '3.14.0',
+    build: '319',
     updatedAt: '2026-08-25T00:00:00Z',
-    latestVersion: '3.3.0',
+    latestVersion: '3.14.0',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk',
-    apkFileName: 'mrj-music-v3.3.0.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk',
-    title: 'MRJ Music v3.3.0 Update',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
+    apkFileName: 'mrj-music-v3.14.0.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
+    title: 'MRJ Music v3.14.0 Track Action Sheet & Native Share',
     changelog: [
-      '🚀 Connected with all cloud backend services & scrapers',
-      '⚡ Instant search suggestions with debounced query resolution',
-      '🎵 Complete song streaming & unplayable track auto-recovery',
-      '🔄 Continuous smart autoplay recommendations engine',
-      '☁️ Cloud library & favorites synchronization'
+      '✨ 3-Dot Track Action Bottom Sheet (Play Next, Add to Queue, Add to Playlist, Artist Profile, Song Radio)',
+      '📲 Native Android Share Integration (Share tracks directly to WhatsApp, Instagram, Telegram, etc.)',
+      '💿 Circular Vinyl Turntable Player with smooth spinning rotation',
+      '⭕ Circular Arc Progress Ring with glowing scrubber indicator dot',
+      '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
     ]
   });
 });
@@ -79,15 +79,15 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.3.0',
-      build: '303',
+      version: '3.14.0',
+      build: '319',
       updatedAt: '2026-08-25T00:00:00Z',
     },
     android: {
-      versionName: '3.3.0',
-      versionCode: 303,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk',
-      apkFileName: 'mrj-music-v3.3.0.apk',
+      versionName: '3.14.0',
+      versionCode: 319,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
+      apkFileName: 'mrj-music-v3.14.0.apk',
       fileSize: '111 MB',
       fileSizeBytes: 116386039,
       minAndroidVersion: 'Android 8.0+',
@@ -96,11 +96,11 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '🚀 Connected with all cloud backend services & scrapers',
-        '⚡ Instant search suggestions with debounced query resolution',
-        '🎵 Complete song streaming & unplayable track auto-recovery',
-        '🔄 Continuous smart autoplay recommendations engine',
-        '☁️ Cloud library & favorites synchronization'
+        '✨ 3-Dot Track Action Bottom Sheet (Play Next, Add to Queue, Add to Playlist, Artist Profile, Song Radio)',
+        '📲 Native Android Share Integration (Share tracks directly to WhatsApp, Instagram, Telegram, etc.)',
+        '💿 Circular Vinyl Turntable Player with smooth spinning rotation',
+        '⭕ Circular Arc Progress Ring with glowing scrubber indicator dot',
+        '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
       ],
       releaseDate: '2026-08-25',
       isMandatory: false,
@@ -112,8 +112,8 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.3.0';
-  const latestVersionCode = 303;
+  const latestVersion = '3.16.0';
+  const latestVersionCode = 321;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -124,19 +124,19 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-25',
-    title: 'MRJ Music v3.3.0 Full Cloud Connected Release',
+    title: 'MRJ Music v3.16.0 Equalizer, Dynamic Palette & Player Gestures',
     changelog: [
-      '🚀 Connected with all cloud backend services & scrapers',
-      '⚡ Instant search suggestions with debounced query resolution',
-      '🎵 Complete song streaming & unplayable track auto-recovery',
-      '🔄 Continuous smart autoplay recommendations engine',
-      '☁️ Cloud library & favorites synchronization'
+      '🎛️ Native 5-Band Audio Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
+      '🎨 Dynamic Palette Theming (automatically morphs player ambient glow & waveform colors to album artwork)',
+      '👆 4-Way Swipe Gestures on Full-Screen Player (Swipe Right: Next, Left: Prev, Up: Auto Queue, Down: Minimize)',
+      '🔍 Real-Time Search Suggestions & Instant Results Engine',
+      '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk',
-    apkFileName: 'mrj-music-v3.3.0.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.16.0/mrj-music-v3.16.0.apk',
+    apkFileName: 'mrj-music-v3.16.0.apk',
     fileSize: '111 MB',
-    fileSizeBytes: 116386039,
-    sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
+    fileSizeBytes: 116602050,
+    sha256: 'd5818fd85993755c4a6f9ccc82c543c2745f02a2242d5bdbaf869246efbe9afa',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
@@ -349,10 +349,11 @@ app.get(['/api/charts/categories', '/charts/categories'], async (req, res) => {
   }
 });
 
-app.get(['/api/charts/category/:categoryId', '/charts/category/:categoryId'], async (req, res) => {
+app.get(['/api/charts/category/:categoryId', '/charts/category/:categoryId'], optionalAuth, async (req, res) => {
   try {
     const { categoryId } = req.params;
-    const tracks = chartService.getTracksByCategory(categoryId);
+    const userId = req.user ? req.user.id : null;
+    const tracks = await chartService.getTracksByCategory(categoryId, userId);
     res.json({ status: 'success', categoryId, tracks });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -566,6 +567,16 @@ app.get(['/api/user/playlists', '/user/playlists'], requireAuth, async (req, res
   }
 });
 
+app.get(['/api/user/playlists/:id', '/user/playlists/:id'], requireAuth, async (req, res) => {
+  try {
+    const playlist = await db.getPlaylist(req.user.id, req.params.id);
+    if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
+    res.json({ status: 'success', playlist });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post(['/api/user/playlists', '/user/playlists'], requireAuth, async (req, res) => {
   try {
     const playlist = req.body;
@@ -577,10 +588,43 @@ app.post(['/api/user/playlists', '/user/playlists'], requireAuth, async (req, re
   }
 });
 
+app.put(['/api/user/playlists/:id', '/user/playlists/:id'], requireAuth, async (req, res) => {
+  try {
+    const { title, description } = req.body;
+    if (!title) return res.status(400).json({ error: 'Playlist title is required' });
+    const updated = await db.updatePlaylistMeta(req.user.id, req.params.id, { title, description });
+    res.json({ status: 'success', playlist: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete(['/api/user/playlists/:id', '/user/playlists/:id'], requireAuth, async (req, res) => {
   try {
     const deleted = await db.deletePlaylist(req.user.id, req.params.id);
     res.json({ status: 'success', success: deleted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/user/playlists/:id/tracks', '/user/playlists/:id/tracks'], requireAuth, async (req, res) => {
+  try {
+    const track = req.body.track || req.body;
+    if (!track || !track.id || !track.title) {
+      return res.status(400).json({ error: 'Valid track object (with id & title) is required' });
+    }
+    const updated = await db.addTrackToPlaylist(req.user.id, req.params.id, track);
+    res.json({ status: 'success', playlist: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete(['/api/user/playlists/:id/tracks/:trackId', '/user/playlists/:id/tracks/:trackId'], requireAuth, async (req, res) => {
+  try {
+    const updated = await db.removeTrackFromPlaylist(req.user.id, req.params.id, req.params.trackId);
+    res.json({ status: 'success', playlist: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

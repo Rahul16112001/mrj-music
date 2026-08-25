@@ -17,6 +17,8 @@ data class SearchUiState(
     val query: String = "",
     val isLoading: Boolean = false,
     val songs: List<NativeTrack> = emptyList(),
+    val artists: List<Map<String, Any>> = emptyList(),
+    val albums: List<Map<String, Any>> = emptyList(),
     val suggestions: List<String> = emptyList(),
     val suggestedSongs: List<NativeTrack> = emptyList(),
     val activeCategory: String = "All",
@@ -69,9 +71,22 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        // Fast instant suggestions (150ms)
+        val trimmed = newQuery.trim()
+        val instantFallback = listOf(
+            trimmed,
+            "$trimmed song",
+            "$trimmed songs",
+            "$trimmed lyrics",
+            "$trimmed live",
+            "$trimmed remix"
+        )
+        _uiState.value = _uiState.value.copy(
+            suggestions = instantFallback
+        )
+
+        // Fast instant suggestions from backend (100ms)
         suggestionsJob = viewModelScope.launch {
-            delay(150)
+            delay(100)
             fetchSuggestions(newQuery)
         }
 
@@ -80,6 +95,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             delay(350)
             performSearch(newQuery)
         }
+    }
+
+    fun onSuggestionClick(suggestion: String) {
+        _uiState.value = _uiState.value.copy(query = suggestion)
+        searchJob?.cancel()
+        suggestionsJob?.cancel()
+        performSearch(suggestion)
     }
 
     private suspend fun fetchSuggestions(query: String) {
@@ -91,10 +113,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 val songsListRaw = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
                 val suggestedParsed = songsListRaw.mapNotNull { parseTrack(it) }
 
-                _uiState.value = _uiState.value.copy(
-                    suggestions = suggestionsList,
-                    suggestedSongs = suggestedParsed
-                )
+                if (suggestionsList.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        suggestions = suggestionsList,
+                        suggestedSongs = suggestedParsed
+                    )
+                }
             }
         } catch (_: Exception) {}
     }
@@ -127,13 +151,20 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     val rawSongs = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
                     val rawVideos = (body["videos"] as? List<Map<String, Any>>) ?: emptyList()
                     val rawResults = (body["results"] as? List<Map<String, Any>>) ?: emptyList()
+                    val rawArtists = (body["artists"] as? List<Map<String, Any>>) ?: emptyList()
+                    val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
 
                     val allRaw = (rawSongs + rawVideos + rawResults).distinctBy {
                         (it["id"] as? String) ?: (it["providerTrackId"] as? String) ?: ""
                     }
                     val parsed = allRaw.mapNotNull { parseTrack(it) }
 
-                    _uiState.value = _uiState.value.copy(songs = parsed, isLoading = false)
+                    _uiState.value = _uiState.value.copy(
+                        songs = parsed,
+                        artists = rawArtists,
+                        albums = rawAlbums,
+                        isLoading = false
+                    )
 
                     // Record in recent searches
                     saveRecentSearch(query.trim())
