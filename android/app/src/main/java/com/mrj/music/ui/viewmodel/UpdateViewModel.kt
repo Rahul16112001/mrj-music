@@ -48,11 +48,17 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isChecking = true, errorMessage = null)
             try {
-                val res = MRJApiClient.apiService.checkUpdate(platform = "android", version = "3.1.0")
+                val context = getApplication<Application>()
+                val installedVersion = try {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "3.1.0"
+                } catch (e: Exception) {
+                    "3.1.0"
+                }
+                val res = MRJApiClient.apiService.checkUpdate(platform = "android", version = installedVersion)
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     val isAvailable = body["isUpdateAvailable"] as? Boolean ?: false
-                    val latestVersion = body["latestVersion"] as? String ?: "3.1.0"
+                    val latestVersion = body["latestVersion"] as? String ?: "3.2.0"
                     val changelog = (body["changelog"] as? List<String>) ?: emptyList()
                     downloadUrl = body["apkDownloadUrl"] as? String
                     expectedSha256 = body["sha256"] as? String

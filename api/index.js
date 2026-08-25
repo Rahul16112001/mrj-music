@@ -52,20 +52,20 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
   next();
 };
 
-// Web & Android Version Check — returns latest version 3.1.0 with direct APK link
+// Web & Android Version Check — returns latest version 3.2.0 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.1.0',
-    build: '301',
+    version: '3.2.0',
+    build: '302',
     updatedAt: '2026-08-25T00:00:00Z',
-    latestVersion: '3.1.0',
+    latestVersion: '3.2.0',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
-    apkFileName: 'mrj-music-v3.1.0.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
-    title: 'MRJ Music v3.1.0 Update',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.2.0/mrj-music-v3.2.0.apk',
+    apkFileName: 'mrj-music-v3.2.0.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.2.0/mrj-music-v3.2.0.apk',
+    title: 'MRJ Music v3.2.0 Update',
     changelog: [
-      '⚡ 100% Native Jetpack Compose & Media3 playback',
+      '⚡ Fixed full song streaming for all searched tracks',
       '🎵 Complete song streaming & background audio focus',
       '🚀 Autoplay toggle on music player card only',
       '🎨 Edge-to-edge OLED dark theme for all Android devices',
@@ -79,15 +79,15 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.1.0',
-      build: '301',
+      version: '3.2.0',
+      build: '302',
       updatedAt: '2026-08-25T00:00:00Z',
     },
     android: {
-      versionName: '3.1.0',
-      versionCode: 301,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
-      apkFileName: 'mrj-music-v3.1.0.apk',
+      versionName: '3.2.0',
+      versionCode: 302,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.2.0/mrj-music-v3.2.0.apk',
+      apkFileName: 'mrj-music-v3.2.0.apk',
       fileSize: '111 MB',
       fileSizeBytes: 116386039,
       minAndroidVersion: 'Android 8.0+',
@@ -96,7 +96,7 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '⚡ 100% Native Jetpack Compose & Material 3 Architecture',
+        '⚡ Fixed full song streaming for all searched tracks',
         '🎵 AndroidX Media3 ExoPlayer Foreground Media Session with Lockscreen Controls',
         '🚀 Continuous Autoplay & Audio Focus Handling',
         '🔒 Android Keystore AES-GCM Encrypted Token Storage',
@@ -112,8 +112,8 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.1.0';
-  const latestVersionCode = 301;
+  const latestVersion = '3.2.0';
+  const latestVersionCode = 302;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -124,16 +124,16 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-25',
-    title: 'MRJ Music v3.1.0 Native Release',
+    title: 'MRJ Music v3.2.0 Release',
     changelog: [
-      '⚡ 100% Native Jetpack Compose & Material 3 Architecture',
+      '⚡ Fixed full song streaming for all searched tracks',
       '🎵 Complete song streaming & background audio focus',
       '🚀 Autoplay toggle on music player card only',
       '🎨 Edge-to-edge OLED dark theme for all Android devices',
       '🛠️ In-App Android Package Installer Upgrade flow'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
-    apkFileName: 'mrj-music-v3.1.0.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.2.0/mrj-music-v3.2.0.apk',
+    apkFileName: 'mrj-music-v3.2.0.apk',
     fileSize: '111 MB',
     fileSizeBytes: 116386039,
     sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
