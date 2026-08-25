@@ -24,6 +24,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.mrj.music.ui.screens.*
 import com.mrj.music.ui.theme.*
@@ -149,6 +151,17 @@ fun MRJMusicApp(
                     )
                 }
             }
+
+            // Background YouTube Audio Engine (Attached to window hierarchy for continuous streaming, off-screen so no touches are consumed)
+            AndroidView(
+                factory = { ctx ->
+                    playerViewModel.getOrCreatePlayerEngineView(ctx)
+                },
+                modifier = Modifier
+                    .size(240.dp)
+                    .offset(x = (-3000).dp, y = (-3000).dp)
+                    .alpha(0.001f)
+            )
         }
     }
 
@@ -288,6 +301,16 @@ fun MiniPlayerBar(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = TextSecondary
+                )
+            }
+
+            // Autoplay toggle button on MiniPlayerBar
+            IconButton(onClick = { playerViewModel.toggleAutoplay() }) {
+                Icon(
+                    imageVector = Icons.Default.Autorenew,
+                    contentDescription = if (uiState.isAutoplay) "Autoplay is ON" else "Autoplay is OFF",
+                    tint = if (uiState.isAutoplay) CrimsonRed else TextMuted.copy(alpha = 0.6f),
+                    modifier = Modifier.size(22.dp)
                 )
             }
 

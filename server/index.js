@@ -62,12 +62,25 @@ const strictAuthLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Web Version Check — lightweight, no APK references
+// Web & Android Version Check — returns latest version 3.1.0 with direct APK link
 app.get('/version.json', (req, res) => {
   res.json({
-    version: '2.1.0',
-    build: '20250824-01',
-    updatedAt: '2026-08-24T00:00:00Z',
+    version: '3.1.0',
+    build: '301',
+    updatedAt: '2026-08-25T00:00:00Z',
+    latestVersion: '3.1.0',
+    isUpdateAvailable: true,
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
+    apkFileName: 'mrj-music-v3.1.0.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
+    title: 'MRJ Music v3.1.0 Update',
+    changelog: [
+      '⚡ 100% Native Jetpack Compose & Media3 playback',
+      '🎵 Complete song streaming & background audio focus',
+      '🚀 Autoplay toggle on music player card only',
+      '🎨 Edge-to-edge OLED dark theme for all Android devices',
+      '🛠️ In-app automatic update and direct APK installer'
+    ]
   });
 });
 
@@ -76,31 +89,30 @@ app.get('/api/app/release', (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '2.1.0',
-      build: '20250824-01',
-      updatedAt: '2026-08-24T00:00:00Z',
+      version: '3.1.0',
+      build: '301',
+      updatedAt: '2026-08-25T00:00:00Z',
     },
     android: {
-      versionName: '3.0.0',
-      versionCode: 300,
-      apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-      apkFileName: 'mrj-music-v3.0.0.apk',
-      fileSize: '64.4 MB',
-      fileSizeBytes: 67579573,
+      versionName: '3.1.0',
+      versionCode: 301,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
+      apkFileName: 'mrj-music-v3.1.0.apk',
+      fileSize: '111 MB',
+      fileSizeBytes: 116386039,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
-      sha256: '1779a5f183cf4c9c5c99c1cb3c1e706ac8228fb825bff4b4cb05e2b835046655',
-      engine: 'AndroidX Media3 / ExoPlayer + Foreground MediaSession Service',
+      sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
+      engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
-        '🎵 Seamless Song / Video Switcher with interactive playback',
-        '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
-        '🚀 Up Next dynamic queue improvements and synchronized lyrics',
-        '🔒 In-App Silent Update System with FileProvider integration',
-        '🛠️ Stream resilience and performance improvements'
+        '⚡ 100% Native Jetpack Compose & Material 3 Architecture',
+        '🎵 AndroidX Media3 ExoPlayer Foreground Media Session with Lockscreen Controls',
+        '🚀 Continuous Autoplay & Audio Focus Handling',
+        '🔒 Android Keystore AES-GCM Encrypted Token Storage',
+        '🛠️ In-App Android Package Installer Upgrade flow'
       ],
-      releaseDate: '2026-08-24',
+      releaseDate: '2026-08-25',
       isMandatory: false,
     },
   });
@@ -108,63 +120,36 @@ app.get('/api/app/release', (req, res) => {
 
 // App Update Check Endpoint — returns platform-specific data
 app.get('/api/app/check-update', (req, res) => {
-  const platform = (req.headers['x-mrj-platform'] || req.query.platform || 'web').toString().toLowerCase();
-  const clientVersion = req.query.version || '1.0.0';
+  const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
+  const clientVersion = (req.query.version || '1.0.0').toString().trim();
+  const latestVersion = '3.1.0';
+  const latestVersionCode = 301;
+  const isUpdateAvailable = clientVersion !== latestVersion;
 
-  if (platform === 'android') {
-    const latestVersion = '3.0.0';
-    const latestVersionCode = 300;
-    const isUpdateAvailable = clientVersion !== latestVersion;
-
-    res.json({
-      status: 'success',
-      platform: 'android',
-      isUpdateAvailable,
-      currentVersion: clientVersion,
-      latestVersion,
-      versionCode: latestVersionCode,
-      releaseDate: '2026-08-24',
-      title: 'MRJ Music v3.0.0 Native Production Update',
-      changelog: [
-        '⚡ True Android Background Audio via AndroidX Media3 & Foreground Service',
-        '🎵 Seamless Song / Video Switcher with interactive playback',
-        '🎨 Redesigned Premium Dark Interface & Refined Typography Hierarchy',
-        '🚀 Up Next dynamic queue improvements and synchronized lyrics',
-        '🔒 In-App Silent Update System with FileProvider integration',
-        '🛠️ Stream resilience and performance improvements'
-      ],
-      apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-      apkFileName: 'mrj-music-v3.0.0.apk',
-      fileSize: '7.8 MB',
-      fileSizeBytes: 8178892,
-      isMandatory: false,
-      minAndroidVersion: 'Android 8.0+'
-    });
-  } else {
-    // Web platform — no APK, just version check
-    const latestVersion = '2.1.0';
-    const isUpdateAvailable = clientVersion !== latestVersion;
-
-    res.json({
-      status: 'success',
-      platform: 'web',
-      isUpdateAvailable,
-      currentVersion: clientVersion,
-      latestVersion,
-      build: '20250824-01',
-      releaseDate: '2026-08-24',
-      title: 'MRJ Music Web Update',
-      changelog: [
-        '🔐 Production security hardening',
-        '🛠️ Stream resilience improvements',
-        '🎨 UI stability fixes'
-      ],
-      action: 'reload',
-      message: isUpdateAvailable
-        ? 'A new version is available. Refresh to update.'
-        : 'You are on the latest version.',
-    });
-  }
+  res.json({
+    status: 'success',
+    platform: platform || 'android',
+    isUpdateAvailable,
+    currentVersion: clientVersion,
+    latestVersion,
+    versionCode: latestVersionCode,
+    releaseDate: '2026-08-25',
+    title: 'MRJ Music v3.1.0 Native Release',
+    changelog: [
+      '⚡ 100% Native Jetpack Compose & Material 3 Architecture',
+      '🎵 Complete song streaming & background audio focus',
+      '🚀 Autoplay toggle on music player card only',
+      '🎨 Edge-to-edge OLED dark theme for all Android devices',
+      '🛠️ In-App Android Package Installer Upgrade flow'
+    ],
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
+    apkFileName: 'mrj-music-v3.1.0.apk',
+    fileSize: '111 MB',
+    fileSizeBytes: 116386039,
+    sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
+    isMandatory: false,
+    minAndroidVersion: 'Android 8.0+'
+  });
 });
 
 // Database Health Check Endpoint
@@ -247,6 +232,23 @@ app.post('/api/auth/verify-otp', strictAuthLimiter, async (req, res) => {
     res.status(201).json({ status: 'success', ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Dev-only: retrieve OTP from DB (disabled when RESEND_API_KEY is set)
+app.get('/api/auth/dev-otp', async (req, res) => {
+  if (process.env.RESEND_API_KEY) {
+    return res.status(403).json({ error: 'Not available when email service is configured.' });
+  }
+  try {
+    const email = (req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'email query param required' });
+    const { dbClient } = await import('./db/client.js');
+    const r = await dbClient.query('SELECT otp, expires_at FROM signup_otps WHERE email=$1 LIMIT 1;', [email]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'No OTP found for this email' });
+    res.json({ otp: r.rows[0].otp, expiresAt: r.rows[0].expires_at });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -383,7 +385,7 @@ app.get('/api/charts/category/:categoryId', cacheMiddleware(5 * 60 * 1000), asyn
 // 3. RECOMMENDATIONS & AUTOPLAY ENGINE
 // ==========================================
 
-app.get('/api/recommendations/home', optionalAuth, async (req, res) => {
+app.get(['/api/recommendations/home', '/api/music/personalized-home'], optionalAuth, async (req, res) => {
   const userId = req.user ? req.user.id : null;
   const region = req.query.region || 'IN';
   const homeData = await cloudRecommendationService.getPersonalizedHome(userId, region);

@@ -35,9 +35,9 @@ const AppContent: React.FC = () => {
     // Initialize native Android hardware back button and lifecycle services
     androidLifecycleService.initialize(() => navigate(-1));
 
-    // Check for web updates on launch
+    // Check for web updates on launch (skip if user dismissed this version)
     updateService.checkForUpdates().then((info) => {
-      if (info && info.isUpdateAvailable) {
+      if (info && info.isUpdateAvailable && !updateService.isDismissed(info.latestVersion)) {
         setUpdateInfo(info);
         setIsUpdateModalOpen(true);
       }

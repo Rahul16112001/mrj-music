@@ -175,6 +175,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const lastSeekTimestampRef = useRef<number>(0);
   const isFetchingAutoplay = useRef<boolean>(false);
   const sessionIdRef = useRef<string>('sess_' + Math.random().toString(36).substring(2, 9));
+  // Ref always points to the latest handleTrackEnded — prevents stale-closure autoplay failure
+  const handleTrackEndedRef = useRef<() => void>(() => {});
+
 
   // Initialize playback & library storage
   useEffect(() => {
@@ -209,7 +212,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       audio.setAttribute('playsinline', 'true');
       audio.setAttribute('webkit-playsinline', 'true');
 
-      audio.onended = () => handleTrackEnded();
+      audio.onended = () => handleTrackEndedRef.current();
+
       audio.ontimeupdate = () => {
         if (isUsingHtmlAudio.current) {
           setCurrentTime(audio.currentTime);
@@ -277,7 +281,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   setIsPlaying(false);
                   releaseWakeLock();
                 } else if (event.data === 0) { // ENDED
-                  handleTrackEnded();
+                  handleTrackEndedRef.current();
+
                 } else if (event.data === 3) { // BUFFERING
                   setIsLoading(true);
                 }
@@ -639,6 +644,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     handleNextTrack();
   };
+  // Always keep the ref pointing at the latest closure so stale-captured onended handlers work
+  handleTrackEndedRef.current = handleTrackEnded;
+
 
   // ==================== 2. PROACTIVE AUTOPLAY GENERATION ====================
 
@@ -695,8 +703,6 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
 
-    if (queue.length === 0) return;
-
     if (currentTrack) {
       const isEarlySkip = currentTime < 15;
       syncService.queueEvent({
@@ -715,7 +721,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let nextIdx = queueIndex + 1;
 
     if (nextIdx >= queue.length) {
-      if (repeatMode === 'all') {
+      if (repeatMode === 'all' && queue.length > 0) {
         nextIdx = 0;
       } else if (autoplayEnabled) {
         if (typeof navigator !== 'undefined' && navigator.onLine) {

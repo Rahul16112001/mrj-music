@@ -46,7 +46,8 @@ export const db = {
       `INSERT INTO taste_profiles (
         user_id, preferred_artists, preferred_genres, preferred_moods, liked_artists, disliked_artists,
         liked_genres, disliked_genres, skip_rate, completion_rate, total_plays, total_skips, total_completions, recent_seeds, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ON CONFLICT (user_id) DO NOTHING;`,
       [
         userId,
         JSON.stringify({}),
@@ -69,7 +70,8 @@ export const db = {
     // 3. Initialize User Settings
     await dbClient.query(
       `INSERT INTO user_settings (user_id, audio_quality, autoplay_radio, theme, smart_downloads, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6);`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id) DO NOTHING;`,
       [
         userId,
         'high',

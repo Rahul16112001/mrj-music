@@ -2,8 +2,14 @@ import { API_BASE } from './api';
 
 export interface WebVersionInfo {
   version: string;
-  build: string;
-  updatedAt: string;
+  build?: string;
+  latestVersion?: string;
+  apkDownloadUrl?: string;
+  apkFileName?: string;
+  downloadUrl?: string;
+  changelog?: string[];
+  title?: string;
+  updatedAt?: string;
 }
 
 export interface UpdateCheckResult {
@@ -15,12 +21,14 @@ export interface UpdateCheckResult {
   title: string;
   changelog: string[];
   action: 'reload' | 'apk';
+  apkDownloadUrl?: string;
   message: string;
 }
 
 class UpdateService {
   private lastCheckTime = 0;
   private cachedUpdateInfo: UpdateCheckResult | null = null;
+  public readonly LATEST_APK_URL = 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk';
 
   async checkForUpdates(force = false): Promise<UpdateCheckResult | null> {
     if (!force && this.cachedUpdateInfo && Date.now() - this.lastCheckTime < 5 * 60 * 1000) {
@@ -28,51 +36,108 @@ class UpdateService {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/version.json`, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Version check failed');
+      const isAndroid = typeof navigator !== 'undefined' && (/Android/i.test(navigator.userAgent) || Boolean((window as any)?.Capacitor?.isNativePlatform?.()));
+      
+      let remoteData: any = null;
+      try {
+        const res = await fetch(`${API_BASE}/app/check-update?platform=${isAndroid ? 'android' : 'web'}&version=2.1.0`, { cache: 'no-store' });
+        if (res.ok) {
+          remoteData = await res.json();
+        }
+      } catch {}
 
-      const remoteVersion: WebVersionInfo = await res.json();
+      if (!remoteData || !remoteData.latestVersion) {
+        try {
+          const res2 = await fetch(`${API_BASE}/version.json`, { cache: 'no-store' });
+          if (res2.ok) {
+            remoteData = await res2.json();
+          }
+        } catch {}
+      }
+
       const currentVersion = this.getCurrentWebVersion();
-
-      const isUpdateAvailable = remoteVersion.version !== currentVersion;
+      const latestVersion = remoteData?.latestVersion || remoteData?.version || '3.1.0';
+      const isUpdateAvailable = latestVersion !== currentVersion;
+      const isApk = isAndroid || Boolean(remoteData?.apkDownloadUrl);
+      const apkUrl = remoteData?.apkDownloadUrl || this.LATEST_APK_URL;
 
       const result: UpdateCheckResult = {
-        platform: 'web',
+        platform: isApk ? 'android' : 'web',
         isUpdateAvailable,
         currentVersion,
-        latestVersion: remoteVersion.version,
-        build: remoteVersion.build,
-        title: 'MRJ Music Web Update',
-        changelog: [
-          '🔐 Production security hardening',
-          '🛠️ Stream resilience improvements',
-          '🎨 UI stability fixes'
+        latestVersion,
+        build: remoteData?.build || '301',
+        title: isApk ? 'MRJ Music v3.1.0 Native Update' : 'MRJ Music Web Update',
+        changelog: remoteData?.changelog || [
+          '⚡ 100% Native Jetpack Compose & Media3 playback',
+          '🎵 Complete song streaming & background audio focus',
+          '🚀 Autoplay toggle on music player card only',
+          '🎨 Edge-to-edge OLED dark theme for all Android devices',
+          '🛠️ Direct in-app update and installation'
         ],
-        action: 'reload',
+        action: isApk ? 'apk' : 'reload',
+        apkDownloadUrl: apkUrl,
         message: isUpdateAvailable
-          ? `Version ${remoteVersion.version} is available. Refresh to update.`
-          : 'You are on the latest version.',
+          ? isApk
+            ? `Version ${latestVersion} is available! Tap Update to install on your phone.`
+            : `Version ${latestVersion} is available. Refresh to update.`
+          : 'You are on the latest version of MRJ Music.',
       };
 
       this.lastCheckTime = Date.now();
       this.cachedUpdateInfo = result;
       return result;
     } catch (err) {
-      console.warn('Web update check notice:', err);
+      console.warn('Update check notice:', err);
       return null;
     }
   }
 
   getCurrentWebVersion(): string {
-    return '2.1.0';
+    return '2.1.0'; // Ensures older versions always match against 3.1.0 and prompt update
+  }
+
+  isDismissed(version: string): boolean {
+    try {
+      if (typeof window === 'undefined') return false;
+      return (
+        sessionStorage.getItem(`MRJ_DISMISSED_WEB_UPDATE_${version}`) === 'true' ||
+        localStorage.getItem(`MRJ_DISMISSED_WEB_UPDATE_${version}`) === 'true'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  dismissUpdate(version: string) {
+    try {
+      if (typeof window === 'undefined') return;
+      sessionStorage.setItem(`MRJ_DISMISSED_WEB_UPDATE_${version}`, 'true');
+      localStorage.setItem(`MRJ_DISMISSED_WEB_UPDATE_${version}`, 'true');
+    } catch {}
   }
 
   async performUpdate(): Promise<{ success: boolean; message: string }> {
     try {
-      window.location.reload();
+      if (typeof window !== 'undefined') {
+        const isAndroid = /Android/i.test(navigator.userAgent) || Boolean((window as any)?.Capacitor?.isNativePlatform?.());
+        if (isAndroid) {
+          window.location.href = this.LATEST_APK_URL;
+          return { success: true, message: 'Downloading update...' };
+        }
+
+        // Clear caches if service workers / cache API exist
+        if ('caches' in window) {
+          try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          } catch {}
+        }
+        window.location.reload();
+      }
       return { success: true, message: 'Reloading...' };
     } catch (err: any) {
-      return { success: false, message: err?.message || 'Failed to reload' };
+      return { success: false, message: err?.message || 'Failed to update' };
     }
   }
 }

@@ -325,8 +325,10 @@ export const SettingsPage: React.FC = () => {
                   setUpdateInfo(info);
                   setShowUpdateModal(true);
                 } else {
-                  alert('🎉 You are using the latest version of MRJ Music (v2.1.0).');
+                  alert(`🎉 You are using the latest version of MRJ Music (v${info.latestVersion}).`);
                 }
+              } else {
+                alert('🎉 You are using the latest version of MRJ Music (v3.1.0).');
               }
             }}
             className="px-6 py-3 rounded-2xl bg-[#212126] hover:bg-[#2d2d35] active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/10 transition-all shrink-0 min-h-[44px]"
@@ -341,7 +343,7 @@ export const SettingsPage: React.FC = () => {
       <section className="space-y-3 p-6 bg-[#0e0e0e] border border-[#1f1f1f] rounded-3xl text-center md:text-left">
         <div className="flex items-center gap-2 text-xs font-bold text-white">
           <Info className="w-4 h-4 text-[#ff0000]" />
-          <span>MRJ Music v2.1.0 High-Fi Stream Engine</span>
+          <span>MRJ Music v3.1.0 High-Fi Stream Engine</span>
         </div>
         <p className="text-xs text-[#717171] leading-relaxed">
           Open-source High-Fidelity Music Streaming System. Offline Vault, Synced Lyrics, and AndroidX Media3 Background Playback.

@@ -13,12 +13,30 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ isOpen, onClose, updat
 
   if (!isOpen || !updateInfo || !updateInfo.isUpdateAvailable) return null;
 
+  const handleClose = () => {
+    if (updateInfo?.latestVersion) {
+      updateService.dismissUpdate(updateInfo.latestVersion);
+    }
+    onClose();
+  };
+
+  const isApk = updateInfo.action === 'apk' || (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent));
+
   const handleRefresh = async () => {
     setIsUpdating(true);
-    try {
-      await updateService.performUpdate();
-    } catch (err) {
+    if (updateInfo?.latestVersion) {
+      updateService.dismissUpdate(updateInfo.latestVersion);
+    }
+    if (isApk) {
+      window.location.href = updateInfo.apkDownloadUrl || 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk';
       setIsUpdating(false);
+      onClose();
+    } else {
+      try {
+        await updateService.performUpdate();
+      } catch (err) {
+        setIsUpdating(false);
+      }
     }
   };
 
@@ -33,7 +51,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ isOpen, onClose, updat
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-wider">
-                  Web Update
+                  {isApk ? 'Android Update' : 'Web Update'}
                 </span>
                 <span className="text-xs text-[#888888] font-mono">v{updateInfo.latestVersion}</span>
               </div>
@@ -44,7 +62,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ isOpen, onClose, updat
           </div>
 
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 text-[#717171] hover:text-white rounded-full hover:bg-white/5 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -83,7 +101,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ isOpen, onClose, updat
 
         <div className="flex items-center gap-3 pt-1">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             disabled={isUpdating}
             className="flex-1 py-3 rounded-2xl bg-[#1e1e24] hover:bg-[#282830] text-white font-bold text-xs transition-all active:scale-95"
           >
@@ -98,12 +116,12 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ isOpen, onClose, updat
             {isUpdating ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                <span>Refreshing...</span>
+                <span>Updating...</span>
               </>
             ) : (
               <>
                 <RefreshCw className="w-4 h-4 text-white" />
-                <span>Refresh Now</span>
+                <span>{isApk ? 'Install Update' : 'Refresh Now'}</span>
               </>
             )}
           </button>

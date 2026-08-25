@@ -40,7 +40,7 @@ console.log('\n=================================================================
 console.log('2. APP RELEASE CONFIGURATION INTEGRITY');
 console.log('=========================================================================');
 
-assert(APP_RELEASE.version === '2.0.0', `Release version is v${APP_RELEASE.version}`);
+assert(APP_RELEASE.version === '3.1.0', `Release version is v${APP_RELEASE.version}`);
 assert(APP_RELEASE.isAvailable === true, 'APK is marked as available for production');
 assert(APP_RELEASE.apkDownloadUrl.startsWith('/downloads/'), `Download URL is relative production path: ${APP_RELEASE.apkDownloadUrl}`);
 assert(APP_RELEASE.features.length >= 4, `Features highlight list populated (${APP_RELEASE.features.length} items)`);

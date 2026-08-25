@@ -14,22 +14,22 @@ export interface AppReleaseInfo {
 }
 
 export const APP_RELEASE: AppReleaseInfo = {
-  version: '2.0.0',
-  buildNumber: 200,
+  version: '3.1.0',
+  buildNumber: 301,
   releaseDate: 'August 2026',
-  apkFileName: 'mrj-music.apk',
-  apkDownloadUrl: '/downloads/mrj-music.apk',
-  fileSizeFormatted: '64.4 MB',
-  fileSizeBytes: 67579573,
+  apkFileName: 'mrj-music-v3.1.0.apk',
+  apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.1.0/mrj-music-v3.1.0.apk',
+  fileSizeFormatted: '111 MB',
+  fileSizeBytes: 116375238,
   minAndroidVersion: 'Android 8.0 (Oreo) or higher',
   targetAndroidVersion: 'Android 14 (API 34)',
-  sha256: '1779a5f183cf4c9c5c99c1cb3c1e706ac8228fb825bff4b4cb05e2b835046655',
+  sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
   isAvailable: true,
   features: [
-    'Native AndroidX Media3 / ExoPlayer Engine with Audio Focus & Ducking',
+    '100% Native Jetpack Compose & Material 3 Interface',
+    'AndroidX Media3 / ExoPlayer 1.3.1 Engine with Audio Focus & Ducking',
     'Persistent Background MediaSessionService with Lock Screen & Bluetooth AVRCP Controls',
-    'Smart Downloads 2.0 with Native App-Private Offline Vault & WorkManager',
-    'Music-First Canonical Catalog & Lossless Quality Switching',
-    'Edge-to-Edge Fluid Mobile UI with Hardware Gesture Navigation',
+    'Smart Downloads with App-Private Offline Vault & WorkManager',
+    'In-App Android Package Installer Upgrade Mechanism',
   ],
 };

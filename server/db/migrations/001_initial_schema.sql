@@ -200,3 +200,14 @@ CREATE TABLE IF NOT EXISTS recommendation_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rec_cache_user_exp ON recommendation_cache(user_id, expires_at);
+
+-- Signup OTP Verification Codes (DB-backed so they survive serverless cold starts)
+CREATE TABLE IF NOT EXISTS signup_otps (
+    email VARCHAR(255) PRIMARY KEY,
+    otp VARCHAR(6) NOT NULL,
+    name VARCHAR(255),
+    expires_at BIGINT NOT NULL,
+    created_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_signup_otps_expires ON signup_otps(expires_at);
