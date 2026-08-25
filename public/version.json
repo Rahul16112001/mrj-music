@@ -1,18 +1,18 @@
 {
-  "version": "3.2.0",
-  "build": "302",
+  "version": "3.3.0",
+  "build": "303",
   "updatedAt": "2026-08-25T00:00:00Z",
-  "latestVersion": "3.2.0",
+  "latestVersion": "3.3.0",
   "isUpdateAvailable": true,
-  "apkDownloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.2.0/mrj-music-v3.2.0.apk",
-  "apkFileName": "mrj-music-v3.2.0.apk",
-  "downloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.2.0/mrj-music-v3.2.0.apk",
-  "title": "MRJ Music v3.2.0 Update",
+  "apkDownloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk",
+  "apkFileName": "mrj-music-v3.3.0.apk",
+  "downloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.3.0/mrj-music-v3.3.0.apk",
+  "title": "MRJ Music v3.3.0 Update",
   "changelog": [
-    "⚡ Fixed full song streaming for all searched tracks",
-    "🎵 Complete song streaming & background audio focus",
-    "🚀 Autoplay toggle on music player card only",
-    "🎨 Edge-to-edge OLED dark theme for all Android devices",
-    "🛠️ In-app automatic update and direct APK installer"
+    "🚀 Connected with all cloud backend services & scrapers",
+    "⚡ Instant search suggestions with debounced query resolution",
+    "🎵 Complete song streaming & unplayable track auto-recovery",
+    "🔄 Continuous smart autoplay recommendations engine",
+    "☁️ Cloud library & favorites synchronization"
   ]
 }

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mrj.music.data.remote.MRJApiClient
+import com.mrj.music.data.security.SecureAuthStorage
 import com.mrj.music.model.NativeTrack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -16,6 +17,8 @@ data class SearchUiState(
     val query: String = "",
     val isLoading: Boolean = false,
     val songs: List<NativeTrack> = emptyList(),
+    val suggestions: List<String> = emptyList(),
+    val suggestedSongs: List<NativeTrack> = emptyList(),
     val activeCategory: String = "All",
     val recentSearches: List<String> = listOf("Arijit Singh", "Diljit Dosanjh", "Lo-Fi Beats", "Sidhu Moose Wala", "Bollywood Hits"),
     val errorMessage: String? = null
@@ -23,47 +26,155 @@ data class SearchUiState(
 
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val secureStorage = SecureAuthStorage.getInstance(application)
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
+    private var suggestionsJob: Job? = null
+
+    init {
+        loadSearchHistory()
+    }
+
+    private fun loadSearchHistory() {
+        viewModelScope.launch {
+            try {
+                val token = secureStorage.getAccessToken()
+                if (token != null) {
+                    val res = MRJApiClient.apiService.getSearchHistory("Bearer $token")
+                    if (res.isSuccessful && res.body() != null) {
+                        val history = (res.body()!!["history"] as? List<String>) ?: emptyList()
+                        if (history.isNotEmpty()) {
+                            _uiState.value = _uiState.value.copy(recentSearches = history)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
 
     fun onQueryChange(newQuery: String) {
         _uiState.value = _uiState.value.copy(query = newQuery)
         searchJob?.cancel()
+        suggestionsJob?.cancel()
 
         if (newQuery.isBlank()) {
-            _uiState.value = _uiState.value.copy(songs = emptyList(), isLoading = false)
+            _uiState.value = _uiState.value.copy(
+                songs = emptyList(),
+                suggestions = emptyList(),
+                suggestedSongs = emptyList(),
+                isLoading = false
+            )
             return
         }
 
+        // Fast instant suggestions (150ms)
+        suggestionsJob = viewModelScope.launch {
+            delay(150)
+            fetchSuggestions(newQuery)
+        }
+
+        // Full search debounce (350ms)
         searchJob = viewModelScope.launch {
-            delay(350) // 350ms debounce
+            delay(350)
             performSearch(newQuery)
         }
     }
 
+    private suspend fun fetchSuggestions(query: String) {
+        try {
+            val res = MRJApiClient.apiService.getSuggestions(query.trim())
+            if (res.isSuccessful && res.body() != null) {
+                val body = res.body()!!
+                val suggestionsList = (body["suggestions"] as? List<String>) ?: emptyList()
+                val songsListRaw = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
+                val suggestedParsed = songsListRaw.mapNotNull { parseTrack(it) }
+
+                _uiState.value = _uiState.value.copy(
+                    suggestions = suggestionsList,
+                    suggestedSongs = suggestedParsed
+                )
+            }
+        } catch (_: Exception) {}
+    }
+
     fun setCategory(category: String) {
         _uiState.value = _uiState.value.copy(activeCategory = category)
+        val currentQuery = _uiState.value.query
+        if (currentQuery.isNotBlank()) {
+            performSearch(currentQuery)
+        }
     }
 
     fun performSearch(query: String) {
         if (query.isBlank()) return
+        searchJob?.cancel()
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             try {
-                val res = MRJApiClient.apiService.search(query = query.trim(), type = "songs")
+                val searchType = when (_uiState.value.activeCategory) {
+                    "Songs" -> "songs"
+                    "Videos" -> "videos"
+                    "Artists" -> "artists"
+                    "Albums" -> "albums"
+                    else -> "all"
+                }
+
+                val res = MRJApiClient.apiService.search(query = query.trim(), type = searchType)
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     val rawSongs = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
-                    val parsed = rawSongs.mapNotNull { parseTrack(it) }
+                    val rawVideos = (body["videos"] as? List<Map<String, Any>>) ?: emptyList()
+                    val rawResults = (body["results"] as? List<Map<String, Any>>) ?: emptyList()
+
+                    val allRaw = (rawSongs + rawVideos + rawResults).distinctBy {
+                        (it["id"] as? String) ?: (it["providerTrackId"] as? String) ?: ""
+                    }
+                    val parsed = allRaw.mapNotNull { parseTrack(it) }
+
                     _uiState.value = _uiState.value.copy(songs = parsed, isLoading = false)
+
+                    // Record in recent searches
+                    saveRecentSearch(query.trim())
                 } else {
                     _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = "No results found.")
                 }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message ?: "Search failed.")
             }
+        }
+    }
+
+    private fun saveRecentSearch(query: String) {
+        val current = _uiState.value.recentSearches.toMutableList()
+        current.remove(query)
+        current.add(0, query)
+        val trimmed = current.take(10)
+        _uiState.value = _uiState.value.copy(recentSearches = trimmed)
+
+        viewModelScope.launch {
+            try {
+                val token = secureStorage.getAccessToken()
+                if (token != null) {
+                    MRJApiClient.apiService.addSearchHistory("Bearer $token", mapOf("query" to query))
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun removeRecentSearch(query: String) {
+        val current = _uiState.value.recentSearches.toMutableList()
+        current.remove(query)
+        _uiState.value = _uiState.value.copy(recentSearches = current)
+
+        viewModelScope.launch {
+            try {
+                val token = secureStorage.getAccessToken()
+                if (token != null) {
+                    MRJApiClient.apiService.removeSearchHistory("Bearer $token", query)
+                }
+            } catch (_: Exception) {}
         }
     }
 

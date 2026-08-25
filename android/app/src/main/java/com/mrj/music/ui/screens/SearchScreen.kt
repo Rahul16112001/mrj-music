@@ -107,6 +107,28 @@ fun SearchScreen(
         }
 
         // 3. Search Content (Results, Loading, or Suggestions)
+        // 3. Instant Suggestions Pills (when typing and suggestions available)
+        if (uiState.query.isNotBlank() && uiState.suggestions.isNotEmpty()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                items(uiState.suggestions) { suggestion ->
+                    SuggestionChip(
+                        onClick = { searchViewModel.onQueryChange(suggestion) },
+                        label = { Text(suggestion, fontSize = 12.sp, color = TextPrimary) },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = SurfaceDark
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        border = null
+                    )
+                }
+            }
+        }
+
+        // 4. Search Content (Results, Loading, or Suggestions)
         if (uiState.isLoading) {
             Box(
                 modifier = Modifier
@@ -150,7 +172,7 @@ fun SearchScreen(
             ) {
                 item {
                     Text(
-                        text = "Popular Searches",
+                        text = "Recent & Trending Searches",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(vertical = 12.dp)
                     )
@@ -161,21 +183,39 @@ fun SearchScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { searchViewModel.onQueryChange(suggestion) }
-                            .padding(vertical = 12.dp),
+                            .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = null,
-                            tint = TextMuted,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = suggestion,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = TextPrimary
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = suggestion,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextPrimary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { searchViewModel.removeRecentSearch(suggestion) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Clear,
+                                contentDescription = "Remove",
+                                tint = TextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }

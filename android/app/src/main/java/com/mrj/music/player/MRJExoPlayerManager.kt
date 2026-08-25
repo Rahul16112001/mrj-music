@@ -395,17 +395,45 @@ class MRJExoPlayerManager(private val context: Context) {
                         webView?.evaluateJavascript("playVideo('$resolvedId');", null)
                     }
                 } else {
-                    // Fast background scrape/search to resolve missing YouTube ID for any track
+                    // Fast background scrape/search & backend source resolver to resolve missing YouTube ID
                     Log.d(TAG, "Resolving video ID on the fly for: ${trackToPlay.title} - ${trackToPlay.artist}")
                     _isPlaying.value = true
                     listeners.forEach { it.onPlaybackStateChange(true, true) }
 
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
+                            // 1. Try Backend Resolve-Source service first
+                            val canonId = trackToPlay.canonicalTrackId ?: trackToPlay.id
+                            val resolveRes = MRJApiClient.apiService.resolvePlaybackSource(
+                                id = canonId,
+                                title = trackToPlay.title,
+                                artist = trackToPlay.artist,
+                                duration = trackToPlay.duration
+                            )
+                            if (resolveRes.isSuccessful && resolveRes.body() != null) {
+                                val source = resolveRes.body()!!["source"] as? Map<*, *>
+                                val resolvedProviderId = (source?.get("providerTrackId") as? String)
+                                    ?: (source?.get("sourceId") as? String)
+                                if (!resolvedProviderId.isNullOrBlank() && isValidYouTubeId(resolvedProviderId)) {
+                                    Log.d(TAG, "Backend resolve-source successful: $resolvedProviderId")
+                                    mainHandler.post {
+                                        webView?.evaluateJavascript("playVideo('$resolvedProviderId');", null)
+                                    }
+                                    return@launch
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Backend resolve-source failed: ${e.message}")
+                        }
+
+                        // 2. Fallback to Music Search Service
+                        try {
                             val searchQuery = "${trackToPlay.title} ${trackToPlay.artist}".trim()
                             val searchRes = MRJApiClient.apiService.search(query = searchQuery, type = "songs")
                             if (searchRes.isSuccessful && searchRes.body() != null) {
-                                val songs = (searchRes.body()!!["songs"] as? List<Map<String, Any>>) ?: emptyList()
+                                val songs = (searchRes.body()!!["songs"] as? List<Map<String, Any>>)
+                                    ?: (searchRes.body()!!["results"] as? List<Map<String, Any>>)
+                                    ?: emptyList()
                                 for (s in songs) {
                                     val audioSource = s["audioSource"] as? Map<*, *>
                                     val dynamicId = (audioSource?.get("providerTrackId") as? String)
@@ -414,7 +442,7 @@ class MRJExoPlayerManager(private val context: Context) {
                                         ?: extractIdFromThumbnail(s["thumbnail"] as? String)
 
                                     if (!dynamicId.isNullOrBlank() && isValidYouTubeId(dynamicId)) {
-                                        Log.d(TAG, "Dynamically resolved ID: $dynamicId for ${trackToPlay.title}")
+                                        Log.d(TAG, "Dynamically resolved ID via search: $dynamicId for ${trackToPlay.title}")
                                         mainHandler.post {
                                             webView?.evaluateJavascript("playVideo('$dynamicId');", null)
                                         }
@@ -423,7 +451,7 @@ class MRJExoPlayerManager(private val context: Context) {
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Dynamic ID resolution failed: ${e.message}")
+                            Log.w(TAG, "Dynamic ID search resolution failed: ${e.message}")
                         }
 
                         // Last resort fallback
@@ -435,6 +463,11 @@ class MRJExoPlayerManager(private val context: Context) {
                 }
             }
 
+            // Auto-populate next recommendations queue in background
+            if (autoplayEnabled && (newQueue == null || newQueue.size <= 1)) {
+                fetchNextRecommendations(trackToPlay)
+            }
+
             listeners.forEach {
                 it.onTrackChange(trackToPlay)
                 it.onQueueChange(queue, queueIndex)
@@ -442,6 +475,69 @@ class MRJExoPlayerManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "playTrack exception: ${e.message}", e)
             listeners.forEach { it.onError("Playback failed: ${e.message ?: "Unknown error"}") }
+        }
+    }
+
+    private fun fetchNextRecommendations(track: NativeTrack) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val token = secureStorage.getAccessToken()
+                val authHeader = if (token != null) "Bearer $token" else null
+                val payload = mapOf(
+                    "currentTrack" to mapOf(
+                        "id" to track.id,
+                        "canonicalTrackId" to (track.canonicalTrackId ?: track.id),
+                        "title" to track.title,
+                        "artist" to track.artist,
+                        "genre" to (track.genre ?: "")
+                    ),
+                    "playedTrackIds" to listOf(track.id),
+                    "currentQueueIds" to queue.map { it.id }
+                )
+                val res = MRJApiClient.apiService.getNextRecommendations(authHeader, payload)
+                if (res.isSuccessful && res.body() != null) {
+                    val tracksRaw = (res.body()!!["tracks"] as? List<Map<String, Any>>) ?: emptyList()
+                    val parsed = tracksRaw.mapNotNull { raw ->
+                        val id = (raw["id"] as? String) ?: (raw["providerTrackId"] as? String) ?: return@mapNotNull null
+                        val title = raw["title"] as? String ?: return@mapNotNull null
+                        val artist = raw["artist"] as? String ?: "Unknown Artist"
+                        val thumbnail = raw["thumbnail"] as? String
+                        val duration = (raw["duration"] as? Number)?.toDouble() ?: 210.0
+                        val audioSource = raw["audioSource"] as? Map<*, *>
+                        val providerTrackId = (audioSource?.get("providerTrackId") as? String)
+                            ?: (raw["providerTrackId"] as? String)
+                            ?: (raw["videoId"] as? String)
+                            ?: extractIdFromThumbnail(thumbnail)
+
+                        NativeTrack(
+                            id = id,
+                            canonicalTrackId = raw["canonicalTrackId"] as? String ?: id,
+                            title = title,
+                            artist = artist,
+                            album = raw["album"] as? String,
+                            thumbnail = thumbnail,
+                            duration = duration,
+                            genre = raw["genre"] as? String,
+                            providerTrackId = providerTrackId,
+                            streamUrl = "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
+                        )
+                    }
+
+                    if (parsed.isNotEmpty()) {
+                        mainHandler.post {
+                            val existingIds = queue.map { it.id }.toSet()
+                            val fresh = parsed.filter { it.id !in existingIds }
+                            if (fresh.isNotEmpty()) {
+                                queue.addAll(fresh)
+                                listeners.forEach { it.onQueueChange(queue, queueIndex) }
+                                Log.d(TAG, "Appended ${fresh.size} recommended tracks to continuous queue")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "fetchNextRecommendations failed: ${e.message}")
+            }
         }
     }
 
