@@ -101,6 +101,7 @@ fun MRJMusicApp(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             Column(modifier = Modifier.background(DeepDarkBg)) {
                 if (playerState.currentTrack != null) {
@@ -156,13 +157,22 @@ fun MRJMusicApp(
             modifier = Modifier
                 .fillMaxSize()
                 .background(DeepDarkBg)
+                .padding(bottom = innerPadding.calculateBottomPadding())
         ) {
+            // Keep Player Engine WebView permanently attached to the active Window hierarchy
+            AndroidView(
+                factory = { ctx ->
+                    playerViewModel.getOrCreatePlayerEngineView(ctx)
+                },
+                modifier = Modifier
+                    .size(1.dp)
+                    .alpha(0.001f)
+            )
+
             NavHost(
                 navController = navController,
                 startDestination = Screen.Home.route,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
+                modifier = Modifier.fillMaxSize()
             ) {
                 composable(Screen.Home.route) {
                     HomeScreen(
@@ -253,6 +263,15 @@ fun MRJMusicApp(
                 }
             }
         }
+    }
+
+    // Handle Android hardware/gesture Back button for modals
+    androidx.activity.compose.BackHandler(enabled = isPlayerExpanded) {
+        isPlayerExpanded = false
+    }
+
+    androidx.activity.compose.BackHandler(enabled = isAuthVisible) {
+        isAuthVisible = false
     }
 
     // FullScreen Player Modal Sheet

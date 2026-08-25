@@ -37,8 +37,8 @@ fun MRJMusicTheme(
             window.statusBarColor = DeepDarkBg.toArgb()
             window.navigationBarColor = DeepDarkBg.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = true
-                isAppearanceLightNavigationBars = true
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = false
             }
         }
     }

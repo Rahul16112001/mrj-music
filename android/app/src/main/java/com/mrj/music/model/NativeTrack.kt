@@ -47,9 +47,14 @@ data class NativeTrack(
     fun resolveStreamUri(): Uri {
         // 1. Local offline file
         if (!localFilePath.isNullOrBlank()) {
-            val uri = Uri.parse("file://$localFilePath")
-            Log.d(TAG, "Using local file URI for: $title")
-            return uri
+            val file = java.io.File(localFilePath!!)
+            if (file.exists() && file.length() >= 100_000L) {
+                val uri = Uri.parse("file://$localFilePath")
+                Log.d(TAG, "Using verified local file URI for: $title (${file.length()} bytes)")
+                return uri
+            } else {
+                Log.w(TAG, "Local file for '$title' is missing or <100KB, ignoring bad local path.")
+            }
         }
 
         // 2. Direct stream URL from React (must not be a YouTube watch page URL)

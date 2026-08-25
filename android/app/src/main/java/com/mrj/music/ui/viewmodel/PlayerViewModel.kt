@@ -45,6 +45,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     val playerManager = MRJExoPlayerManager.getInstance(application)
     val favoritesRepo = com.mrj.music.data.repository.FavoritesRepository.getInstance(application)
     private val audioEffectManager = com.mrj.music.audiofx.MRJAudioEffectManager.getInstance(application)
+    private val behaviorTracker = com.mrj.music.intelligence.MRJBehaviorTracker.getInstance(application)
 
     val equalizerState = audioEffectManager.equalizerState
     private val _dynamicThemeColor = MutableStateFlow<androidx.compose.ui.graphics.Color>(com.mrj.music.ui.theme.CrimsonRed)
@@ -53,7 +54,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     val likedTrackIds: StateFlow<Set<String>> = favoritesRepo.likedTrackIds
 
     fun isLiked(trackId: String): Boolean = favoritesRepo.isLiked(trackId)
-    fun toggleLike(track: NativeTrack) = favoritesRepo.toggleLike(track)
+    fun toggleLike(track: NativeTrack) {
+        val wasLiked = favoritesRepo.isLiked(track.id)
+        favoritesRepo.toggleLike(track)
+        if (!wasLiked) {
+            behaviorTracker.onTrackLiked(track)
+            // Proactively refresh dynamic queue to reflect positive taste reinforcement
+            playerManager.fetchDynamicAutoplayQueue(track)
+        }
+    }
+
+    fun refreshDynamicAutoplayQueue() {
+        _uiState.value.currentTrack?.let { curr ->
+            playerManager.fetchDynamicAutoplayQueue(curr)
+        }
+    }
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
@@ -74,10 +89,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             isAutoplay = playerManager.autoplayEnabled
         )
 
-        playerManager.currentTrack.value?.let {
-            loadLyricsForTrack(it)
+        playerManager.currentTrack.value?.let { track ->
+            loadLyricsForTrack(track)
             viewModelScope.launch {
-                val color = com.mrj.music.ui.theme.PaletteExtractor.extractThemeColor(getApplication(), it.thumbnail)
+                val color = com.mrj.music.ui.theme.PaletteExtractor.extractThemeColor(getApplication(), track.thumbnail)
                 _dynamicThemeColor.value = color
             }
         }

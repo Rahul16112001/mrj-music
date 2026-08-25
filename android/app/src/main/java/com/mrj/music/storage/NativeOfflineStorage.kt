@@ -1,6 +1,7 @@
 package com.mrj.music.storage
 
 import android.content.Context
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mrj.music.model.NativeTrack
@@ -30,7 +31,18 @@ class NativeOfflineStorage(private val context: Context) {
                 val map: Map<String, NativeTrack>? = gson.fromJson(json, type)
                 if (map != null) {
                     trackIndex.clear()
-                    trackIndex.putAll(map)
+                    // Filter and clean out any non-existent or corrupted files (<100KB)
+                    for ((k, track) in map) {
+                        val path = track.localFilePath
+                        if (path != null) {
+                            val f = File(path)
+                            if (f.exists() && f.length() >= MIN_VALID_AUDIO_BYTES) {
+                                trackIndex[k] = track
+                            } else {
+                                if (f.exists()) f.delete()
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -51,17 +63,32 @@ class NativeOfflineStorage(private val context: Context) {
     fun isTrackDownloaded(trackId: String): Boolean {
         val track = trackIndex[trackId] ?: return false
         val path = track.localFilePath ?: return false
-        return File(path).exists()
+        val file = File(path)
+        if (file.exists() && file.length() >= MIN_VALID_AUDIO_BYTES) {
+            return true
+        }
+        // Cleanup corrupt/0-byte file
+        if (file.exists()) file.delete()
+        deleteTrack(trackId)
+        return false
     }
 
     fun getTrack(trackId: String): NativeTrack? {
-        return trackIndex[trackId]
+        val track = trackIndex[trackId] ?: return null
+        val path = track.localFilePath ?: return null
+        val file = File(path)
+        if (file.exists() && file.length() >= MIN_VALID_AUDIO_BYTES) {
+            return track
+        }
+        if (file.exists()) file.delete()
+        deleteTrack(trackId)
+        return null
     }
 
     fun getAllDownloadedTracks(): List<NativeTrack> {
         return trackIndex.values.filter { track ->
-            track.localFilePath != null && File(track.localFilePath!!).exists()
-        }.toList()
+            track.localFilePath != null && File(track.localFilePath!!).let { it.exists() && it.length() >= MIN_VALID_AUDIO_BYTES }
+        }.distinctBy { it.id }.toList()
     }
 
     fun getManualDownloads(): List<NativeTrack> {
@@ -85,6 +112,12 @@ class NativeOfflineStorage(private val context: Context) {
         try {
             FileOutputStream(audioFile).use { output ->
                 inputStream.copyTo(output)
+            }
+
+            if (!audioFile.exists() || audioFile.length() < MIN_VALID_AUDIO_BYTES) {
+                Log.w(TAG, "Audio stream for ${track.title} was empty or corrupted (<100KB, size=${audioFile.length()}). Discarding.")
+                if (audioFile.exists()) audioFile.delete()
+                return null
             }
 
             val updatedTrack = track.copy(
@@ -138,6 +171,28 @@ class NativeOfflineStorage(private val context: Context) {
         return bytesFreed
     }
 
+    fun clearSmartDownloadsOnly(): Int {
+        var count = 0
+        val smartTracks = getSmartDownloads()
+        for (track in smartTracks) {
+            if (deleteTrack(track.id)) {
+                count++
+            }
+        }
+        return count
+    }
+
+    fun clearAllDownloads(): Int {
+        var count = 0
+        val allTracks = getAllDownloadedTracks()
+        for (track in allTracks) {
+            if (deleteTrack(track.id)) {
+                count++
+            }
+        }
+        return count
+    }
+
     fun getStorageBreakdown(): Map<String, Any> {
         var manualBytes = 0L
         var smartBytes = 0L
@@ -152,17 +207,25 @@ class NativeOfflineStorage(private val context: Context) {
             }
         }
 
+        val usableSpace = context.filesDir.usableSpace
+        val totalSpace = context.filesDir.totalSpace
+
         return mapOf(
             "totalBytes" to (manualBytes + smartBytes),
             "manualBytes" to manualBytes,
             "smartBytes" to smartBytes,
             "totalTracks" to getAllDownloadedTracks().size,
             "manualTracks" to getManualDownloads().size,
-            "smartTracks" to getSmartDownloads().size
+            "smartTracks" to getSmartDownloads().size,
+            "usableDeviceBytes" to usableSpace,
+            "totalDeviceBytes" to totalSpace
         )
     }
 
     companion object {
+        private const val TAG = "MRJ_OfflineStorage"
+        private const val MIN_VALID_AUDIO_BYTES = 100_000L // 100 KB minimum for real playable audio
+
         @Volatile
         private var instance: NativeOfflineStorage? = null
 

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,6 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mrj.music.smartdownload.SmartDownloadPreferences
+import com.mrj.music.smartdownload.SmartDownloadScheduler
+import com.mrj.music.storage.NativeOfflineStorage
 import com.mrj.music.ui.components.EqualizerSheet
 import com.mrj.music.ui.theme.*
 import com.mrj.music.ui.viewmodel.AuthViewModel
@@ -36,11 +40,18 @@ fun SettingsScreen(
     val authState by authViewModel.uiState.collectAsState()
     val updateState by updateViewModel.uiState.collectAsState()
 
-    var audioQuality by remember { mutableStateOf("High (320 kbps)") }
-    var smartDownloads by remember { mutableStateOf(true) }
+    val smartPrefs = remember { SmartDownloadPreferences.getInstance(context) }
+    val smartConfig by smartPrefs.configFlow.collectAsState()
+    val offlineStorage = remember { NativeOfflineStorage.getInstance(context) }
+
+    var storageStats by remember { mutableStateOf(offlineStorage.getStorageBreakdown()) }
     var showNameDialog by remember { mutableStateOf(false) }
     var showEqualizerSheet by remember { mutableStateOf(false) }
     var preferredNameInput by remember { mutableStateOf(authState.preferredName ?: "") }
+
+    fun refreshStorage() {
+        storageStats = offlineStorage.getStorageBreakdown()
+    }
 
     LazyColumn(
         modifier = modifier
@@ -128,7 +139,7 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Audio & Streaming Quality
+        // 3. Audio & Sound FX Section
         item {
             Text(
                 text = "Audio & Playback",
@@ -143,51 +154,265 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(16.dp),
                 color = SurfaceDark
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     SettingRow(
-                        icon = Icons.Default.Tune,
-                        title = "Equalizer & Sound Effects",
+                        icon = Icons.Default.Equalizer,
+                        title = "Graphic Equalizer & FX",
                         subtitle = "5-Band EQ, Bass Boost & 3D Spatializer",
                         onClick = { showEqualizerSheet = true }
                     )
 
-                    Divider(color = SurfaceBorder)
+                    HorizontalDivider(color = SurfaceBorder)
 
                     SettingRow(
                         icon = Icons.Default.HighQuality,
                         title = "Streaming Quality",
-                        subtitle = audioQuality,
+                        subtitle = smartConfig.audioQuality + " Quality (256-320 kbps)",
                         onClick = {
-                            audioQuality = when (audioQuality) {
-                                "High (320 kbps)" -> "Lossless (Flac/Opus)"
-                                "Lossless (Flac/Opus)" -> "Standard (160 kbps)"
-                                else -> "High (320 kbps)"
+                            val nextQ = when (smartConfig.audioQuality) {
+                                "HIGH" -> "MEDIUM"
+                                "MEDIUM" -> "LOW"
+                                else -> "HIGH"
                             }
+                            smartPrefs.setAudioQuality(nextQ)
                         }
                     )
+                }
+            }
+        }
 
-                    Divider(color = SurfaceBorder)
+        // 4. YouTube Music-Style Smart Downloads & Storage Management
+        item {
+            Text(
+                text = "Smart Downloads & Offline Storage",
+                style = MaterialTheme.typography.titleMedium,
+                color = TextSecondary
+            )
+        }
 
+        item {
+            val smartBytes = (storageStats["smartBytes"] as? Long) ?: 0L
+            val manualBytes = (storageStats["manualBytes"] as? Long) ?: 0L
+            val usableDeviceBytes = (storageStats["usableDeviceBytes"] as? Long) ?: 1L
+            val totalDeviceBytes = (storageStats["totalDeviceBytes"] as? Long) ?: 1L
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = SurfaceDark
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Toggle Switch
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Smart Downloads", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                            Text("Automatically cache favorite songs for offline listening", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Smart Downloads", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = TextPrimary)
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = CrimsonRed.copy(alpha = 0.2f)
+                                ) {
+                                    Text("AUTO", modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp), color = CrimsonRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text("Automatically downloads your favorite music and daily mixes when on Wi-Fi", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                         }
                         Switch(
-                            checked = smartDownloads,
-                            onCheckedChange = { smartDownloads = it },
+                            checked = smartConfig.isEnabled,
+                            onCheckedChange = {
+                                smartPrefs.setEnabled(it)
+                                if (it) SmartDownloadScheduler.schedulePeriodicSync(context)
+                                else SmartDownloadScheduler.cancelPeriodicSync(context)
+                            },
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = CrimsonRed)
                         )
+                    }
+
+                    if (smartConfig.isEnabled) {
+                        HorizontalDivider(color = SurfaceBorder)
+
+                        // Quota Slider (25 - 500 songs)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Download Quota Limit",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "${smartConfig.songCountQuota} songs (${formatBytes(smartConfig.estimatedStorageBytes)})",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = CrimsonRed
+                                )
+                            }
+
+                            Slider(
+                                value = smartConfig.songCountQuota.toFloat(),
+                                onValueChange = { smartPrefs.setSongCountQuota(it.toInt()) },
+                                valueRange = 25f..500f,
+                                steps = 18,
+                                colors = SliderDefaults.colors(thumbColor = CrimsonRed, activeTrackColor = CrimsonRed)
+                            )
+                        }
+
+                        HorizontalDivider(color = SurfaceBorder)
+
+                        // Wi-Fi Only Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Download over Wi-Fi only", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                Text("Prevent downloads over cellular mobile data", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            }
+                            Switch(
+                                checked = smartConfig.wifiOnly,
+                                onCheckedChange = { smartPrefs.setWifiOnly(it) },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = CrimsonRed)
+                            )
+                        }
+
+                        // Charging Only Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Download only while charging", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                Text("Conserve battery by downloading while plugged in", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            }
+                            Switch(
+                                checked = smartConfig.requiresCharging,
+                                onCheckedChange = { smartPrefs.setRequiresCharging(it) },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = CrimsonRed)
+                            )
+                        }
+
+                        HorizontalDivider(color = SurfaceBorder)
+
+                        // Storage Breakdown Meter
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Device Storage Breakdown",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary
+                            )
+
+                            // Multi-color storage meter
+                            val smartFraction = (smartBytes.toFloat() / totalDeviceBytes.toFloat()).coerceIn(0.01f, 1f)
+                            val manualFraction = (manualBytes.toFloat() / totalDeviceBytes.toFloat()).coerceIn(0.01f, 1f)
+                            val freeFraction = (usableDeviceBytes.toFloat() / totalDeviceBytes.toFloat()).coerceIn(0.01f, 1f)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(10.dp)
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(Color(0xFF2A2A38))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(smartFraction.coerceAtLeast(0.05f))
+                                        .fillMaxHeight()
+                                        .background(CrimsonRed)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .weight(manualFraction.coerceAtLeast(0.03f))
+                                        .fillMaxHeight()
+                                        .background(Color(0xFF388E3C))
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .weight(freeFraction.coerceAtLeast(0.2f))
+                                        .fillMaxHeight()
+                                        .background(Color(0xFF1E88E5))
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(modifier = Modifier.size(8.dp).background(CrimsonRed, CircleShape))
+                                    Text("Smart: ${formatBytes(smartBytes)}", fontSize = 11.sp, color = TextSecondary)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(modifier = Modifier.size(8.dp).background(Color(0xFF388E3C), CircleShape))
+                                    Text("Manual: ${formatBytes(manualBytes)}", fontSize = 11.sp, color = TextSecondary)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(modifier = Modifier.size(8.dp).background(Color(0xFF1E88E5), CircleShape))
+                                    Text("Free: ${formatBytes(usableDeviceBytes)}", fontSize = 11.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = SurfaceBorder)
+
+                        // Action Buttons (Sync, Clear Smart, Clear All)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    SmartDownloadScheduler.triggerImmediateSync(context)
+                                    android.widget.Toast.makeText(context, "Triggered smart downloads background sync", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = SurfaceElevated)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Default.Sync, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                                    Text("Sync Smart Downloads Now", color = TextPrimary)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val freed = offlineStorage.clearSmartDownloadsOnly()
+                                        refreshStorage()
+                                        android.widget.Toast.makeText(context, "Removed $freed smart downloads", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                                ) {
+                                    Text("Clear Smart", fontSize = 11.sp)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        val freed = offlineStorage.clearAllDownloads()
+                                        refreshStorage()
+                                        android.widget.Toast.makeText(context, "Cleared all $freed downloads", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = BrightRed)
+                                ) {
+                                    Text("Delete All", fontSize = 11.sp, color = BrightRed)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // 4. In-App Updates & App Info
+        // 5. System & Updates Section
         item {
             Text(
                 text = "System & Updates",
@@ -197,11 +422,10 @@ fun SettingsScreen(
         }
 
         item {
-            val context = androidx.compose.ui.platform.LocalContext.current
             val installedVersionText = remember {
                 try {
                     val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                    val vName = pInfo.versionName ?: "3.1.0"
+                    val vName = pInfo.versionName ?: "3.16.0"
                     val vCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                         pInfo.longVersionCode
                     } else {
@@ -210,7 +434,7 @@ fun SettingsScreen(
                     }
                     "Version $vName (Build $vCode)"
                 } catch (e: Exception) {
-                    "Version 3.1.0 (Build 301)"
+                    "Version 3.16.0 (Build 321)"
                 }
             }
 
@@ -236,7 +460,7 @@ fun SettingsScreen(
                                         border = androidx.compose.foundation.BorderStroke(1.dp, CrimsonRed)
                                     ) {
                                         Text(
-                                            "v${updateState.latestVersion ?: "3.3.0"}",
+                                            "v${updateState.latestVersion ?: "3.16.0"}",
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                             color = CrimsonRed,
                                             fontSize = 10.sp,
@@ -248,100 +472,65 @@ fun SettingsScreen(
                             Text(installedVersionText, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
 
-                        Button(
-                            onClick = {
-                                if (updateState.isUpdateAvailable) {
-                                    updateViewModel.startDownloadAndInstall()
-                                } else {
-                                    updateViewModel.checkForUpdate(isUserInitiated = true)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
-                            enabled = !updateState.isChecking && !updateState.isDownloading
+                        IconButton(
+                            onClick = { updateViewModel.checkForUpdate(isUserInitiated = true) },
+                            modifier = Modifier.size(36.dp)
                         ) {
                             if (updateState.isChecking) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else if (updateState.isDownloading) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(6.dp))
-                                Text("${(updateState.downloadProgress * 100).toInt()}%", fontSize = 12.sp)
-                            } else if (updateState.isUpdateAvailable) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Install Update", fontSize = 12.sp)
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = CrimsonRed, strokeWidth = 2.dp)
                             } else {
-                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Check Update", fontSize = 12.sp)
+                                Icon(Icons.Default.Refresh, contentDescription = "Check for Updates", tint = TextSecondary)
                             }
                         }
                     }
 
-                    if (updateState.isDownloading) {
-                        LinearProgressIndicator(
-                            progress = { updateState.downloadProgress },
-                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                            color = CrimsonRed,
-                            trackColor = SurfaceDark
-                        )
-                    }
-
-                    if (updateState.isUpdateAvailable && !updateState.isDownloading) {
-                        Text(
-                            text = "🎉 A new version (v${updateState.latestVersion}) is ready with background fixes and cloud sync! Tap 'Install Update' to upgrade instantly.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AccentGreen
-                        )
-                    }
-
-                    if (updateState.statusMessage != null) {
-                        Text(
-                            text = updateState.statusMessage!!,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = AccentGreen
-                        )
-                    }
-
-                    if (updateState.errorMessage != null) {
-                        Text(
-                            text = updateState.errorMessage!!,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = BrightRed
-                        )
+                    if (updateState.isUpdateAvailable) {
+                        Button(
+                            onClick = { updateViewModel.startDownloadAndInstall() },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)
+                        ) {
+                            Text("Download & Install Update", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
         }
     }
 
-    // Callout Name Dialog
+    if (showEqualizerSheet && playerViewModel != null) {
+        val equalizerState by playerViewModel.equalizerState.collectAsState()
+        val dynamicThemeColor by playerViewModel.dynamicThemeColor.collectAsState()
+
+        EqualizerSheet(
+            equalizerState = equalizerState,
+            accentColor = dynamicThemeColor,
+            onEnabledChange = { playerViewModel.setEqualizerEnabled(it) },
+            onPresetSelect = { playerViewModel.setEqualizerPreset(it) },
+            onBandGainChange = { band, gain -> playerViewModel.setEqualizerBandGain(band, gain) },
+            onBassBoostChange = { playerViewModel.setBassBoost(it) },
+            onVirtualizerChange = { playerViewModel.setVirtualizer(it) },
+            onReset = { playerViewModel.resetEqualizer() },
+            onDismiss = { showEqualizerSheet = false }
+        )
+    }
+
     if (showNameDialog) {
         AlertDialog(
             onDismissRequest = { showNameDialog = false },
-            title = { Text("Set Preferred Callout Name", style = MaterialTheme.typography.titleMedium) },
+            title = { Text("Set Callout Name", color = TextPrimary) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "How should MRJ Music address you on the dashboard?",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
-                    OutlinedTextField(
-                        value = preferredNameInput,
-                        onValueChange = { preferredNameInput = it },
-                        placeholder = { Text("e.g. Shivam") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = CrimsonRed,
-                            unfocusedBorderColor = SurfaceBorder
-                        )
-                    )
-                }
+                OutlinedTextField(
+                    value = preferredNameInput,
+                    onValueChange = { preferredNameInput = it },
+                    label = { Text("Your Preferred Name") },
+                    singleLine = true
+                )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        authViewModel.updatePreferredName(preferredNameInput)
+                        authViewModel.updatePreferredName(preferredNameInput.trim())
                         showNameDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)
@@ -354,24 +543,7 @@ fun SettingsScreen(
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = SurfaceElevated
-        )
-    }
-
-    if (showEqualizerSheet) {
-        val effectManager = remember { com.mrj.music.audiofx.MRJAudioEffectManager.getInstance(context) }
-        val eqState by effectManager.equalizerState.collectAsState()
-
-        EqualizerSheet(
-            equalizerState = eqState,
-            accentColor = CrimsonRed,
-            onEnabledChange = { effectManager.setEnabled(it) },
-            onPresetSelect = { effectManager.setPreset(it) },
-            onBandGainChange = { band, gain -> effectManager.setBandGain(band, gain) },
-            onBassBoostChange = { effectManager.setBassBoost(it) },
-            onVirtualizerChange = { effectManager.setVirtualizer(it) },
-            onReset = { effectManager.resetToFlat() },
-            onDismiss = { showEqualizerSheet = false }
+            containerColor = SurfaceDark
         )
     }
 }
@@ -386,15 +558,45 @@ fun SettingRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = CrimsonRed, modifier = Modifier.size(24.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = CrimsonRed,
+            modifier = Modifier.size(24.dp)
+        )
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
         }
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted)
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = TextMuted,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0) return "0 MB"
+    val mb = bytes.toDouble() / (1024 * 1024)
+    return if (mb >= 1024) {
+        String.format("%.1f GB", mb / 1024)
+    } else {
+        String.format("%.0f MB", mb)
     }
 }

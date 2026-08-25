@@ -13,6 +13,13 @@ import retrofit2.http.Query
 interface MRJApiService {
 
     // ==================== DISCOVERY & CHARTS ====================
+    @GET("api/home/dashboard")
+    suspend fun getDashboard(
+        @Header("Authorization") authHeader: String? = null,
+        @Query("country") country: String = "IN",
+        @Query("localHour") localHour: Int? = null
+    ): Response<Map<String, Any>>
+
     @GET("api/recommendations/home")
     suspend fun getPersonalizedHome(
         @Query("region") region: String = "IN",
@@ -63,7 +70,46 @@ interface MRJApiService {
         @Header("Authorization") authHeader: String? = null
     ): Response<Map<String, Any>>
 
+    // ==================== DEEP ML & VIRAL RECOMMENDATIONS ====================
+    @POST("api/recommendations/dynamic-queue")
+    suspend fun getDynamicQueue(
+        @Header("Authorization") authHeader: String? = null,
+        @Body body: Map<String, @JvmSuppressWildcards Any?>
+    ): Response<Map<String, Any>>
+
+    @GET("api/recommendations/daily-mixes")
+    suspend fun getDailyMixes(
+        @Header("Authorization") authHeader: String? = null,
+        @Query("country") country: String = "IN"
+    ): Response<Map<String, Any>>
+
+    @GET("api/recommendations/viral-reels")
+    suspend fun getViralReels(
+        @Query("country") country: String = "IN",
+        @Query("limit") limit: Int = 20
+    ): Response<Map<String, Any>>
+
     // ==================== SEARCH & SUGGESTIONS ====================
+    @GET("api/search/predictive")
+    suspend fun getPredictiveSearch(
+        @Header("Authorization") authHeader: String? = null,
+        @Query("q") query: String,
+        @Query("country") country: String = "IN"
+    ): Response<Map<String, Any>>
+
+    @GET("api/search/trending-keywords")
+    suspend fun getTrendingKeywords(
+        @Query("country") country: String = "IN"
+    ): Response<Map<String, Any>>
+
+    @GET("api/search/categorized")
+    suspend fun getCategorizedSearch(
+        @Header("Authorization") authHeader: String? = null,
+        @Query("q") query: String,
+        @Query("category") category: String = "all",
+        @Query("country") country: String = "IN"
+    ): Response<Map<String, Any>>
+
     @GET("api/music/search")
     suspend fun search(
         @Query("q") query: String,

@@ -9,6 +9,9 @@ import { runMigrations } from '../server/db/migrate.js';
 import { chartService } from '../server/charts/chartService.js';
 import { cloudRecommendationService } from '../server/recommendations/cloudRecommendationService.js';
 import { nextTrackService } from '../server/recommendations/nextTrackService.js';
+import { mlIntelligenceEngine } from '../server/recommendations/mlIntelligenceEngine.js';
+import { viralTrendService } from '../server/recommendations/viralTrendService.js';
+import { predictiveSearchEngine } from '../server/recommendations/predictiveSearchEngine.js';
 import { searchSuggestionService } from '../server/catalog/searchSuggestionService.js';
 import { trackIdentityManager } from '../server/catalog/trackIdentityManager.js';
 import { musicProvider } from '../server/providers/musicProvider.js';
@@ -52,24 +55,27 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
   next();
 };
 
-// Web & Android Version Check — returns latest version 3.14.0 with direct APK link
+// Web & Android Version Check — returns latest version 3.17.0 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.14.0',
-    build: '319',
-    updatedAt: '2026-08-25T00:00:00Z',
-    latestVersion: '3.14.0',
+    version: '3.17.0',
+    build: '322',
+    updatedAt: '2026-08-26T00:00:00Z',
+    latestVersion: '3.17.0',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
-    apkFileName: 'mrj-music-v3.14.0.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
-    title: 'MRJ Music v3.14.0 Track Action Sheet & Native Share',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
+    apkFileName: 'mrj-music-v3.17.0.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
+    fileSize: '111 MB',
+    fileSizeBytes: 116703707,
+    sha256: '391ef328e35fbba19b544faea65247b366d3c98e3fb5d7fbd22ddcf81ea22de4',
+    title: 'MRJ Music v3.17.0 Smart Downloads, AI Up Next Queue & Fuzzy Search',
     changelog: [
-      '✨ 3-Dot Track Action Bottom Sheet (Play Next, Add to Queue, Add to Playlist, Artist Profile, Song Radio)',
-      '📲 Native Android Share Integration (Share tracks directly to WhatsApp, Instagram, Telegram, etc.)',
-      '💿 Circular Vinyl Turntable Player with smooth spinning rotation',
-      '⭕ Circular Arc Progress Ring with glowing scrubber indicator dot',
-      '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
+      '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
+      '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
+      '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
+      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
+      '🎨 Dynamic Palette Morphing Player & 4-Way Swipe Player Gestures'
     ]
   });
 });
@@ -79,30 +85,30 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.14.0',
-      build: '319',
-      updatedAt: '2026-08-25T00:00:00Z',
+      version: '3.17.0',
+      build: '322',
+      updatedAt: '2026-08-26T00:00:00Z',
     },
     android: {
-      versionName: '3.14.0',
-      versionCode: 319,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
-      apkFileName: 'mrj-music-v3.14.0.apk',
+      versionName: '3.17.0',
+      versionCode: 322,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
+      apkFileName: 'mrj-music-v3.17.0.apk',
       fileSize: '111 MB',
-      fileSizeBytes: 116386039,
+      fileSizeBytes: 116703707,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
-      sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
+      sha256: '391ef328e35fbba19b544faea65247b366d3c98e3fb5d7fbd22ddcf81ea22de4',
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '✨ 3-Dot Track Action Bottom Sheet (Play Next, Add to Queue, Add to Playlist, Artist Profile, Song Radio)',
-        '📲 Native Android Share Integration (Share tracks directly to WhatsApp, Instagram, Telegram, etc.)',
-        '💿 Circular Vinyl Turntable Player with smooth spinning rotation',
-        '⭕ Circular Arc Progress Ring with glowing scrubber indicator dot',
-        '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
+        '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
+        '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
+        '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
+        '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
+        '🎨 Dynamic Palette Morphing Player & 4-Way Swipe Player Gestures'
       ],
-      releaseDate: '2026-08-25',
+      releaseDate: '2026-08-26',
       isMandatory: false,
     },
   });
@@ -112,8 +118,8 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.16.0';
-  const latestVersionCode = 321;
+  const latestVersion = '3.17.0';
+  const latestVersionCode = 322;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -123,20 +129,20 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     currentVersion: clientVersion,
     latestVersion,
     versionCode: latestVersionCode,
-    releaseDate: '2026-08-25',
-    title: 'MRJ Music v3.16.0 Equalizer, Dynamic Palette & Player Gestures',
+    releaseDate: '2026-08-26',
+    title: 'MRJ Music v3.17.0 Smart Downloads, AI Up Next Queue & Fuzzy Search',
     changelog: [
-      '🎛️ Native 5-Band Audio Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
-      '🎨 Dynamic Palette Theming (automatically morphs player ambient glow & waveform colors to album artwork)',
-      '👆 4-Way Swipe Gestures on Full-Screen Player (Swipe Right: Next, Left: Prev, Up: Auto Queue, Down: Minimize)',
-      '🔍 Real-Time Search Suggestions & Instant Results Engine',
-      '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
+      '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
+      '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
+      '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
+      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
+      '🎨 Dynamic Palette Morphing Player & 4-Way Swipe Player Gestures'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.16.0/mrj-music-v3.16.0.apk',
-    apkFileName: 'mrj-music-v3.16.0.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
+    apkFileName: 'mrj-music-v3.17.0.apk',
     fileSize: '111 MB',
-    fileSizeBytes: 116602050,
-    sha256: 'd5818fd85993755c4a6f9ccc82c543c2745f02a2242d5bdbaf869246efbe9afa',
+    fileSizeBytes: 116703707,
+    sha256: '391ef328e35fbba19b544faea65247b366d3c98e3fb5d7fbd22ddcf81ea22de4',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
@@ -361,12 +367,79 @@ app.get(['/api/charts/category/:categoryId', '/charts/category/:categoryId'], op
 });
 
 // 3. Recommendation Routes
-app.get(['/api/recommendations/home', '/recommendations/home', '/api/music/personalized-home', '/music/personalized-home'], optionalAuth, async (req, res) => {
+app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/home', '/api/music/personalized-home', '/music/personalized-home'], optionalAuth, async (req, res) => {
   try {
-    const userId = req.user ? req.user.id : null;
-    const region = req.query.region || 'IN';
-    const homeData = await cloudRecommendationService.getPersonalizedHome(userId, region);
-    res.json({ status: 'success', ...homeData });
+    const userId = req.user ? req.user.id : req.query.userId || null;
+    const country = req.query.country || req.headers['x-country-code'] || 'IN';
+    const localHour = req.query.localHour !== undefined ? Number(req.query.localHour) : new Date().getHours();
+
+    let greeting = 'Welcome to MRJ Music';
+    let circadianTitle = 'Late Night Vibes';
+    let circadianSubtitle = 'Calm Lo-Fi & Midnight Chill';
+    if (localHour >= 5 && localHour < 12) {
+      greeting = 'Good morning';
+      circadianTitle = 'Morning Focus & Acoustic';
+      circadianSubtitle = 'Fresh tunes to kickstart your day';
+    } else if (localHour >= 12 && localHour < 17) {
+      greeting = 'Good afternoon';
+      circadianTitle = 'Afternoon Energy & Hits';
+      circadianSubtitle = 'Upbeat rhythm for your workday & drive';
+    } else if (localHour >= 17 && localHour < 22) {
+      greeting = 'Good evening';
+      circadianTitle = 'Evening Groove & Hits';
+      circadianSubtitle = 'Party, pop & high-energy beats';
+    }
+
+    const [dailyMixesRes, viralReels, charts, userProfile, userLiked, userHistory] = await Promise.all([
+      mlIntelligenceEngine.generateDailyMixes(userId, country),
+      viralTrendService.getViralReelsTracks(country, 15),
+      chartService.getTrending(country),
+      userId ? db.getUserById(userId) : Promise.resolve(null),
+      userId ? db.getLikedTracks(userId) : Promise.resolve([]),
+      userId ? db.getUserHistory(userId) : Promise.resolve([]),
+    ]);
+
+    const combinedRaw = [
+      ...userLiked,
+      ...userHistory,
+      ...(charts.tracks || []),
+    ];
+    const uniqueQuickPicks = [];
+    const seenQuick = new Set();
+    for (const t of combinedRaw) {
+      if (!t || !t.id || seenQuick.has(t.id)) continue;
+      seenQuick.add(t.id);
+      uniqueQuickPicks.push(t);
+      if (uniqueQuickPicks.length >= 8) break;
+    }
+
+    const artists = [
+      { id: '1', name: 'Arijit Singh', category: 'Bollywood', followerCount: '45M+ Fans', image: 'https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg' },
+      { id: '2', name: 'Karan Aujla', category: 'Punjabi', followerCount: '18M+ Fans', image: 'https://c.saavncdn.com/artists/Karan_Aujla_003_20230622081014_500x500.jpg' },
+      { id: '3', name: 'Diljit Dosanjh', category: 'Punjabi', followerCount: '24M+ Fans', image: 'https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20221007180447_500x500.jpg' },
+      { id: '4', name: 'Shreya Ghoshal', category: 'Bollywood', followerCount: '30M+ Fans', image: 'https://c.saavncdn.com/artists/Shreya_Ghoshal_003_20221118090547_500x500.jpg' },
+      { id: '5', name: 'Sidhu Moose Wala', category: 'Punjabi Legend', followerCount: '28M+ Fans', image: 'https://c.saavncdn.com/artists/Sidhu_Moose_Wala_003_20230613093228_500x500.jpg' },
+      { id: '6', name: 'The Weeknd', category: 'Global Pop', followerCount: '110M+ Fans', image: 'https://i.scdn.co/image/ab6761610000e5eb214f3cf1cbe7139c1e26ffbb' },
+      { id: '7', name: 'Taylor Swift', category: 'Global Pop', followerCount: '115M+ Fans', image: 'https://i.scdn.co/image/ab6761610000e5eb5a00969a4698c3132a15fbb0' },
+      { id: '8', name: 'Anirudh Ravichander', category: 'South Mass', followerCount: '16M+ Fans', image: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20230914101416_500x500.jpg' },
+    ];
+
+    res.json({
+      status: 'success',
+      greeting,
+      userName: userProfile?.name || 'Listener',
+      userAvatar: userProfile?.avatar || null,
+      userEmail: userProfile?.email || null,
+      circadianSection: {
+        title: circadianTitle,
+        subtitle: circadianSubtitle,
+        tracks: (charts.tracks || []).slice(0, 10),
+      },
+      quickPicks: uniqueQuickPicks,
+      dailyMixes: dailyMixesRes.dailyMixes || [],
+      viralReels: viralReels || [],
+      trendingArtists: artists,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -470,6 +543,105 @@ app.get(['/api/recommendations/mood/:mood', '/recommendations/mood/:mood'], opti
     res.status(500).json({ error: err.message });
   }
 });
+
+// ==================== DEEP ML DYNAMIC QUEUE & PERSONALIZATION ====================
+
+// 1. Real-Time Dynamic Autoplay Queue (20-30 Acoustically Harmonized Transition Tracks)
+app.post(['/api/recommendations/dynamic-queue', '/recommendations/dynamic-queue'], optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const {
+      currentTrack,
+      playedTrackIds,
+      currentQueueIds,
+      countryCode,
+      localHour,
+      sessionId,
+      isEarlySkip,
+    } = req.body;
+
+    const queueData = await mlIntelligenceEngine.generateDynamicQueue(userId, {
+      currentTrack,
+      playedTrackIds,
+      currentQueueIds,
+      countryCode: countryCode || req.headers['x-country-code'] || 'IN',
+      localHour: localHour !== undefined ? Number(localHour) : null,
+      sessionId,
+      isEarlySkip: !!isEarlySkip,
+    });
+
+    res.json(queueData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. AI Daily Mixes (4 Clustered Personalized Mixes)
+app.get(['/api/recommendations/daily-mixes', '/recommendations/daily-mixes'], optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    const countryCode = req.query.country || req.headers['x-country-code'] || 'IN';
+    const mixes = await mlIntelligenceEngine.generateDailyMixes(userId, countryCode);
+    res.json(mixes);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Viral Reels & Social Trending Sounds
+app.get(['/api/recommendations/viral-reels', '/recommendations/viral-reels'], async (req, res) => {
+  try {
+    const countryCode = req.query.country || req.headers['x-country-code'] || 'IN';
+    const limit = Number(req.query.limit) || 20;
+    const tracks = await viralTrendService.getViralReelsTracks(countryCode, limit);
+    res.json({ status: 'success', country: countryCode, count: tracks.length, tracks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 4. PREDICTIVE SEARCH & NEXT-KEY INTENT ENGINE
+// ==========================================
+
+app.get('/api/search/predictive', optionalAuth, async (req, res) => {
+  try {
+    const query = req.query.q || '';
+    const country = req.query.country || req.headers['x-country-code'] || 'IN';
+    const userId = req.user ? req.user.id : req.query.userId || null;
+    const results = await predictiveSearchEngine.predictIntent(query, country, userId);
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/search/trending-keywords', async (req, res) => {
+  try {
+    const country = req.query.country || req.headers['x-country-code'] || 'IN';
+    const keywords = predictiveSearchEngine.getTrendingKeywords(country);
+    res.json({ status: 'success', country, keywords });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/search/categorized', optionalAuth, async (req, res) => {
+  try {
+    const query = req.query.q || '';
+    const category = req.query.category || 'all';
+    const country = req.query.country || req.headers['x-country-code'] || 'IN';
+    const userId = req.user ? req.user.id : req.query.userId || null;
+    const results = await predictiveSearchEngine.searchCategorized(query, category, country, userId);
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 5. SEARCH SUGGESTIONS & SEARCH HISTORY
+// ==========================================
 
 // 4. Search Suggestions & Search History
 app.get(['/api/music/suggestions', '/music/suggestions'], optionalAuth, async (req, res) => {

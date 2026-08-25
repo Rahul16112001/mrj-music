@@ -13,16 +13,32 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+data class TopPrediction(
+    val type: String, // "artist" or "song"
+    val title: String,
+    val subtitle: String,
+    val thumbnail: String?,
+    val category: String? = null,
+    val track: NativeTrack? = null,
+    val matchedLyrics: String? = null
+)
+
 data class SearchUiState(
     val query: String = "",
+    val correctedQuery: String? = null,
+    val isTypoCorrected: Boolean = false,
     val isLoading: Boolean = false,
+    val isSuggestionSubmitted: Boolean = false,
+    val topPrediction: TopPrediction? = null,
+    val trendingKeywords: List<String> = emptyList(),
+    val suggestions: List<String> = emptyList(),
+    val instantSongs: List<NativeTrack> = emptyList(),
     val songs: List<NativeTrack> = emptyList(),
     val artists: List<Map<String, Any>> = emptyList(),
     val albums: List<Map<String, Any>> = emptyList(),
-    val suggestions: List<String> = emptyList(),
-    val suggestedSongs: List<NativeTrack> = emptyList(),
+    val playlists: List<Map<String, Any>> = emptyList(),
     val activeCategory: String = "All",
-    val recentSearches: List<String> = listOf("Arijit Singh", "Diljit Dosanjh", "Lo-Fi Beats", "Sidhu Moose Wala", "Bollywood Hits"),
+    val recentSearches: List<String> = listOf("Arijit Singh", "Diljit Dosanjh", "Karan Aujla", "Tauba Tauba", "Lo-Fi Beats"),
     val errorMessage: String? = null
 )
 
@@ -33,10 +49,40 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
-    private var suggestionsJob: Job? = null
+    private var predictiveJob: Job? = null
 
     init {
         loadSearchHistory()
+        loadTrendingKeywords()
+    }
+
+    private fun loadTrendingKeywords() {
+        viewModelScope.launch {
+            val defaultKeywords = listOf(
+                "Tauba Tauba",
+                "Arijit Singh",
+                "Karan Aujla",
+                "Apna Bana Le",
+                "Stree 2 Songs",
+                "Diljit Dosanjh",
+                "Aaj Ki Raat",
+                "Maan Meri Jaan",
+                "Sidhu Moose Wala",
+                "Lo-Fi Bollywood"
+            )
+            _uiState.value = _uiState.value.copy(trendingKeywords = defaultKeywords)
+
+            try {
+                val country = java.util.Locale.getDefault().country.ifBlank { "IN" }
+                val res = MRJApiClient.apiService.getTrendingKeywords(country)
+                if (res.isSuccessful && res.body() != null) {
+                    val list = (res.body()!!["keywords"] as? List<String>) ?: emptyList()
+                    if (list.isNotEmpty()) {
+                        _uiState.value = _uiState.value.copy(trendingKeywords = list)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     private fun loadSearchHistory() {
@@ -57,68 +103,114 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onQueryChange(newQuery: String) {
-        _uiState.value = _uiState.value.copy(query = newQuery)
+        _uiState.value = _uiState.value.copy(
+            query = newQuery,
+            isSuggestionSubmitted = false // Reset submission state when typing
+        )
         searchJob?.cancel()
-        suggestionsJob?.cancel()
+        predictiveJob?.cancel()
 
         if (newQuery.isBlank()) {
             _uiState.value = _uiState.value.copy(
+                correctedQuery = null,
+                isTypoCorrected = false,
                 songs = emptyList(),
+                artists = emptyList(),
+                albums = emptyList(),
+                playlists = emptyList(),
                 suggestions = emptyList(),
-                suggestedSongs = emptyList(),
+                instantSongs = emptyList(),
+                topPrediction = null,
                 isLoading = false
             )
             return
         }
 
-        val trimmed = newQuery.trim()
-        val instantFallback = listOf(
-            trimmed,
-            "$trimmed song",
-            "$trimmed songs",
-            "$trimmed lyrics",
-            "$trimmed live",
-            "$trimmed remix"
-        )
+        // 1. Process query with high-precision AI/ML fuzzy matching
+        val fuzzyResult = com.mrj.music.search.FuzzySearchEngine.processQuery(newQuery)
+
         _uiState.value = _uiState.value.copy(
-            suggestions = instantFallback
+            suggestions = fuzzyResult.suggestions,
+            topPrediction = fuzzyResult.topPrediction,
+            instantSongs = fuzzyResult.instantSongs,
+            correctedQuery = fuzzyResult.correctedQuery,
+            isTypoCorrected = fuzzyResult.isTypoCorrected
         )
 
-        // Fast instant suggestions from backend (100ms)
-        suggestionsJob = viewModelScope.launch {
-            delay(100)
-            fetchSuggestions(newQuery)
+        val effectiveQuery = fuzzyResult.correctedQuery ?: newQuery
+
+        // 2. Fetch server predictive suggestions
+        predictiveJob = viewModelScope.launch {
+            delay(150)
+            fetchPredictiveSearch(effectiveQuery)
         }
 
-        // Full search debounce (350ms)
+        // 3. Full search debounce (350ms)
         searchJob = viewModelScope.launch {
             delay(350)
-            performSearch(newQuery)
+            performSearch(effectiveQuery)
         }
     }
 
     fun onSuggestionClick(suggestion: String) {
-        _uiState.value = _uiState.value.copy(query = suggestion)
+        _uiState.value = _uiState.value.copy(
+            query = suggestion,
+            isSuggestionSubmitted = true // Collapses suggestions list
+        )
         searchJob?.cancel()
-        suggestionsJob?.cancel()
+        predictiveJob?.cancel()
         performSearch(suggestion)
     }
 
-    private suspend fun fetchSuggestions(query: String) {
+    fun onSearchSubmit(query: String) {
+        if (query.isBlank()) return
+        _uiState.value = _uiState.value.copy(
+            query = query,
+            isSuggestionSubmitted = true // Collapses suggestions list
+        )
+        searchJob?.cancel()
+        predictiveJob?.cancel()
+        performSearch(query)
+    }
+
+    private suspend fun fetchPredictiveSearch(query: String) {
         try {
-            val res = MRJApiClient.apiService.getSuggestions(query.trim())
+            val token = secureStorage.getAccessToken()
+            val authHeader = if (token != null) "Bearer $token" else null
+            val country = java.util.Locale.getDefault().country.ifBlank { "IN" }
+
+            val res = MRJApiClient.apiService.getPredictiveSearch(authHeader, query.trim(), country)
             if (res.isSuccessful && res.body() != null) {
                 val body = res.body()!!
                 val suggestionsList = (body["suggestions"] as? List<String>) ?: emptyList()
-                val songsListRaw = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
-                val suggestedParsed = songsListRaw.mapNotNull { parseTrack(it) }
+                val instantRaw = (body["instantSongs"] as? List<Map<String, Any>>) ?: emptyList()
+                val parsedInstant = instantRaw.mapNotNull { parseTrack(it) }
 
-                if (suggestionsList.isNotEmpty()) {
-                    _uiState.value = _uiState.value.copy(
-                        suggestions = suggestionsList,
-                        suggestedSongs = suggestedParsed
+                var topPred: TopPrediction? = null
+                val rawPred = body["topPrediction"] as? Map<String, Any>
+                if (rawPred != null) {
+                    val pType = rawPred["type"] as? String ?: "artist"
+                    val pTitle = rawPred["title"] as? String ?: ""
+                    val pSubtitle = rawPred["subtitle"] as? String ?: ""
+                    val pThumb = rawPred["thumbnail"] as? String
+                    val pCategory = rawPred["category"] as? String
+                    val trackObj = if (pType == "song") parseTrack(rawPred) else null
+
+                    topPred = TopPrediction(
+                        type = pType,
+                        title = pTitle,
+                        subtitle = pSubtitle,
+                        thumbnail = pThumb,
+                        category = pCategory,
+                        track = trackObj
                     )
                 }
+
+                _uiState.value = _uiState.value.copy(
+                    suggestions = if (suggestionsList.isNotEmpty()) suggestionsList else _uiState.value.suggestions,
+                    instantSongs = parsedInstant,
+                    topPrediction = topPred ?: _uiState.value.topPrediction
+                )
             }
         } catch (_: Exception) {}
     }
@@ -137,39 +229,63 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             try {
-                val searchType = when (_uiState.value.activeCategory) {
+                val token = secureStorage.getAccessToken()
+                val authHeader = if (token != null) "Bearer $token" else null
+                val country = java.util.Locale.getDefault().country.ifBlank { "IN" }
+                val searchCategory = when (_uiState.value.activeCategory) {
                     "Songs" -> "songs"
-                    "Videos" -> "videos"
                     "Artists" -> "artists"
                     "Albums" -> "albums"
+                    "Playlists" -> "playlists"
                     else -> "all"
                 }
 
-                val res = MRJApiClient.apiService.search(query = query.trim(), type = searchType)
+                val res = MRJApiClient.apiService.getCategorizedSearch(
+                    authHeader = authHeader,
+                    query = query.trim(),
+                    category = searchCategory,
+                    country = country
+                )
+
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     val rawSongs = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
-                    val rawVideos = (body["videos"] as? List<Map<String, Any>>) ?: emptyList()
-                    val rawResults = (body["results"] as? List<Map<String, Any>>) ?: emptyList()
                     val rawArtists = (body["artists"] as? List<Map<String, Any>>) ?: emptyList()
                     val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
+                    val rawPlaylists = (body["playlists"] as? List<Map<String, Any>>) ?: emptyList()
 
-                    val allRaw = (rawSongs + rawVideos + rawResults).distinctBy {
-                        (it["id"] as? String) ?: (it["providerTrackId"] as? String) ?: ""
-                    }
-                    val parsed = allRaw.mapNotNull { parseTrack(it) }
+                    val parsedSongs = rawSongs.mapNotNull { parseTrack(it) }
 
                     _uiState.value = _uiState.value.copy(
-                        songs = parsed,
+                        songs = parsedSongs,
                         artists = rawArtists,
                         albums = rawAlbums,
+                        playlists = rawPlaylists,
                         isLoading = false
                     )
 
-                    // Record in recent searches
                     saveRecentSearch(query.trim())
                 } else {
-                    _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = "No results found.")
+                    // Fallback to legacy search endpoint if categorized endpoint unavailable
+                    val legacyRes = MRJApiClient.apiService.search(query = query.trim(), type = searchCategory)
+                    if (legacyRes.isSuccessful && legacyRes.body() != null) {
+                        val body = legacyRes.body()!!
+                        val rawSongs = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
+                        val rawArtists = (body["artists"] as? List<Map<String, Any>>) ?: emptyList()
+                        val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
+                        val rawPlaylists = (body["playlists"] as? List<Map<String, Any>>) ?: emptyList()
+                        val parsedSongs = rawSongs.mapNotNull { parseTrack(it) }
+
+                        _uiState.value = _uiState.value.copy(
+                            songs = parsedSongs,
+                            artists = rawArtists,
+                            albums = rawAlbums,
+                            playlists = rawPlaylists,
+                            isLoading = false
+                        )
+                    } else {
+                        _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = "No results found.")
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message ?: "Search failed.")

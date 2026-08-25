@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.gson.Gson
 import com.mrj.music.model.NativeTrack
 import com.mrj.music.storage.NativeOfflineStorage
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +18,9 @@ class SmartDownloadWorker(
 ) : CoroutineWorker(context, workerParams) {
 
     private val offlineStorage = NativeOfflineStorage.getInstance(context)
-    private val gson = Gson()
+    private val smartPrefs = SmartDownloadPreferences.getInstance(context)
+    private val predictor = SmartDownloadPredictor.getInstance(context)
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -27,100 +28,89 @@ class SmartDownloadWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            val maxStorageBytes = inputData.getLong("max_storage_bytes", 500L * 1024 * 1024)
-            val maxTracks = inputData.getInt("max_tracks", 25)
-
-            val currentDownloads = offlineStorage.getAllDownloadedTracks()
-            if (currentDownloads.size >= maxTracks) {
+            val config = smartPrefs.getConfig()
+            if (!config.isEnabled) {
+                Log.d(TAG, "Smart Downloads is disabled by user. Skipping sync.")
                 return@withContext Result.success()
             }
 
-            val currentStorage = offlineStorage.getStorageBreakdown()["totalBytes"] as? Long ?: 0L
-            if (currentStorage > maxStorageBytes) {
-                offlineStorage.evictLowestPrioritySmartDownloads(currentStorage - maxStorageBytes)
-            }
+            Log.d(TAG, "Starting Smart Downloads background sync (Quota: ${config.songCountQuota} songs)...")
 
-            val request = Request.Builder()
-                .url("https://mrj-music.vercel.app/api/music/personalized-home?region=IN")
-                .build()
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful || response.body == null) {
-                return@withContext Result.success()
-            }
-
-            val bodyStr = response.body!!.string()
-            val homeData = gson.fromJson(bodyStr, Map::class.java)
-            val personalized = homeData["personalized"] as? Map<*, *>
-            val quickPicks = (personalized?.get("quickPicks") as? List<Map<*, *>>) ?: emptyList()
-
-            var downloaded = 0
-            for (trackMap in quickPicks) {
-                if (downloaded >= maxTracks - currentDownloads.size) break
-
-                val trackId = trackMap["id"] as? String ?: continue
-                if (offlineStorage.getTrack(trackId) != null) continue
-
-                val title = trackMap["title"] as? String ?: continue
-                val artist = trackMap["artist"] as? String ?: continue
-                val thumbnail = trackMap["thumbnail"] as? String
-                val duration = (trackMap["duration"] as? Number)?.toDouble() ?: 0.0
-                val streamUrl = "https://mrj-music.vercel.app/api/music/stream/$trackId"
-
-                val nativeTrack = NativeTrack(
-                    id = trackId,
-                    title = title,
-                    artist = artist,
-                    album = trackMap["album"] as? String,
-                    thumbnail = thumbnail,
-                    duration = duration,
-                    genre = trackMap["genre"] as? String,
-                    providerTrackId = trackId,
-                    streamUrl = streamUrl,
-                    downloadType = "smart",
-                    priorityScore = 50.0
-                )
-
-                val success = downloadTrackDirectly(nativeTrack, streamUrl, "smart", 50.0, "recommendation")
-                if (success) {
-                    downloaded++
-                    Log.d(TAG, "Smart downloaded: $title - $artist")
+            // 1. Check if user reduced quota or storage is constrained; evict excess smart tracks
+            val currentSmartDownloads = offlineStorage.getSmartDownloads()
+            if (currentSmartDownloads.size > config.songCountQuota) {
+                val excess = currentSmartDownloads.size - config.songCountQuota
+                val sortedSmart = currentSmartDownloads.sortedBy { it.priorityScore }
+                for (i in 0 until excess) {
+                    offlineStorage.deleteTrack(sortedSmart[i].id)
+                    Log.d(TAG, "Evicted lowest-priority smart download: ${sortedSmart[i].title}")
                 }
             }
 
+            // 2. Fetch AI-predicted candidates up to remaining quota slots
+            val candidates = predictor.predictTracksToDownload(config.songCountQuota)
+            if (candidates.isEmpty()) {
+                Log.d(TAG, "No new candidate tracks to smart download. Sync complete.")
+                smartPrefs.setLastSyncTimestamp(System.currentTimeMillis())
+                return@withContext Result.success()
+            }
+
+            var successCount = 0
+            for (track in candidates) {
+                if (isStopped) {
+                    Log.w(TAG, "Worker stopped by OS constraint.")
+                    break
+                }
+
+                val streamUrl = track.streamUrl ?: "https://mrj-music.vercel.app/api/music/stream/${track.id}"
+                val downloaded = downloadAndSaveTrack(track, streamUrl)
+                if (downloaded) {
+                    successCount++
+                    Log.d(TAG, "Successfully smart-cached ($successCount/${candidates.size}): ${track.title} by ${track.artist}")
+                }
+            }
+
+            smartPrefs.setLastSyncTimestamp(System.currentTimeMillis())
+            Log.d(TAG, "Smart Downloads sync finished. Downloaded $successCount new tracks.")
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Smart download worker error: ${e.message}", e)
+            Log.e(TAG, "SmartDownloadWorker encountered error: ${e.message}", e)
             Result.retry()
         }
     }
 
-    private suspend fun downloadTrackDirectly(
-        track: NativeTrack,
-        streamUrl: String,
-        downloadType: String = "manual",
-        priorityScore: Double = 0.0,
-        category: String? = null
-    ): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun downloadAndSaveTrack(track: NativeTrack, streamUrl: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder().url(streamUrl).build()
-            val response = httpClient.newCall(request).execute()
+            val request = Request.Builder()
+                .url(streamUrl)
+                .addHeader("User-Agent", "MRJMusic/3.16.0 (Android; SmartDownloader)")
+                .build()
 
-            if (!response.isSuccessful || response.body == null) {
+            val response = httpClient.newCall(request).execute()
+            val body = response.body
+            if (!response.isSuccessful || body == null) {
+                Log.w(TAG, "Stream download failed with HTTP ${response.code} for: ${track.title}")
                 return@withContext false
             }
 
-            val inputStream = response.body!!.byteStream()
+            val contentType = body.contentType()?.toString() ?: ""
+            if (contentType.contains("text/html") || contentType.contains("application/json")) {
+                Log.w(TAG, "Server returned non-audio ($contentType) for: ${track.title}")
+                return@withContext false
+            }
+
+            val inputStream = body.byteStream()
             val savedTrack = offlineStorage.saveTrackAudio(
                 track = track,
                 inputStream = inputStream,
-                downloadType = downloadType,
-                priorityScore = priorityScore,
-                category = category
+                downloadType = "smart",
+                priorityScore = track.priorityScore,
+                category = track.downloadCategory ?: "recommendation"
             )
 
             return@withContext savedTrack != null
         } catch (e: Exception) {
-            Log.e(TAG, "Direct download error: ${e.message}", e)
+            Log.e(TAG, "Error downloading audio stream for ${track.title}: ${e.message}")
             return@withContext false
         }
     }

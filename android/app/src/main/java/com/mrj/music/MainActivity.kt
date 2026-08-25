@@ -21,8 +21,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        setTheme(R.style.AppTheme_NoActionBar)
         window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.parseColor("#030303")))
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
         enableEdgeToEdge()
 
         // Request POST_NOTIFICATIONS runtime permission on Android 13+ (API 33+)
@@ -43,6 +46,9 @@ class MainActivity : ComponentActivity() {
         } else {
             startService(serviceIntent)
         }
+
+        // Schedule Smart Downloads periodic sync (24h Wi-Fi/Charging)
+        com.mrj.music.smartdownload.SmartDownloadScheduler.schedulePeriodicSync(this)
 
         setContent {
             MRJMusicTheme {

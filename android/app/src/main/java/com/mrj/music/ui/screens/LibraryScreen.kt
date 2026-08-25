@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.mrj.music.model.NativeTrack
+import com.mrj.music.storage.NativeOfflineStorage
 import com.mrj.music.ui.theme.*
 import com.mrj.music.ui.viewmodel.LibraryViewModel
 import com.mrj.music.ui.viewmodel.PlayerViewModel
@@ -36,8 +38,10 @@ fun LibraryScreen(
     onPlaylistClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val uiState by libraryViewModel.uiState.collectAsState()
     val playlistUiState by playlistViewModel.uiState.collectAsState()
+    val offlineStorage = remember { NativeOfflineStorage.getInstance(context) }
 
     var selectedTab by remember { mutableStateOf(0) } // 0 = Playlists, 1 = Liked Songs, 2 = Downloaded
     val tabs = listOf(
@@ -46,9 +50,25 @@ fun LibraryScreen(
         "Downloaded (${uiState.offlineTracks.size})"
     )
 
+    var downloadSubFilter by remember { mutableStateOf("ALL") } // ALL, SMART, MANUAL
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistTitle by remember { mutableStateOf("") }
     var newPlaylistDesc by remember { mutableStateOf("") }
+
+    val smartTracks = remember(uiState.offlineTracks) {
+        uiState.offlineTracks.filter { it.downloadType == "smart" }
+    }
+    val manualTracks = remember(uiState.offlineTracks) {
+        uiState.offlineTracks.filter { it.downloadType != "smart" }
+    }
+
+    val displayedOfflineTracks = remember(downloadSubFilter, uiState.offlineTracks) {
+        when (downloadSubFilter) {
+            "SMART" -> smartTracks
+            "MANUAL" -> manualTracks
+            else -> uiState.offlineTracks
+        }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -101,9 +121,9 @@ fun LibraryScreen(
                         ) {
                             Text(
                                 text = title,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.sp
                                 ),
                                 color = if (isSelected) Color.White else TextSecondary,
                                 maxLines = 1,
@@ -117,44 +137,32 @@ fun LibraryScreen(
 
         // 3. TAB 0: PLAYLISTS
         if (selectedTab == 0) {
-            // "+ New Playlist" Quick Action Banner
             item {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 8.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable { showCreateDialog = true },
-                    color = CrimsonRed.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.3f))
+                    color = SurfaceElevated,
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        modifier = Modifier.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(CrimsonRed),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Create", tint = Color.White)
-                        }
-                        Column {
-                            Text(
-                                text = "Create New Playlist",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
-                            )
-                            Text(
-                                text = "Custom playlists synced to your cloud account",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.8f)
-                            )
-                        }
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "New Playlist",
+                            tint = CrimsonRed,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Text(
+                            text = "Create New Playlist",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = TextPrimary
+                        )
                     }
                 }
             }
@@ -164,44 +172,35 @@ fun LibraryScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(240.dp),
+                            .height(260.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(24.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                Icons.Default.QueueMusic,
-                                contentDescription = null,
-                                tint = CrimsonRed,
-                                modifier = Modifier.size(48.dp)
-                            )
                             Text(
-                                text = "No playlists created yet",
+                                text = "No playlists found",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Tap \"Create New Playlist\" above or use the add icon while listening to any song.",
+                                text = "Tap 'Create New Playlist' to curate your favorite music.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary,
-                                textAlign = TextAlign.Center
+                                color = TextSecondary
                             )
                         }
                     }
                 }
             } else {
-                items(playlistUiState.playlists, key = { it.id }) { playlist ->
+                items(playlistUiState.playlists) { playlist ->
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 4.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { onPlaylistClick(playlist.id) },
-                        color = SurfaceDark,
-                        shape = RoundedCornerShape(14.dp)
+                        color = SurfaceDark
                     ) {
                         Row(
                             modifier = Modifier
@@ -210,28 +209,17 @@ fun LibraryScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            if (!playlist.thumbnail.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = playlist.thumbnail,
-                                    contentDescription = playlist.title,
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(RoundedCornerShape(10.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(DeepDarkBg),
-                                    contentAlignment = Alignment.Center
-                                ) {
+                            Surface(
+                                modifier = Modifier.size(48.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                color = SurfaceElevated
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         Icons.Default.QueueMusic,
                                         contentDescription = null,
                                         tint = CrimsonRed,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(24.dp)
                                     )
                                 }
                             }
@@ -348,52 +336,50 @@ fun LibraryScreen(
                                 ) {
                                     Surface(
                                         modifier = Modifier.size(52.dp),
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(10.dp),
                                         color = CrimsonRed
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
-                                                imageVector = Icons.Default.Favorite,
+                                                Icons.Default.Favorite,
                                                 contentDescription = null,
                                                 tint = Color.White,
-                                                modifier = Modifier.size(26.dp)
+                                                modifier = Modifier.size(28.dp)
                                             )
                                         }
                                     }
 
                                     Column {
                                         Text(
-                                            text = "Favorite Tracks",
-                                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                                            text = "Auto Playlist",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.8f)
+                                        )
+                                        Text(
+                                            text = "Liked Songs",
+                                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
                                             color = Color.White
                                         )
                                         Text(
-                                            text = "${uiState.likedTracks.size} songs • Synced across devices",
+                                            text = "${uiState.likedTracks.size} tracks",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White.copy(alpha = 0.8f)
+                                            color = Color.White.copy(alpha = 0.7f)
                                         )
                                     }
                                 }
 
-                                Surface(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            if (uiState.likedTracks.isNotEmpty()) {
-                                                playerViewModel.playTrack(uiState.likedTracks.first(), uiState.likedTracks)
-                                            }
-                                        },
-                                    color = Color.White
+                                FloatingActionButton(
+                                    onClick = {
+                                        if (uiState.likedTracks.isNotEmpty()) {
+                                            playerViewModel.playTrack(uiState.likedTracks.first(), newQueue = uiState.likedTracks)
+                                        }
+                                    },
+                                    containerColor = Color.White,
+                                    contentColor = CrimsonRed,
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(48.dp)
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Play All",
-                                            tint = CrimsonRed,
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                    }
+                                    Icon(Icons.Default.PlayArrow, contentDescription = "Play All", modifier = Modifier.size(28.dp))
                                 }
                             }
                         }
@@ -457,47 +443,100 @@ fun LibraryScreen(
             }
         }
 
-        // 5. TAB 2: DOWNLOADED (OFFLINE VAULT)
+        // 5. TAB 2: DOWNLOADED (OFFLINE VAULT & SMART DOWNLOADS)
         else {
+            // Sub-filter Chips: [ All (N) | ⚡ Smart Downloads (S) | 💾 Manual (M) ]
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = downloadSubFilter == "ALL",
+                        onClick = { downloadSubFilter = "ALL" },
+                        label = { Text("All (${uiState.offlineTracks.size})", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = CrimsonRed, selectedLabelColor = Color.White)
+                    )
+
+                    FilterChip(
+                        selected = downloadSubFilter == "SMART",
+                        onClick = { downloadSubFilter = "SMART" },
+                        label = { Text("⚡ Smart (${smartTracks.size})", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = CrimsonRed, selectedLabelColor = Color.White)
+                    )
+
+                    FilterChip(
+                        selected = downloadSubFilter == "MANUAL",
+                        onClick = { downloadSubFilter = "MANUAL" },
+                        label = { Text("💾 Manual (${manualTracks.size})", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = CrimsonRed, selectedLabelColor = Color.White)
+                    )
+                }
+            }
+
+            // Hero Smart Downloads Card
             item {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = SurfaceDark
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.Transparent
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color(0xFF1E293B), Color(0xFF0F172A))
+                                )
+                            )
+                            .padding(18.dp)
                     ) {
-                        Column {
-                            Text(
-                                text = "Smart Download Cache",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "${uiState.totalTracksCount} tracks • ${uiState.totalStorageFormatted} local storage",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = AccentGreen
-                            )
-                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = "Smart Offline Vault",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "${smartTracks.size} smart-cached • ${manualTracks.size} manual • ${uiState.totalStorageFormatted}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
 
-                        Icon(
-                            imageVector = Icons.Default.DownloadDone,
-                            contentDescription = null,
-                            tint = AccentGreen,
-                            modifier = Modifier.size(28.dp)
-                        )
+                            if (displayedOfflineTracks.isNotEmpty()) {
+                                FloatingActionButton(
+                                    onClick = {
+                                        playerViewModel.playTrack(displayedOfflineTracks.first(), newQueue = displayedOfflineTracks)
+                                    },
+                                    containerColor = Color.White,
+                                    contentColor = Color.Black,
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(46.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = "Play Offline", modifier = Modifier.size(26.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            if (uiState.offlineTracks.isEmpty()) {
+            if (displayedOfflineTracks.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -507,15 +546,22 @@ fun LibraryScreen(
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(24.dp)
                         ) {
+                            Icon(
+                                Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(48.dp)
+                            )
                             Text(
-                                text = "No offline tracks yet",
+                                text = if (downloadSubFilter == "SMART") "No smart downloads cached" else "No offline downloads found",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Enable Smart Downloads in Settings to cache tracks for airplane mode.",
+                                text = "Smart Downloads automatically caches your favorite tracks when on Wi-Fi.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextSecondary,
                                 textAlign = TextAlign.Center
@@ -524,13 +570,14 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                items(uiState.offlineTracks) { track ->
+                items(displayedOfflineTracks) { track ->
+                    val isSmart = track.downloadType == "smart"
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 4.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { playerViewModel.playTrack(track, uiState.offlineTracks) },
+                            .clickable { playerViewModel.playTrack(track, displayedOfflineTracks) },
                         color = SurfaceDark
                     ) {
                         Row(
@@ -550,13 +597,29 @@ fun LibraryScreen(
                             )
 
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = track.title,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = TextPrimary
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = track.title,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = TextPrimary
+                                    )
+                                    if (isSmart) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0xFF0284C7).copy(alpha = 0.25f)
+                                        ) {
+                                            Text(
+                                                text = "SMART",
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF38BDF8)
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
                                     text = track.artist,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
@@ -566,9 +629,16 @@ fun LibraryScreen(
                                 )
                             }
 
-                            IconButton(onClick = { libraryViewModel.deleteTrack(track.id) }) {
+                            // Delete / Remove Download Icon
+                            IconButton(
+                                onClick = {
+                                    libraryViewModel.deleteTrack(track.id)
+                                    android.widget.Toast.makeText(context, "Removed from offline vault", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.Delete,
+                                    Icons.Default.DeleteOutline,
                                     contentDescription = "Delete Offline Track",
                                     tint = TextMuted,
                                     modifier = Modifier.size(20.dp)
@@ -581,44 +651,24 @@ fun LibraryScreen(
         }
     }
 
-    // Create New Playlist Dialog
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = {
-                Text(
-                    text = "Create Playlist",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary
-                )
-            },
+            title = { Text("New Playlist", color = TextPrimary) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = newPlaylistTitle,
                         onValueChange = { newPlaylistTitle = it },
                         label = { Text("Playlist Name") },
-                        placeholder = { Text("e.g., Road Trip Classics", color = TextMuted) },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = CrimsonRed,
-                            unfocusedBorderColor = SurfaceBorder,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+                        singleLine = true
                     )
                     OutlinedTextField(
                         value = newPlaylistDesc,
                         onValueChange = { newPlaylistDesc = it },
                         label = { Text("Description (Optional)") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = CrimsonRed,
-                            unfocusedBorderColor = SurfaceBorder,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+                        singleLine = false,
+                        maxLines = 2
                     )
                 }
             },
@@ -626,31 +676,23 @@ fun LibraryScreen(
                 Button(
                     onClick = {
                         if (newPlaylistTitle.isNotBlank()) {
-                            playlistViewModel.createPlaylist(newPlaylistTitle.trim(), newPlaylistDesc.trim()) { newPl ->
-                                showCreateDialog = false
-                                newPlaylistTitle = ""
-                                newPlaylistDesc = ""
-                                onPlaylistClick(newPl.id)
-                            }
+                            playlistViewModel.createPlaylist(newPlaylistTitle.trim(), newPlaylistDesc.trim())
+                            newPlaylistTitle = ""
+                            newPlaylistDesc = ""
+                            showCreateDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
-                    shape = RoundedCornerShape(8.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)
                 ) {
-                    Text("Create", color = Color.White)
+                    Text("Create")
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showCreateDialog = false
-                    newPlaylistTitle = ""
-                    newPlaylistDesc = ""
-                }) {
+                TextButton(onClick = { showCreateDialog = false }) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = SurfaceDark,
-            shape = RoundedCornerShape(16.dp)
+            containerColor = SurfaceDark
         )
     }
 }

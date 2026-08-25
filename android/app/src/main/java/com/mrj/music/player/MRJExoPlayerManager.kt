@@ -2,8 +2,10 @@ package com.mrj.music.player
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -15,6 +17,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import com.mrj.music.audiofx.MRJAudioEffectManager
 import com.mrj.music.data.remote.MRJApiClient
@@ -52,7 +55,27 @@ interface PlayerEventListener {
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-class MRJExoPlayerManager(private val context: Context) {
+class MRJExoPlayerManager private constructor(private val context: Context) : AudioFocusCallback {
+
+    companion object {
+        @Volatile
+        private var instance: MRJExoPlayerManager? = null
+
+        fun getInstance(context: Context): MRJExoPlayerManager {
+            return instance ?: synchronized(this) {
+                instance ?: MRJExoPlayerManager(context.applicationContext ?: context).also { instance = it }
+            }
+        }
+    }
+
+    private val loadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            30_000, // minBufferMs
+            120_000, // maxBufferMs (2 minutes buffer to prevent drops)
+            2_000, // bufferForPlaybackMs
+            5_000 // bufferForPlaybackAfterRebufferMs
+        )
+        .build()
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setAudioAttributes(
@@ -60,17 +83,24 @@ class MRJExoPlayerManager(private val context: Context) {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .build(),
-            true // Handle Audio Focus automatically
+            true
         )
-        .setHandleAudioBecomingNoisy(true) // Pause on headphone disconnect
-        .setWakeMode(C.WAKE_MODE_NETWORK) // Prevent CPU sleep during background audio
+        .setLoadControl(loadControl)
+        .setHandleAudioBecomingNoisy(true)
+        .setWakeMode(C.WAKE_MODE_NETWORK)
         .build()
 
     private val offlineStorage = NativeOfflineStorage.getInstance(context)
     private val secureStorage = SecureAuthStorage.getInstance(context)
+    private val behaviorTracker = com.mrj.music.intelligence.MRJBehaviorTracker.getInstance(context)
+    private val audioFocusManager = MRJAudioFocusManager(context, this)
+
     private val listeners = mutableListOf<PlayerEventListener>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val playerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     private val _currentTrack = MutableStateFlow<NativeTrack?>(null)
     val currentTrack: StateFlow<NativeTrack?> = _currentTrack
@@ -94,12 +124,40 @@ class MRJExoPlayerManager(private val context: Context) {
         private set
 
     private var trackStartTimestamp: Long = 0L
+    private var consecutiveErrorCount: Int = 0
+    private var currentPlayingVideoId: String? = null
+    private var trackRecoveryAttempts: Int = 0
     private var webView: WebView? = null
     private var isUsingNativeExo: Boolean = false
     private var isHtmlReady: Boolean = false
     private var pendingYouTubeId: String? = null
     private var volumeFadeJob: Job? = null
     private var sleepTimerJob: Job? = null
+
+    // Audio Focus Callbacks from MRJAudioFocusManager
+    override fun onAudioFocusPause() {
+        mainHandler.post {
+            pause()
+        }
+    }
+
+    override fun onAudioFocusResume() {
+        mainHandler.post {
+            resume()
+        }
+    }
+
+    override fun onAudioFocusDuck(duckRatio: Float) {
+        mainHandler.post {
+            setVolume(duckRatio)
+        }
+    }
+
+    override fun onAudioFocusUnduck() {
+        mainHandler.post {
+            setVolume(1.0f)
+        }
+    }
 
     private val positionPollRunnable = object : Runnable {
         override fun run() {
@@ -111,6 +169,9 @@ class MRJExoPlayerManager(private val context: Context) {
                     _position.value = pos
                     _duration.value = dur
                     listeners.forEach { it.onPositionChange(pos, dur) }
+                    _currentTrack.value?.let { curr ->
+                        behaviorTracker.onProgress(curr, pos, dur)
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Position poll error: ${e.message}")
@@ -141,13 +202,16 @@ class MRJExoPlayerManager(private val context: Context) {
                 // 1 = PLAYING, 2 = PAUSED, 3 = BUFFERING, 0 = ENDED
                 when (state) {
                     1 -> {
+                        consecutiveErrorCount = 0
                         _isPlaying.value = true
+                        acquireHardwareLocks()
                         try { player.playWhenReady = true } catch (_: Exception) {}
                         listeners.forEach { it.onPlaybackStateChange(true, false) }
                         fadeVolume(from = 0.05f, to = 1.0f, durationMs = 350L)
                     }
                     2 -> {
                         _isPlaying.value = false
+                        releaseHardwareLocks()
                         try { player.playWhenReady = false } catch (_: Exception) {}
                         listeners.forEach { it.onPlaybackStateChange(false, false) }
                     }
@@ -156,6 +220,7 @@ class MRJExoPlayerManager(private val context: Context) {
                     }
                     0 -> {
                         _isPlaying.value = false
+                        releaseHardwareLocks()
                         try { player.playWhenReady = false } catch (_: Exception) {}
                         handleTrackEnded()
                     }
@@ -173,6 +238,9 @@ class MRJExoPlayerManager(private val context: Context) {
                     _position.value = posMs
                     _duration.value = durMs
                     listeners.forEach { it.onPositionChange(posMs, durMs) }
+                    _currentTrack.value?.let { curr ->
+                        behaviorTracker.onProgress(curr, posMs, durMs)
+                    }
                 }
             }
         }
@@ -180,8 +248,79 @@ class MRJExoPlayerManager(private val context: Context) {
         @JavascriptInterface
         fun onError(code: Int) {
             mainHandler.post {
-                Log.e(TAG, "YouTube Player Engine error code: $code")
-                listeners.forEach { it.onError("Playback error ($code). Trying next track...") }
+                val current = _currentTrack.value
+                val failedId = currentPlayingVideoId
+                Log.e(TAG, "YouTube Player Engine error code: $code on videoId '$failedId' for track '${current?.title}'")
+
+                if (current != null && trackRecoveryAttempts < 2) {
+                    trackRecoveryAttempts++
+                    Log.d(TAG, "Attempting auto-recovery #$trackRecoveryAttempts with alternative audio for: ${current.title}")
+
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val searchQuery = "${current.title} ${current.artist} lyrics audio".trim()
+                            val searchRes = MRJApiClient.apiService.search(query = searchQuery, type = "songs")
+                            if (searchRes.isSuccessful && searchRes.body() != null) {
+                                val songs = (searchRes.body()!!["songs"] as? List<Map<String, Any>>)
+                                    ?: (searchRes.body()!!["results"] as? List<Map<String, Any>>)
+                                    ?: emptyList()
+
+                                for (s in songs) {
+                                    val audioSource = s["audioSource"] as? Map<*, *>
+                                    val altId = (audioSource?.get("providerTrackId") as? String)
+                                        ?: (s["providerTrackId"] as? String)
+                                        ?: (s["videoId"] as? String)
+                                        ?: extractIdFromThumbnail(s["thumbnail"] as? String)
+
+                                    if (!altId.isNullOrBlank() && isValidYouTubeId(altId) && altId != failedId) {
+                                        Log.d(TAG, "Auto-recovery successfully found alternative stream: $altId for '${current.title}'")
+                                        mainHandler.post {
+                                            dispatchPlayVideo(altId)
+                                        }
+                                        return@launch
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Auto-recovery stream search error: ${e.message}")
+                        }
+
+                        mainHandler.post {
+                            consecutiveErrorCount++
+                            if (consecutiveErrorCount >= 3) {
+                                Log.w(TAG, "Hit maximum consecutive stream errors (3). Pausing.")
+                                _isPlaying.value = false
+                                pause()
+                                listeners.forEach { it.onError("Stream issue. Please try another track.") }
+                                consecutiveErrorCount = 0
+                                return@post
+                            }
+                            listeners.forEach { it.onError("Stream issue encountered. Transitioning to next song...") }
+                            mainHandler.postDelayed({
+                                if (autoplayEnabled || queue.isNotEmpty()) {
+                                    playNext(isUserInitiated = false)
+                                }
+                            }, 1500)
+                        }
+                    }
+                    return@post
+                }
+
+                consecutiveErrorCount++
+                if (consecutiveErrorCount >= 3) {
+                    Log.w(TAG, "Hit maximum consecutive stream errors (3). Pausing to prevent rapid skipping loop.")
+                    _isPlaying.value = false
+                    pause()
+                    listeners.forEach { it.onError("Unable to play stream. Please try another track.") }
+                    consecutiveErrorCount = 0
+                    return@post
+                }
+                listeners.forEach { it.onError("Stream issue encountered. Transitioning to next song...") }
+                mainHandler.postDelayed({
+                    if (autoplayEnabled || queue.isNotEmpty()) {
+                        playNext(isUserInitiated = false)
+                    }
+                }, 1500)
             }
         }
     }
@@ -220,7 +359,7 @@ class MRJExoPlayerManager(private val context: Context) {
                   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                   var osc = audioCtx.createOscillator();
                   var gain = audioCtx.createGain();
-                  gain.gain.value = 0.0001; // Inaudible keep-alive ping
+                  gain.gain.value = 0.0001;
                   osc.connect(gain);
                   gain.connect(audioCtx.destination);
                   osc.start();
@@ -232,6 +371,7 @@ class MRJExoPlayerManager(private val context: Context) {
 
             var player = null;
             var pendingId = null;
+            var bufferStallTimer = null;
             var shouldBePlaying = false;
 
             function onYouTubeIframeAPIReady() {
@@ -255,6 +395,7 @@ class MRJExoPlayerManager(private val context: Context) {
                 }
               });
             }
+
             function onPlayerReady(event) {
               console.log('YT Player onReady fired');
               if (player) {
@@ -270,11 +411,35 @@ class MRJExoPlayerManager(private val context: Context) {
                 window.AndroidBridge.onReady();
               }
             }
+
+            function checkBufferingStall(state) {
+              if (state === 3) { // BUFFERING
+                if (!bufferStallTimer) {
+                  bufferStallTimer = setTimeout(function() {
+                    console.log('Buffer stall watchdog triggered -> Re-syncing stream');
+                    if (player && player.playVideo) {
+                      var cur = player.getCurrentTime() || 0;
+                      player.seekTo(cur, true);
+                      player.playVideo();
+                    }
+                    bufferStallTimer = null;
+                  }, 6000);
+                }
+              } else {
+                if (bufferStallTimer) {
+                  clearTimeout(bufferStallTimer);
+                  bufferStallTimer = null;
+                }
+              }
+            }
+
             function onPlayerStateChange(event) {
               console.log('YT State Change: ' + event.data);
-              // Auto-resume if YouTube pauses due to backgrounding/lockscreen while shouldBePlaying is true
+              checkBufferingStall(event.data);
+
+              // Auto-resume if YouTube pauses due to background power-saving while shouldBePlaying is true
               if (event.data === 2 && shouldBePlaying) {
-                console.log('Auto-resuming background playback');
+                console.log('Spurious background pause detected -> auto-resuming immediately');
                 setTimeout(function() {
                   if (shouldBePlaying && player && player.playVideo) {
                     player.playVideo();
@@ -282,16 +447,34 @@ class MRJExoPlayerManager(private val context: Context) {
                 }, 50);
                 return;
               }
+
+              // Filter out spurious ENDED (0) events fired during video load / quality change
+              if (event.data === 0) {
+                var cur = (player && player.getCurrentTime) ? (player.getCurrentTime() || 0) : 0;
+                var dur = (player && player.getDuration) ? (player.getDuration() || 0) : 0;
+                if (dur > 10 && (cur >= dur * 0.85 || (dur - cur) <= 5.0)) {
+                  console.log('Real track ended confirmed at: ' + cur + 's / ' + dur + 's');
+                  if (window.AndroidBridge && window.AndroidBridge.onStateChange) {
+                    window.AndroidBridge.onStateChange(0);
+                  }
+                } else {
+                  console.log('Ignored spurious YT ENDED event during video transition (cur=' + cur + ', dur=' + dur + ')');
+                }
+                return;
+              }
+
               if (window.AndroidBridge && window.AndroidBridge.onStateChange) {
                 window.AndroidBridge.onStateChange(event.data);
               }
             }
+
             function onPlayerError(event) {
               console.error('YT Player Error: ' + event.data);
               if (window.AndroidBridge && window.AndroidBridge.onError) {
                 window.AndroidBridge.onError(event.data);
               }
             }
+
             setInterval(function() {
               ensureAudioEngaged();
               if (player && player.getCurrentTime && player.getDuration) {
@@ -302,6 +485,7 @@ class MRJExoPlayerManager(private val context: Context) {
                 }
               }
             }, 500);
+
             function playVideo(id) {
               console.log('JS playVideo called with id: ' + id);
               shouldBePlaying = true;
@@ -314,11 +498,15 @@ class MRJExoPlayerManager(private val context: Context) {
                 pendingId = id;
               }
             }
+
             function pauseVideo() {
+              console.log('JS pauseVideo called explicitly');
               shouldBePlaying = false;
               if (player && player.pauseVideo) player.pauseVideo();
             }
+
             function resumeVideo() {
+              console.log('JS resumeVideo called explicitly');
               shouldBePlaying = true;
               ensureAudioEngaged();
               if (player && player.playVideo) {
@@ -326,9 +514,11 @@ class MRJExoPlayerManager(private val context: Context) {
                 player.playVideo();
               }
             }
+
             function seekTo(sec) {
               if (player && player.seekTo) player.seekTo(sec, true);
             }
+
             function setVolume(vol) {
               if (player && player.setVolume) {
                 try { player.setVolume(vol); } catch(e) {}
@@ -374,6 +564,41 @@ class MRJExoPlayerManager(private val context: Context) {
         return webView!!
     }
 
+    private fun acquireHardwareLocks() {
+        try {
+            if (wakeLock == null) {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MRJMusic:ExoWakeLock").apply {
+                    setReferenceCounted(false)
+                }
+            }
+            if (wakeLock?.isHeld == false) {
+                wakeLock?.acquire(12 * 60 * 60 * 1000L)
+            }
+
+            if (wifiLock == null) {
+                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "MRJMusic:ExoWifiLock").apply {
+                    setReferenceCounted(false)
+                }
+            }
+            if (wifiLock?.isHeld == false) {
+                wifiLock?.acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error acquiring hardware locks: ${e.message}")
+        }
+    }
+
+    private fun releaseHardwareLocks() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+            if (wifiLock?.isHeld == true) wifiLock?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error releasing hardware locks: ${e.message}")
+        }
+    }
+
     init {
         mainHandler.post {
             getOrCreatePlayerEngineView(context)
@@ -407,6 +632,11 @@ class MRJExoPlayerManager(private val context: Context) {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isUsingNativeExo) {
                     _isPlaying.value = isPlaying
+                    if (isPlaying) {
+                        acquireHardwareLocks()
+                    } else {
+                        releaseHardwareLocks()
+                    }
                     listeners.forEach { it.onPlaybackStateChange(isPlaying, false) }
                     if (isPlaying) {
                         mainHandler.post(positionPollRunnable)
@@ -416,8 +646,24 @@ class MRJExoPlayerManager(private val context: Context) {
 
             override fun onPlayerError(error: PlaybackException) {
                 if (isUsingNativeExo) {
-                    Log.e(TAG, "ExoPlayer error: ${error.message}, code: ${error.errorCode}", error)
-                    listeners.forEach { it.onError("Offline playback error: ${error.localizedMessage ?: "Unknown error"}") }
+                    Log.e(TAG, "ExoPlayer error on track '${_currentTrack.value?.title}': ${error.message}, code: ${error.errorCode}")
+                    val current = _currentTrack.value
+                    if (current != null) {
+                        Log.w(TAG, "Deleting corrupt local audio for '${current.title}' and self-healing with online stream.")
+                        offlineStorage.deleteTrack(current.id)
+                        isUsingNativeExo = false
+                        val ytId = resolveYouTubeVideoId(current)
+                        if (!ytId.isNullOrBlank() && isValidYouTubeId(ytId)) {
+                            dispatchPlayVideo(ytId)
+                            return
+                        }
+                    }
+                    listeners.forEach { it.onError("Playback issue. Transitioning to next song...") }
+                    mainHandler.postDelayed({
+                        if (autoplayEnabled || queue.isNotEmpty()) {
+                            playNext(isUserInitiated = false)
+                        }
+                    }, 1500)
                 }
             }
         })
@@ -432,6 +678,10 @@ class MRJExoPlayerManager(private val context: Context) {
     }
 
     private fun dispatchPlayVideo(videoId: String) {
+        currentPlayingVideoId = videoId
+        trackStartTimestamp = System.currentTimeMillis()
+        audioFocusManager.onPlaybackStarted()
+        acquireHardwareLocks()
         mainHandler.post {
             getOrCreatePlayerEngineView(context)
             setVolume(0.05f)
@@ -561,6 +811,7 @@ class MRJExoPlayerManager(private val context: Context) {
 
             _currentTrack.value = trackToPlay
             trackStartTimestamp = System.currentTimeMillis()
+            trackRecoveryAttempts = 0
 
             try {
                 val mediaMetadata = androidx.media3.common.MediaMetadata.Builder()
@@ -586,6 +837,9 @@ class MRJExoPlayerManager(private val context: Context) {
                 isUsingNativeExo = true
                 mainHandler.post { webView?.evaluateJavascript("pauseVideo();", null) }
 
+                audioFocusManager.onPlaybackStarted()
+                acquireHardwareLocks()
+
                 val mediaItem = trackToPlay.toMediaItem()
                 setVolume(0.05f)
                 player.stop()
@@ -595,21 +849,42 @@ class MRJExoPlayerManager(private val context: Context) {
                 player.play()
                 fadeVolume(from = 0.05f, to = 1.0f, durationMs = 350L)
             } else {
+                // Check if user has active internet connection
+                val isOnline = isNetworkConnected()
+                if (!isOnline) {
+                    val availableDownloaded = offlineStorage.getAllDownloadedTracks()
+                    if (availableDownloaded.isNotEmpty()) {
+                        Log.i(TAG, "Device is offline. Rerouting to downloaded offline tracks.")
+                        mainHandler.post {
+                            android.widget.Toast.makeText(context, "Offline: Playing from your downloaded library", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        val nextOfflineTrack = availableDownloaded.first()
+                        playTrack(nextOfflineTrack, availableDownloaded)
+                        return
+                    } else {
+                        Log.w(TAG, "Device is offline and no offline downloads are available.")
+                        mainHandler.post {
+                            android.widget.Toast.makeText(context, "No internet connection & no downloaded songs available", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                        _isPlaying.value = false
+                        listeners.forEach { it.onError("No internet connection") }
+                        return
+                    }
+                }
+
                 isUsingNativeExo = false
                 _isPlaying.value = true
                 listeners.forEach { it.onPlaybackStateChange(true, true) }
 
                 val resolvedId = resolveYouTubeVideoId(trackToPlay)
-                val isCanonical = trackToPlay.id.contains("|") || trackToPlay.providerTrackId.isNullOrBlank()
 
-                if (!resolvedId.isNullOrBlank() && !isCanonical) {
-                    Log.d(TAG, "Streaming online track via YouTube Engine: ${trackToPlay.title} ($resolvedId)")
+                if (!resolvedId.isNullOrBlank() && isValidYouTubeId(resolvedId)) {
+                    Log.d(TAG, "Streaming online track directly via YouTube Engine: ${trackToPlay.title} ($resolvedId)")
                     dispatchPlayVideo(resolvedId)
                 } else {
                     Log.d(TAG, "Resolving official studio audio source for: ${trackToPlay.title} - ${trackToPlay.artist}")
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            // 1. Try Backend Resolve-Source service with format="audio" (multi-scrapes YT Music Topic / Studio Audio)
                             val canonId = trackToPlay.canonicalTrackId ?: trackToPlay.id
                             val resolveRes = MRJApiClient.apiService.resolvePlaybackSource(
                                 id = canonId,
@@ -632,7 +907,6 @@ class MRJExoPlayerManager(private val context: Context) {
                             Log.w(TAG, "Backend resolve-source failed: ${e.message}")
                         }
 
-                        // 2. Fallback to targeted search for official audio
                         try {
                             val searchQuery = "${trackToPlay.title} ${trackToPlay.artist} official audio".trim()
                             val searchRes = MRJApiClient.apiService.search(query = searchQuery, type = "songs")
@@ -658,13 +932,6 @@ class MRJExoPlayerManager(private val context: Context) {
                             Log.w(TAG, "Dynamic search resolution failed: ${e.message}")
                         }
 
-                        // 3. Fallback to pre-resolved video / thumbnail ID
-                        if (!resolvedId.isNullOrBlank() && isValidYouTubeId(resolvedId)) {
-                            Log.d(TAG, "Falling back to music video source: $resolvedId")
-                            dispatchPlayVideo(resolvedId)
-                            return@launch
-                        }
-
                         val fallback = trackToPlay.id.removePrefix("yt_")
                         if (isValidYouTubeId(fallback)) {
                             dispatchPlayVideo(fallback)
@@ -673,9 +940,10 @@ class MRJExoPlayerManager(private val context: Context) {
                 }
             }
 
-            // Auto-populate next recommendations queue in background
+            behaviorTracker.onTrackStarted(trackToPlay)
+
             if (autoplayEnabled && (newQueue == null || newQueue.size <= 1)) {
-                fetchNextRecommendations(trackToPlay)
+                fetchDynamicAutoplayQueue(trackToPlay)
             }
 
             listeners.forEach {
@@ -688,11 +956,14 @@ class MRJExoPlayerManager(private val context: Context) {
         }
     }
 
-    private fun fetchNextRecommendations(track: NativeTrack) {
+    fun fetchDynamicAutoplayQueue(track: NativeTrack, isEarlySkip: Boolean = false) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val token = secureStorage.getAccessToken()
                 val authHeader = if (token != null) "Bearer $token" else null
+                val country = java.util.Locale.getDefault().country.ifBlank { "IN" }
+                val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+
                 val payload = mapOf(
                     "currentTrack" to mapOf(
                         "id" to track.id,
@@ -702,60 +973,162 @@ class MRJExoPlayerManager(private val context: Context) {
                         "genre" to (track.genre ?: "")
                     ),
                     "playedTrackIds" to listOf(track.id),
-                    "currentQueueIds" to queue.map { it.id }
+                    "currentQueueIds" to queue.take(queueIndex + 1).map { it.id },
+                    "countryCode" to country,
+                    "localHour" to hour,
+                    "isEarlySkip" to isEarlySkip
                 )
-                val res = MRJApiClient.apiService.getNextRecommendations(authHeader, payload)
-                if (res.isSuccessful && res.body() != null) {
-                    val tracksRaw = (res.body()!!["tracks"] as? List<Map<String, Any>>) ?: emptyList()
-                    val parsed = tracksRaw.mapNotNull { raw ->
-                        val id = (raw["id"] as? String) ?: (raw["providerTrackId"] as? String) ?: return@mapNotNull null
-                        val title = raw["title"] as? String ?: return@mapNotNull null
-                        val artist = raw["artist"] as? String ?: "Unknown Artist"
-                        val thumbnail = raw["thumbnail"] as? String
-                        val duration = (raw["duration"] as? Number)?.toDouble() ?: 210.0
-                        val audioSource = raw["audioSource"] as? Map<*, *>
-                        val providerTrackId = (audioSource?.get("providerTrackId") as? String)
-                            ?: (raw["providerTrackId"] as? String)
-                            ?: (raw["videoId"] as? String)
-                            ?: extractIdFromThumbnail(thumbnail)
 
-                        NativeTrack(
-                            id = id,
-                            canonicalTrackId = raw["canonicalTrackId"] as? String ?: id,
-                            title = title,
-                            artist = artist,
-                            album = raw["album"] as? String,
-                            thumbnail = thumbnail,
-                            duration = duration,
-                            genre = raw["genre"] as? String,
-                            providerTrackId = providerTrackId,
-                            streamUrl = "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
-                        )
-                    }
+                val res = try {
+                    MRJApiClient.apiService.getNextRecommendations(authHeader, payload)
+                } catch (e: Exception) {
+                    null
+                }
+
+                val tracksRaw = if (res != null && res.isSuccessful && res.body() != null) {
+                    (res.body()!!["recommendations"] as? List<Map<String, Any>>)
+                        ?: (res.body()!!["queue"] as? List<Map<String, Any>>)
+                        ?: (res.body()!!["tracks"] as? List<Map<String, Any>>)
+                        ?: emptyList()
+                } else emptyList()
+
+                val parsed = tracksRaw.mapNotNull { raw ->
+                    val id = (raw["id"] as? String) ?: (raw["providerTrackId"] as? String) ?: return@mapNotNull null
+                    val title = raw["title"] as? String ?: return@mapNotNull null
+                    val artist = raw["artist"] as? String ?: "Unknown Artist"
+                    val thumbnail = raw["thumbnail"] as? String
+                    val duration = (raw["duration"] as? Number)?.toDouble() ?: 210.0
+                    val audioSource = raw["audioSource"] as? Map<*, *>
+                    val providerTrackId = (audioSource?.get("providerTrackId") as? String)
+                        ?: (raw["providerTrackId"] as? String)
+                        ?: (raw["videoId"] as? String)
+                        ?: extractIdFromThumbnail(thumbnail)
+
+                    NativeTrack(
+                        id = id,
+                        canonicalTrackId = raw["canonicalTrackId"] as? String ?: id,
+                        title = title,
+                        artist = artist,
+                        album = raw["album"] as? String,
+                        thumbnail = thumbnail,
+                        duration = duration,
+                        genre = raw["genre"] as? String,
+                        providerTrackId = providerTrackId,
+                        streamUrl = "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
+                    )
+                }
 
                     if (parsed.isNotEmpty()) {
                         mainHandler.post {
-                            val existingIds = queue.map { it.id }.toSet()
-                            val fresh = parsed.filter { it.id !in existingIds }
+                            val currentSlice = mutableListOf(track)
+                            val existingIds = mutableSetOf(track.id)
+                            val existingTitles = mutableSetOf(normalizeTitleForDeduplication(track.title))
+                            val fresh = mutableListOf<NativeTrack>()
+
+                            for (p in parsed) {
+                                val norm = normalizeTitleForDeduplication(p.title)
+                                val isDup = existingIds.contains(p.id) || existingTitles.any { exist ->
+                                    exist == norm || (norm.length >= 4 && exist.contains(norm)) || (exist.length >= 4 && norm.contains(exist))
+                                }
+                                if (!isDup && norm.isNotBlank()) {
+                                    fresh.add(p)
+                                    existingIds.add(p.id)
+                                    existingTitles.add(norm)
+                                }
+                            }
+
                             if (fresh.isNotEmpty()) {
+                                queue.clear()
+                                queue.addAll(currentSlice)
                                 queue.addAll(fresh)
+                                queueIndex = 0
                                 listeners.forEach { it.onQueueChange(queue, queueIndex) }
-                                Log.d(TAG, "Appended ${fresh.size} recommended tracks to continuous queue")
+                                Log.d(TAG, "⚡ Dynamic Autoplay Queue Morphed: ${queue.size} total tracks (Harmonized with ${track.title})")
+                            }
+                        }
+                    } else {
+                        // Fallback: Query artist & similar songs to generate dynamic AI queue
+                        val fallbackQuery = if (track.artist.isNotBlank() && track.artist != "Unknown Artist") "${track.artist} top songs" else "${track.title} similar"
+                        val searchRes = MRJApiClient.apiService.search(query = fallbackQuery, type = "songs")
+                        if (searchRes.isSuccessful && searchRes.body() != null) {
+                            val fallbackRaw = (searchRes.body()!!["songs"] as? List<Map<String, Any>>)
+                                ?: (searchRes.body()!!["results"] as? List<Map<String, Any>>)
+                                ?: emptyList()
+
+                            val fallbackParsed = fallbackRaw.mapNotNull { raw ->
+                                val id = (raw["id"] as? String) ?: (raw["providerTrackId"] as? String) ?: return@mapNotNull null
+                                val title = raw["title"] as? String ?: return@mapNotNull null
+                                val artist = raw["artist"] as? String ?: "Unknown Artist"
+                                val thumbnail = raw["thumbnail"] as? String
+                                val duration = (raw["duration"] as? Number)?.toDouble() ?: 210.0
+                                val audioSource = raw["audioSource"] as? Map<*, *>
+                                val providerTrackId = (audioSource?.get("providerTrackId") as? String)
+                                    ?: (raw["providerTrackId"] as? String)
+                                    ?: (raw["videoId"] as? String)
+                                    ?: extractIdFromThumbnail(thumbnail)
+
+                                NativeTrack(
+                                    id = id,
+                                    canonicalTrackId = raw["canonicalTrackId"] as? String ?: id,
+                                    title = title,
+                                    artist = artist,
+                                    album = raw["album"] as? String,
+                                    thumbnail = thumbnail,
+                                    duration = duration,
+                                    genre = raw["genre"] as? String,
+                                    providerTrackId = providerTrackId,
+                                    streamUrl = "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
+                                )
+                            }
+
+                            mainHandler.post {
+                                val currentSlice = mutableListOf(track)
+                                val existingIds = mutableSetOf(track.id)
+                                val existingTitles = mutableSetOf(normalizeTitleForDeduplication(track.title))
+                                val fresh = mutableListOf<NativeTrack>()
+
+                                for (p in fallbackParsed) {
+                                    val norm = normalizeTitleForDeduplication(p.title)
+                                    val isDup = existingIds.contains(p.id) || existingTitles.any { exist ->
+                                        exist == norm || (norm.length >= 4 && exist.contains(norm)) || (exist.length >= 4 && norm.contains(exist))
+                                    }
+                                    if (!isDup && norm.isNotBlank()) {
+                                        fresh.add(p)
+                                        existingIds.add(p.id)
+                                        existingTitles.add(norm)
+                                    }
+                                }
+
+                                if (fresh.isNotEmpty()) {
+                                    queue.clear()
+                                    queue.addAll(currentSlice)
+                                    queue.addAll(fresh)
+                                    queueIndex = 0
+                                    listeners.forEach { it.onQueueChange(queue, queueIndex) }
+                                    Log.d(TAG, "⚡ Dynamic Autoplay Queue Fallback Morphed: ${queue.size} total tracks")
+                                }
                             }
                         }
                     }
-                }
             } catch (e: Exception) {
-                Log.w(TAG, "fetchNextRecommendations failed: ${e.message}")
+                Log.w(TAG, "fetchDynamicAutoplayQueue failed: ${e.message}")
             }
         }
+    }
+
+    private fun normalizeTitleForDeduplication(title: String): String {
+        return title.lowercase()
+            .replace(Regex("""\(.*?\)|\[.*?\]"""), "")
+            .replace(Regex("""(?i)\b(official|video|audio|lyrics|lyrical|full|song|hd|4k|feat|ft|remix|slowed|reverb|version|release|views|minutes|ago)\b"""), "")
+            .replace(Regex("""[^a-z0-9\s]"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
     }
 
     private fun isValidYouTubeId(id: String?): Boolean {
         if (id.isNullOrBlank()) return false
         if (id.length != 11) return false
         if (id.contains("|") || id.contains(" ") || id.contains("/") || id.contains(".")) return false
-        // Disallow word-only slugs like "arijit-sing" or "diljit-dosa"
         if (id.matches(Regex("""^[a-z]+-[a-z]+$"""))) return false
         return true
     }
@@ -766,14 +1139,23 @@ class MRJExoPlayerManager(private val context: Context) {
         return viRegex.find(thumbnail)?.groupValues?.get(1)
     }
 
+    fun isNetworkConnected(): Boolean {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return false
+            val activeNet = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(activeNet) ?: return false
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (_: Exception) {
+            true // fallback to true if permission or reflection error
+        }
+    }
+
     fun resolveYouTubeVideoId(track: NativeTrack): String? {
-        // 1. Direct from YouTube thumbnail (100% reliable for scraped music)
         val fromThumb = extractIdFromThumbnail(track.thumbnail)
         if (isValidYouTubeId(fromThumb)) {
             return fromThumb
         }
 
-        // 2. Direct from streamUrl (e.g., .../stream/6RdS6wLu7RY or watch?v=6RdS6wLu7RY)
         val stream = track.streamUrl ?: ""
         val urlRegex = Regex("""(?:v=|youtu\.be/|/stream/|/embed/)([a-zA-Z0-9_-]{11})""")
         val urlMatch = urlRegex.find(stream)
@@ -781,13 +1163,11 @@ class MRJExoPlayerManager(private val context: Context) {
             return urlMatch.groupValues[1]
         }
 
-        // 3. Direct providerTrackId (must be valid 11 chars and not a slug)
         val pid = track.providerTrackId?.trim()?.removePrefix("yt_")?.removePrefix("yt:")
         if (isValidYouTubeId(pid)) {
             return pid
         }
 
-        // 4. Check track.id if it is a pure 11-char YouTube ID (e.g. "_kUrW9SEaJc")
         val tid = track.id.trim().removePrefix("yt_").removePrefix("yt:")
         if (isValidYouTubeId(tid)) {
             return tid
@@ -797,6 +1177,8 @@ class MRJExoPlayerManager(private val context: Context) {
     }
 
     fun pause() {
+        releaseHardwareLocks()
+        audioFocusManager.onPlaybackStopped()
         if (isUsingNativeExo) {
             try { player.pause() } catch (e: Exception) { Log.w(TAG, "pause() error: ${e.message}") }
         } else {
@@ -808,6 +1190,8 @@ class MRJExoPlayerManager(private val context: Context) {
     }
 
     fun resume() {
+        audioFocusManager.onPlaybackStarted()
+        acquireHardwareLocks()
         setVolume(0.05f)
         if (isUsingNativeExo) {
             try {
@@ -872,10 +1256,18 @@ class MRJExoPlayerManager(private val context: Context) {
             return
         }
 
+        val curr = _currentTrack.value
+        if (isUserInitiated && curr != null) {
+            val playedSec = (_position.value / 1000).toInt()
+            behaviorTracker.onTrackSkipped(curr, playedSec)
+            if (playedSec < 15) {
+                fetchDynamicAutoplayQueue(curr, isEarlySkip = true)
+            }
+        }
+
         if (queue.isEmpty()) {
-            val curr = _currentTrack.value
             if (curr != null) {
-                fetchNextRecommendations(curr)
+                fetchDynamicAutoplayQueue(curr)
             }
             triggerOfflineAutoplay()
             return
@@ -884,10 +1276,14 @@ class MRJExoPlayerManager(private val context: Context) {
         if (queueIndex < queue.size - 1) {
             queueIndex++
             playTrack(queue[queueIndex])
+
+            if (queue.size - queueIndex <= 3 && autoplayEnabled) {
+                fetchDynamicAutoplayQueue(queue[queueIndex])
+            }
         } else if (autoplayEnabled || isUserInitiated) {
-            val curr = _currentTrack.value ?: queue.lastOrNull()
-            if (curr != null) {
-                fetchNextRecommendations(curr)
+            val lastTrack = _currentTrack.value ?: queue.lastOrNull()
+            if (lastTrack != null) {
+                fetchDynamicAutoplayQueue(lastTrack)
             }
             triggerOfflineAutoplay()
         } else {
@@ -909,55 +1305,52 @@ class MRJExoPlayerManager(private val context: Context) {
                 seekTo(0)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "playPrevious() error: ${e.message}")
+            Log.w(TAG, "playPrevious error: ${e.message}")
         }
     }
 
     fun setShuffle(enabled: Boolean) {
         isShuffleEnabled = enabled
-        if (enabled && queue.isNotEmpty()) {
+        if (isShuffleEnabled && queue.size > 1) {
             val current = _currentTrack.value
-            Collections.shuffle(queue)
-            if (current != null) {
-                queue.remove(current)
-                queue.add(0, current)
-                queueIndex = 0
-            }
+            val remaining = queue.filter { it.id != current?.id }.shuffled()
+            queue.clear()
+            if (current != null) queue.add(current)
+            queue.addAll(remaining)
+            queueIndex = 0
         }
         listeners.forEach { it.onQueueChange(queue, queueIndex) }
+    }
+
+    fun toggleShuffle() {
+        setShuffle(!isShuffleEnabled)
     }
 
     fun reorderQueue(fromIndex: Int, toIndex: Int) {
-        if (fromIndex < 0 || fromIndex >= queue.size || toIndex < 0 || toIndex >= queue.size || fromIndex == toIndex) {
-            return
+        if (fromIndex in queue.indices && toIndex in queue.indices) {
+            val item = queue.removeAt(fromIndex)
+            queue.add(toIndex, item)
+            val current = _currentTrack.value
+            if (current != null) {
+                queueIndex = queue.indexOfFirst { it.id == current.id }.coerceAtLeast(0)
+            }
+            listeners.forEach { it.onQueueChange(queue, queueIndex) }
         }
-        val current = _currentTrack.value
-        val track = queue.removeAt(fromIndex)
-        queue.add(toIndex, track)
-        if (current != null) {
-            queueIndex = queue.indexOfFirst { it.id == current.id }.takeIf { it >= 0 } ?: 0
-        }
-        listeners.forEach { it.onQueueChange(queue, queueIndex) }
     }
 
     fun removeTrackFromQueue(index: Int) {
-        if (index < 0 || index >= queue.size) return
-        val isRemovingCurrent = (index == queueIndex)
-        queue.removeAt(index)
-        if (queue.isEmpty()) {
-            queueIndex = 0
-            _isPlaying.value = false
-            pause()
-            listeners.forEach { it.onQueueChange(queue, queueIndex) }
-            return
-        }
-        if (isRemovingCurrent) {
-            val newIdx = index.coerceAtMost(queue.size - 1)
-            queueIndex = newIdx
-            playTrack(queue[newIdx])
-        } else {
-            if (index < queueIndex) {
-                queueIndex = (queueIndex - 1).coerceAtLeast(0)
+        if (index in queue.indices) {
+            val isCurrent = (index == queueIndex)
+            queue.removeAt(index)
+            if (isCurrent) {
+                if (queue.isNotEmpty()) {
+                    queueIndex = queueIndex.coerceAtMost(queue.size - 1)
+                    playTrack(queue[queueIndex])
+                } else {
+                    pause()
+                }
+            } else if (index < queueIndex) {
+                queueIndex--
             }
             listeners.forEach { it.onQueueChange(queue, queueIndex) }
         }
@@ -969,119 +1362,77 @@ class MRJExoPlayerManager(private val context: Context) {
         if (current != null) {
             queue.add(current)
             queueIndex = 0
-        } else {
-            queueIndex = 0
         }
         listeners.forEach { it.onQueueChange(queue, queueIndex) }
     }
 
     fun insertNextInQueue(track: NativeTrack) {
         if (queue.isEmpty()) {
-            playTrack(track)
-            return
+            queue.add(track)
+            queueIndex = 0
+        } else {
+            val insertIndex = (queueIndex + 1).coerceAtMost(queue.size)
+            queue.add(insertIndex, track)
         }
-        val insertIndex = (queueIndex + 1).coerceAtMost(queue.size)
-        queue.add(insertIndex, track)
         listeners.forEach { it.onQueueChange(queue, queueIndex) }
     }
 
     fun addToQueue(track: NativeTrack) {
-        if (queue.isEmpty()) {
-            playTrack(track)
-            return
-        }
         queue.add(track)
         listeners.forEach { it.onQueueChange(queue, queueIndex) }
     }
 
-    private fun isNaturallyCompleted(): Boolean {
+    private fun handleTrackEnded() {
         val currPos = _position.value
         val dur = _duration.value
+        val isActuallyEnded = (dur > 10_000L && currPos >= (dur * 0.85).toLong())
+                || (dur > 0L && (dur - currPos) <= 5_000L && currPos > 15_000L)
+                || (dur == 0L && (System.currentTimeMillis() - trackStartTimestamp) > 30_000L)
 
-        if (dur > 3000L) {
-            return currPos >= (dur - 4000L) || currPos >= (dur * 0.95).toLong()
+        if (!isActuallyEnded) {
+            Log.w(TAG, "Spurious track-ended event received at pos=${currPos}ms / dur=${dur}ms. Ignoring false trigger.")
+            return
         }
-        return currPos > 15000L
-    }
 
-    private fun handleTrackEnded() {
+        consecutiveErrorCount = 0
         val curr = _currentTrack.value
-        Log.d(TAG, "handleTrackEnded for ${curr?.title}: pos=${_position.value}, dur=${_duration.value}, autoplayEnabled=$autoplayEnabled")
+        if (curr != null) {
+            val durationSec = (curr.duration).toInt()
+            behaviorTracker.onProgress(curr, (durationSec * 1000).toLong(), (durationSec * 1000).toLong())
+        }
 
-        // 0. Sleep timer 'End of Track' check
-        if (_sleepTimerState.value.isActive && _sleepTimerState.value.isEndOfTrack) {
-            Log.d(TAG, "Sleep timer 'End of Track' reached — stopping playback smoothly")
-            _isPlaying.value = false
+        if (_sleepTimerState.value.isEndOfTrack) {
+            Log.d(TAG, "Sleep timer 'End of Track' reached — pausing playback")
             pause()
-            cancelSleepTimer()
+            _sleepTimerState.value = SleepTimerState()
             return
         }
 
-        // 1. If Autoplay is OFF, pause at track completion and DO NOT advance queue
-        if (!autoplayEnabled) {
-            Log.d(TAG, "Autoplay is OFF — pausing at track completion without advancing")
-            _isPlaying.value = false
-            pause()
-            return
-        }
-
-        // 2. Validate that the track actually finished its full duration rather than an early stream glitch
-        if (!isNaturallyCompleted()) {
-            Log.w(TAG, "Track ended prematurely (pos=${_position.value}, dur=${_duration.value}) — preventing premature autoplay skip")
-            _isPlaying.value = false
-            pause()
-            return
-        }
-
-        // 3. Anti-storm check: Ensure song played for at least 4 seconds since start
-        if (System.currentTimeMillis() - trackStartTimestamp < 4000L) {
-            Log.w(TAG, "Track ended too quickly (${System.currentTimeMillis() - trackStartTimestamp}ms) — stopping to avoid rapid skip loop")
-            _isPlaying.value = false
-            pause()
-            return
-        }
-
-        // 4. Track fully completed and Autoplay is ON — smoothly move to next track
         playNext(isUserInitiated = false)
     }
 
     private fun triggerOfflineAutoplay() {
         try {
-            val downloads = offlineStorage.getAllDownloadedTracks()
-            if (downloads.isEmpty()) return
-            val candidates = downloads.filter { it.id != _currentTrack.value?.id }
-            if (candidates.isNotEmpty()) {
-                val nextTrack = candidates.random()
-                queue.add(nextTrack)
-                queueIndex = queue.size - 1
-                playTrack(nextTrack)
+            val offlineList = offlineStorage.getAllDownloadedTracks()
+            if (offlineList.isNotEmpty()) {
+                val nextOffline = offlineList.shuffled().firstOrNull { it.id != _currentTrack.value?.id } ?: offlineList.first()
+                Log.d(TAG, "Autoplaying next offline vault track: ${nextOffline.title}")
+                playTrack(nextOffline)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "triggerOfflineAutoplay() error: ${e.message}")
+            Log.w(TAG, "Offline autoplay fallback failed: ${e.message}")
         }
     }
 
     fun release() {
         try {
-            mainHandler.removeCallbacks(positionPollRunnable)
+            releaseHardwareLocks()
+            audioFocusManager.onPlaybackStopped()
             player.release()
-            mainHandler.post {
-                webView?.destroy()
-                webView = null
-            }
+            webView?.destroy()
+            webView = null
         } catch (e: Exception) {
-            Log.w(TAG, "release() error: ${e.message}")
-        }
-    }
-
-    companion object {
-        @Volatile
-        private var instance: MRJExoPlayerManager? = null
-
-        fun getInstance(context: Context): MRJExoPlayerManager {
-            return instance ?: synchronized(this) {
-                instance ?: MRJExoPlayerManager(context.applicationContext).also { instance = it }
-            }
+            Log.w(TAG, "release() exception: ${e.message}")
         }
     }
 }

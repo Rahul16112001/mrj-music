@@ -1,18 +1,21 @@
 {
-  "version": "3.16.0",
-  "build": "321",
-  "updatedAt": "2026-08-25T00:00:00Z",
-  "latestVersion": "3.16.0",
+  "version": "3.17.0",
+  "build": "322",
+  "updatedAt": "2026-08-26T00:00:00Z",
+  "latestVersion": "3.17.0",
   "isUpdateAvailable": true,
-  "apkDownloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.16.0/mrj-music-v3.16.0.apk",
-  "apkFileName": "mrj-music-v3.16.0.apk",
-  "downloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.16.0/mrj-music-v3.16.0.apk",
-  "title": "MRJ Music v3.16.0 Equalizer, Dynamic Palette & Player Gestures",
+  "apkDownloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk",
+  "apkFileName": "mrj-music-v3.17.0.apk",
+  "downloadUrl": "https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk",
+  "fileSize": "111 MB",
+  "fileSizeBytes": 116703707,
+  "sha256": "391ef328e35fbba19b544faea65247b366d3c98e3fb5d7fbd22ddcf81ea22de4",
+  "title": "MRJ Music v3.17.0 Smart Downloads, AI Up Next Queue & Fuzzy Search",
   "changelog": [
-    "🎛️ Native 5-Band Audio Equalizer, Sub-Bass Boost & 3D Spatializer with presets",
-    "🎨 Dynamic Palette Theming (automatically morphs player ambient glow & waveform colors to album artwork)",
-    "👆 4-Way Swipe Gestures on Full-Screen Player (Swipe Right: Next, Left: Prev, Up: Auto Queue, Down: Minimize)",
-    "🔍 Real-Time Search Suggestions & Instant Results Engine",
-    "📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber"
+    "⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync",
+    "🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering",
+    "🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions",
+    "🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets",
+    "🎨 Dynamic Palette Morphing Player & 4-Way Swipe Player Gestures"
   ]
 }

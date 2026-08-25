@@ -79,6 +79,10 @@ class FavoritesRepository private constructor(private val context: Context) {
         _likedTrackIds.value = updatedList.map { it.id }.toSet()
         saveCachedLikes(updatedList)
 
+        if (!currentlyLiked) {
+            com.mrj.music.intelligence.MRJBehaviorTracker.getInstance(context).onTrackLiked(track)
+        }
+
         // Sync with backend asynchronously
         scope.launch {
             try {
