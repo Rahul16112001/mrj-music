@@ -235,14 +235,11 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
                         consecutiveErrorCount = 0
                         _isPlaying.value = true
                         acquireHardwareLocks()
-                        try { player.playWhenReady = true } catch (_: Exception) {}
                         listeners.forEach { it.onPlaybackStateChange(true, false) }
-                        fadeVolume(from = 0.05f, to = 1.0f, durationMs = 350L)
                     }
                     2 -> {
                         _isPlaying.value = false
                         releaseHardwareLocks()
-                        try { player.playWhenReady = false } catch (_: Exception) {}
                         listeners.forEach { it.onPlaybackStateChange(false, false) }
                     }
                     3 -> {
@@ -251,7 +248,6 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
                     0 -> {
                         _isPlaying.value = false
                         releaseHardwareLocks()
-                        try { player.playWhenReady = false } catch (_: Exception) {}
                         handleTrackEnded()
                     }
                 }
@@ -467,17 +463,6 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
               console.log('YT State Change: ' + event.data);
               checkBufferingStall(event.data);
 
-              // Auto-resume if YouTube pauses due to background power-saving while shouldBePlaying is true
-              if (event.data === 2 && shouldBePlaying) {
-                console.log('Spurious background pause detected -> auto-resuming immediately');
-                setTimeout(function() {
-                  if (shouldBePlaying && player && player.playVideo) {
-                    player.playVideo();
-                  }
-                }, 50);
-                return;
-              }
-
               // Filter out spurious ENDED (0) events fired during video load / quality change
               if (event.data === 0) {
                 var cur = (player && player.getCurrentTime) ? (player.getCurrentTime() || 0) : 0;
@@ -522,8 +507,8 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
               ensureAudioEngaged();
               if (player && player.loadVideoById) {
                 try { player.unMute(); } catch(e) {}
+                try { player.setVolume(100); } catch(e) {}
                 player.loadVideoById({ videoId: id, startSeconds: 0 });
-                player.playVideo();
               } else {
                 pendingId = id;
               }
@@ -643,21 +628,8 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
         audioFocusManager.onPlaybackStarted()
         acquireHardwareLocks()
 
-        // Keep native ExoPlayer AudioTrack active in background with silence so Android OS & OEM battery optimizers never suspend audio thread
-        try {
-            val silenceSource = androidx.media3.exoplayer.source.SilenceMediaSource(86400000000L) // 24 hours of silence
-            player.stop()
-            player.clearMediaItems()
-            player.setMediaSource(silenceSource)
-            player.prepare()
-            player.play()
-        } catch (e: Exception) {
-            Log.w(TAG, "SilenceMediaSource setup notice: ${e.message}")
-        }
-
         mainHandler.post {
             getOrCreatePlayerEngineView(context)
-            setVolume(0.05f)
             if (isHtmlReady && webView != null) {
                 Log.d(TAG, "Executing JS playVideo('$videoId')")
                 webView?.evaluateJavascript("playVideo('$videoId');", null)
@@ -665,7 +637,6 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
                 Log.d(TAG, "HTML engine not ready yet, queuing pending video ID: $videoId")
                 pendingYouTubeId = videoId
             }
-            fadeVolume(from = 0.05f, to = 1.0f, durationMs = 300L)
         }
     }
 
@@ -1235,7 +1206,6 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
     fun resume() {
         audioFocusManager.onPlaybackStarted()
         acquireHardwareLocks()
-        setVolume(0.05f)
         if (isUsingNativeExo) {
             try {
                 val curr = _currentTrack.value
@@ -1249,18 +1219,9 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
             }
         } else {
             _isPlaying.value = true
-            try {
-                if (player.playbackState == Player.STATE_IDLE) {
-                    val silenceSource = androidx.media3.exoplayer.source.SilenceMediaSource(86400000000L)
-                    player.setMediaSource(silenceSource)
-                    player.prepare()
-                }
-                player.play()
-            } catch (_: Exception) {}
             mainHandler.post { webView?.evaluateJavascript("resumeVideo();", null) }
             listeners.forEach { it.onPlaybackStateChange(true, false) }
         }
-        fadeVolume(from = 0.05f, to = 1.0f, durationMs = 300L)
     }
 
     fun togglePlay() {

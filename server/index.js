@@ -125,8 +125,8 @@ app.get('/api/app/release', (req, res) => {
 app.get('/api/app/check-update', (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.17.1';
-  const latestVersionCode = 323;
+  const latestVersion = '3.17.2';
+  const latestVersionCode = 324;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -137,19 +137,20 @@ app.get('/api/app/check-update', (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-26',
-    title: 'MRJ Music v3.17.1 Search Bar Alignment & Status Bar Insets Fix',
+    title: 'MRJ Music v3.17.2 Continuous Audio Stream Buffering & Playback Fix',
     changelog: [
+      '⚡ Fixed 1-Second Audio Buffering Loop (smooth continuous instant streaming without stalling)',
       '📱 Fixed Search Bar Status Bar Inset & Notch Alignment (no more clipping under Android clock/battery)',
       '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
       '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
       '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
       '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.1/mrj-music-v3.17.1.apk',
-    apkFileName: 'mrj-music-v3.17.1.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.2/mrj-music-v3.17.2.apk',
+    apkFileName: 'mrj-music-v3.17.2.apk',
     fileSize: '111 MB',
     fileSizeBytes: 116703707,
-    sha256: '8e04eefbe64e28a55c35607c014952abf40c5a745b5d20431d6db6f27e086def',
+    sha256: '9750aab0f9d9841fe82c72243092f5cbeb936574cc6b591e1ada0cb9412dc556',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
