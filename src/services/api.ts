@@ -343,11 +343,41 @@ export const api = {
       const res = await fetch(`${API_BASE}/recommendations/home?region=${encodeURIComponent(region)}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Home recommendation failed');
       const data = await res.json();
+
+      const greeting = data.greeting || data.personalized?.greeting || 'Welcome';
+      const circadianTracks = data.circadianSection?.tracks || data.personalized?.timeOfDay?.tracks || [];
+      const circadianTitle = data.circadianSection?.title || data.personalized?.timeOfDay?.sectionTitle || 'Recommended For You';
+      const quickPicks = data.quickPicks || data.personalized?.quickPicks || [];
+      const dailyMixes = data.dailyMixes || data.personalized?.dailyMixes || [];
+      const listenAgain = data.listenAgain || data.personalized?.listenAgain || [];
+      const topArtists = data.trendingArtists || data.topArtists || data.discovery?.topArtists || [];
+      const trendingRegional = data.trendingRegional || data.viralReels || data.charts?.trendingRegional || [];
+      const trendingWorldwide = data.trendingWorldwide || data.charts?.trendingWorldwide || [];
+      const moods = data.moods || data.moodStations || [];
+
       return {
-        personalized: data.personalized || { quickPicks: [], dailyMixes: [], listenAgain: [], recommendedForYou: [], becauseYouLike: null },
-        discovery: data.discovery || { newReleases: [], topArtists: [] },
-        charts: data.charts || { trendingRegional: [], trendingWorldwide: [], topSongs: [], topArtists: [], region, updatedAt: Date.now() },
-        moods: data.moods || [],
+        personalized: {
+          greeting,
+          timeOfDay: circadianTracks.length > 0 ? { sectionTitle: circadianTitle, tracks: circadianTracks } : undefined,
+          quickPicks,
+          dailyMixes,
+          listenAgain,
+          recommendedForYou: quickPicks,
+          becauseYouLike: data.personalized?.becauseYouLike || null,
+        },
+        discovery: {
+          newReleases: data.discovery?.newReleases || [],
+          topArtists,
+        },
+        charts: {
+          trendingRegional,
+          trendingWorldwide,
+          topSongs: data.charts?.topSongs || trendingRegional,
+          topArtists,
+          region,
+          updatedAt: Date.now(),
+        },
+        moods,
       };
     } catch {
       return {

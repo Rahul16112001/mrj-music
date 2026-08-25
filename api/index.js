@@ -414,14 +414,28 @@ app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/h
     }
 
     const artists = [
-      { id: '1', name: 'Arijit Singh', category: 'Bollywood', followerCount: '45M+ Fans', image: 'https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg' },
-      { id: '2', name: 'Karan Aujla', category: 'Punjabi', followerCount: '18M+ Fans', image: 'https://c.saavncdn.com/artists/Karan_Aujla_003_20230622081014_500x500.jpg' },
-      { id: '3', name: 'Diljit Dosanjh', category: 'Punjabi', followerCount: '24M+ Fans', image: 'https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20221007180447_500x500.jpg' },
-      { id: '4', name: 'Shreya Ghoshal', category: 'Bollywood', followerCount: '30M+ Fans', image: 'https://c.saavncdn.com/artists/Shreya_Ghoshal_003_20221118090547_500x500.jpg' },
-      { id: '5', name: 'Sidhu Moose Wala', category: 'Punjabi Legend', followerCount: '28M+ Fans', image: 'https://c.saavncdn.com/artists/Sidhu_Moose_Wala_003_20230613093228_500x500.jpg' },
-      { id: '6', name: 'The Weeknd', category: 'Global Pop', followerCount: '110M+ Fans', image: 'https://i.scdn.co/image/ab6761610000e5eb214f3cf1cbe7139c1e26ffbb' },
-      { id: '7', name: 'Taylor Swift', category: 'Global Pop', followerCount: '115M+ Fans', image: 'https://i.scdn.co/image/ab6761610000e5eb5a00969a4698c3132a15fbb0' },
-      { id: '8', name: 'Anirudh Ravichander', category: 'South Mass', followerCount: '16M+ Fans', image: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20230914101416_500x500.jpg' },
+      { id: '1', name: 'Arijit Singh', category: 'Bollywood', followerCount: '45M+ Fans', image: 'https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg' },
+      { id: '2', name: 'Karan Aujla', category: 'Punjabi', followerCount: '18M+ Fans', image: 'https://c.saavncdn.com/artists/Karan_Aujla_003_20230622081014_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Karan_Aujla_003_20230622081014_500x500.jpg' },
+      { id: '3', name: 'Diljit Dosanjh', category: 'Punjabi', followerCount: '24M+ Fans', image: 'https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20221007180447_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20221007180447_500x500.jpg' },
+      { id: '4', name: 'Shreya Ghoshal', category: 'Bollywood', followerCount: '30M+ Fans', image: 'https://c.saavncdn.com/artists/Shreya_Ghoshal_003_20221118090547_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Shreya_Ghoshal_003_20221118090547_500x500.jpg' },
+      { id: '5', name: 'Sidhu Moose Wala', category: 'Punjabi Legend', followerCount: '28M+ Fans', image: 'https://c.saavncdn.com/artists/Sidhu_Moose_Wala_003_20230613093228_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Sidhu_Moose_Wala_003_20230613093228_500x500.jpg' },
+      { id: '6', name: 'The Weeknd', category: 'Global Pop', followerCount: '110M+ Fans', image: 'https://i.scdn.co/image/ab6761610000e5eb214f3cf1cbe7139c1e26ffbb', thumbnail: 'https://i.scdn.co/image/ab6761610000e5eb214f3cf1cbe7139c1e26ffbb' },
+      { id: '7', name: 'Taylor Swift', category: 'Global Pop', followerCount: '115M+ Fans', image: 'https://i.scdn.co/image/ab6761610000e5eb5a00969a4698c3132a15fbb0', thumbnail: 'https://i.scdn.co/image/ab6761610000e5eb5a00969a4698c3132a15fbb0' },
+      { id: '8', name: 'Anirudh Ravichander', category: 'South Mass', followerCount: '16M+ Fans', image: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20230914101416_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20230914101416_500x500.jpg' },
+    ];
+
+    const regionalTrending = viralReels && viralReels.length > 0 ? viralReels : (charts.tracks || []);
+    const worldwideTrending = (charts.tracks || []).slice(0, 15);
+    const listenAgainTracks = userHistory.length > 0 ? userHistory.slice(0, 8) : uniqueQuickPicks.slice(0, 6);
+
+    const moods = [
+      { id: 'party', name: '🎉 Party & Dance', description: 'High energy club and dance hits', icon: 'Sparkles', color: '#ec4899' },
+      { id: 'romantic', name: '💖 Romantic & Love', description: 'Heartfelt romantic melodies', icon: 'Heart', color: '#ef4444' },
+      { id: 'chill', name: '🌿 Chill & Relax', description: 'Calm acoustic and soothing lo-fi', icon: 'Coffee', color: '#10b981' },
+      { id: 'focus', name: '🎯 Focus & Study', description: 'Deep concentration beats', icon: 'Zap', color: '#6366f1' },
+      { id: 'workout', name: '⚡ Gym & Workout', description: 'Hard bass pump-up anthems', icon: 'Flame', color: '#f59e0b' },
+      { id: 'sad', name: '🌧️ Sad & Broken', description: 'Soulful acoustic emotional songs', icon: 'Moon', color: '#3b82f6' },
+      { id: 'devotional', name: '🪔 Devotional & Spiritual', description: 'Divine bhajans and chants', icon: 'Sun', color: '#eab308' },
     ];
 
     res.json({
@@ -439,6 +453,64 @@ app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/h
       dailyMixes: dailyMixesRes.dailyMixes || [],
       viralReels: viralReels || [],
       trendingArtists: artists,
+      topArtists: artists,
+      listenAgain: listenAgainTracks,
+      trendingRegional: regionalTrending,
+      trendingWorldwide: worldwideTrending,
+      moods,
+      moodStations: moods,
+      personalized: {
+        greeting,
+        timeOfDay: {
+          sectionTitle: circadianTitle,
+          tracks: (charts.tracks || []).slice(0, 10),
+        },
+        quickPicks: uniqueQuickPicks,
+        dailyMixes: dailyMixesRes.dailyMixes || [],
+        listenAgain: listenAgainTracks,
+        recommendedForYou: uniqueQuickPicks,
+        becauseYouLike: null,
+      },
+      discovery: {
+        newReleases: (charts.tracks || []).slice(0, 8),
+        topArtists: artists,
+      },
+      charts: {
+        trendingRegional: regionalTrending,
+        trendingWorldwide: worldwideTrending,
+        topSongs: (charts.tracks || []).slice(0, 20),
+        topArtists: artists,
+        region: country,
+        updatedAt: Date.now(),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Category Filter Tracks Endpoint (Punjabi, Bollywood, Hollywood, Tollywood, Haryanvi, Bhojpuri, Indie)
+app.get(['/api/music/category/:id', '/music/category/:id'], optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const queryMap = {
+      punjabi: 'top punjabi songs 2026',
+      bollywood: 'top bollywood romantic hits 2026',
+      hollywood: 'billboard hot 100 pop hits',
+      tollywood: 'top telugu tamil south hits',
+      haryanvi: 'top haryanvi songs',
+      bhojpuri: 'top bhojpuri hit songs',
+      indie: 'indian indie acoustic pop hits',
+    };
+
+    const searchQuery = queryMap[id.toLowerCase()] || `${id} hit songs`;
+    const searchRes = await musicProvider.search(searchQuery, 'songs', 20);
+    const tracks = searchRes.songs || searchRes.results || [];
+    res.json({
+      status: 'success',
+      category: id,
+      count: tracks.length,
+      tracks,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
