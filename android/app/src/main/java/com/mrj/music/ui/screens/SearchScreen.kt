@@ -54,11 +54,12 @@ fun SearchScreen(
             .fillMaxSize()
             .background(DeepDarkBg)
     ) {
-        // 1. Search Bar
+        // 1. Search Bar (Safe beneath device status bar & camera notch)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             shape = RoundedCornerShape(16.dp),
             color = SurfaceDark
         ) {

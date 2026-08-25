@@ -55,27 +55,27 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
   next();
 };
 
-// Web & Android Version Check — returns latest version 3.17.0 with direct APK link
+// Web & Android Version Check — returns latest version 3.17.1 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.17.0',
-    build: '322',
+    version: '3.17.1',
+    build: '323',
     updatedAt: '2026-08-26T00:00:00Z',
-    latestVersion: '3.17.0',
+    latestVersion: '3.17.1',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
-    apkFileName: 'mrj-music-v3.17.0.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
-    fileSize: '111 MB',
-    fileSizeBytes: 116703707,
-    sha256: '391ef328e35fbba19b544faea65247b366d3c98e3fb5d7fbd22ddcf81ea22de4',
-    title: 'MRJ Music v3.17.0 Smart Downloads, AI Up Next Queue & Fuzzy Search',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.1/mrj-music-v3.17.1.apk',
+    apkFileName: 'mrj-music-v3.17.1.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.1/mrj-music-v3.17.1.apk',
+    fileSize: '221 MB',
+    fileSizeBytes: 232400469,
+    sha256: '00b2a2dc4cd959cdf8037f862913567e15b85224b1b1ff6efd8c641bc5ad86ed',
+    title: 'MRJ Music v3.17.1 Search Bar Alignment & Status Bar Insets Fix',
     changelog: [
+      '📱 Fixed Search Bar Status Bar Inset & Notch Alignment (no more clipping under Android clock/battery)',
       '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
       '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
       '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
-      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
-      '🎨 Dynamic Palette Morphing Player & 4-Way Swipe Player Gestures'
+      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets'
     ]
   });
 });
@@ -85,28 +85,28 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.17.0',
-      build: '322',
+      version: '3.17.1',
+      build: '323',
       updatedAt: '2026-08-26T00:00:00Z',
     },
     android: {
-      versionName: '3.17.0',
-      versionCode: 322,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
-      apkFileName: 'mrj-music-v3.17.0.apk',
-      fileSize: '111 MB',
-      fileSizeBytes: 116703707,
+      versionName: '3.17.1',
+      versionCode: 323,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.1/mrj-music-v3.17.1.apk',
+      apkFileName: 'mrj-music-v3.17.1.apk',
+      fileSize: '221 MB',
+      fileSizeBytes: 232400469,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
-      sha256: '391ef328e35fbba19b544faea65247b366d3c98e3fb5d7fbd22ddcf81ea22de4',
+      sha256: '00b2a2dc4cd959cdf8037f862913567e15b85224b1b1ff6efd8c641bc5ad86ed',
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
+        '📱 Fixed Search Bar Status Bar Inset & Notch Alignment (no more clipping under Android clock/battery)',
         '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
         '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
         '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
-        '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
-        '🎨 Dynamic Palette Morphing Player & 4-Way Swipe Player Gestures'
+        '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets'
       ],
       releaseDate: '2026-08-26',
       isMandatory: false,
@@ -118,8 +118,8 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.17.0';
-  const latestVersionCode = 322;
+  const latestVersion = '3.17.1';
+  const latestVersionCode = 323;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -130,19 +130,19 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-26',
-    title: 'MRJ Music v3.17.0 Smart Downloads, AI Up Next Queue & Fuzzy Search',
+    title: 'MRJ Music v3.17.1 Search Bar Alignment & Status Bar Insets Fix',
     changelog: [
+      '📱 Fixed Search Bar Status Bar Inset & Notch Alignment (no more clipping under Android clock/battery)',
       '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
       '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
       '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
-      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets',
-      '🎨 Dynamic Palette Morphing Player & 4-Way Swipe Player Gestures'
+      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.0/mrj-music-v3.17.0.apk',
-    apkFileName: 'mrj-music-v3.17.0.apk',
-    fileSize: '111 MB',
-    fileSizeBytes: 116703707,
-    sha256: '391ef328e35fbba19b544faea65247b366d3c98e3fb5d7fbd22ddcf81ea22de4',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.1/mrj-music-v3.17.1.apk',
+    apkFileName: 'mrj-music-v3.17.1.apk',
+    fileSize: '221 MB',
+    fileSizeBytes: 232400469,
+    sha256: '00b2a2dc4cd959cdf8037f862913567e15b85224b1b1ff6efd8c641bc5ad86ed',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
