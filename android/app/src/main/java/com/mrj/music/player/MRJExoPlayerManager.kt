@@ -463,17 +463,16 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
               console.log('YT State Change: ' + event.data);
               checkBufferingStall(event.data);
 
-              // Filter out spurious ENDED (0) events fired during video load / quality change
               if (event.data === 0) {
                 var cur = (player && player.getCurrentTime) ? (player.getCurrentTime() || 0) : 0;
                 var dur = (player && player.getDuration) ? (player.getDuration() || 0) : 0;
-                if (dur > 10 && (cur >= dur * 0.85 || (dur - cur) <= 5.0)) {
-                  console.log('Real track ended confirmed at: ' + cur + 's / ' + dur + 's');
-                  if (window.AndroidBridge && window.AndroidBridge.onStateChange) {
-                    window.AndroidBridge.onStateChange(0);
-                  }
-                } else {
-                  console.log('Ignored spurious YT ENDED event during video transition (cur=' + cur + ', dur=' + dur + ')');
+                if (cur < 2.0 && dur > 10.0) {
+                  console.log('Ignored premature YT ENDED event at ' + cur + 's');
+                  return;
+                }
+                console.log('Track ended confirmed at: ' + cur + 's / ' + dur + 's');
+                if (window.AndroidBridge && window.AndroidBridge.onStateChange) {
+                  window.AndroidBridge.onStateChange(0);
                 }
                 return;
               }
@@ -970,7 +969,11 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
         }
     }
 
-    fun fetchDynamicAutoplayQueue(track: NativeTrack, isEarlySkip: Boolean = false) {
+    fun fetchDynamicAutoplayQueue(
+        track: NativeTrack,
+        isEarlySkip: Boolean = false,
+        autoPlayNextIfWaiting: Boolean = false
+    ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val token = secureStorage.getAccessToken()
@@ -1006,7 +1009,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
                         ?: emptyList()
                 } else emptyList()
 
-                val parsed = tracksRaw.mapNotNull { raw ->
+                var parsed = tracksRaw.mapNotNull { raw ->
                     val id = (raw["id"] as? String) ?: (raw["providerTrackId"] as? String) ?: return@mapNotNull null
                     val title = raw["title"] as? String ?: return@mapNotNull null
                     val artist = raw["artist"] as? String ?: "Unknown Artist"
@@ -1032,100 +1035,95 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
                     )
                 }
 
-                    if (parsed.isNotEmpty()) {
-                        mainHandler.post {
-                            val currentSlice = mutableListOf(track)
-                            val existingIds = mutableSetOf(track.id)
-                            val existingTitles = mutableSetOf(normalizeTitleForDeduplication(track.title))
-                            val fresh = mutableListOf<NativeTrack>()
+                if (parsed.isEmpty()) {
+                    // Fallback to query artist & similar songs
+                    val fallbackQuery = if (track.artist.isNotBlank() && track.artist != "Unknown Artist") "${track.artist} top songs" else "${track.title} similar"
+                    val searchRes = try {
+                        MRJApiClient.apiService.search(query = fallbackQuery, type = "songs")
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (searchRes != null && searchRes.isSuccessful && searchRes.body() != null) {
+                        val fallbackRaw = (searchRes.body()!!["songs"] as? List<Map<String, Any>>)
+                            ?: (searchRes.body()!!["results"] as? List<Map<String, Any>>)
+                            ?: emptyList()
+                        parsed = fallbackRaw.mapNotNull { raw ->
+                            val id = (raw["id"] as? String) ?: (raw["providerTrackId"] as? String) ?: return@mapNotNull null
+                            val title = raw["title"] as? String ?: return@mapNotNull null
+                            val artist = raw["artist"] as? String ?: "Unknown Artist"
+                            val thumbnail = raw["thumbnail"] as? String
+                            val duration = (raw["duration"] as? Number)?.toDouble() ?: 210.0
+                            val audioSource = raw["audioSource"] as? Map<*, *>
+                            val providerTrackId = (audioSource?.get("providerTrackId") as? String)
+                                ?: (raw["providerTrackId"] as? String)
+                                ?: (raw["videoId"] as? String)
+                                ?: extractIdFromThumbnail(thumbnail)
 
-                            for (p in parsed) {
-                                val norm = normalizeTitleForDeduplication(p.title)
-                                val isDup = existingIds.contains(p.id) || existingTitles.any { exist ->
-                                    exist == norm || (norm.length >= 4 && exist.contains(norm)) || (exist.length >= 4 && norm.contains(exist))
-                                }
-                                if (!isDup && norm.isNotBlank()) {
-                                    fresh.add(p)
-                                    existingIds.add(p.id)
-                                    existingTitles.add(norm)
-                                }
-                            }
-
-                            if (fresh.isNotEmpty()) {
-                                queue.clear()
-                                queue.addAll(currentSlice)
-                                queue.addAll(fresh)
-                                queueIndex = 0
-                                listeners.forEach { it.onQueueChange(queue, queueIndex) }
-                                Log.d(TAG, "⚡ Dynamic Autoplay Queue Morphed: ${queue.size} total tracks (Harmonized with ${track.title})")
-                            }
-                        }
-                    } else {
-                        // Fallback: Query artist & similar songs to generate dynamic AI queue
-                        val fallbackQuery = if (track.artist.isNotBlank() && track.artist != "Unknown Artist") "${track.artist} top songs" else "${track.title} similar"
-                        val searchRes = MRJApiClient.apiService.search(query = fallbackQuery, type = "songs")
-                        if (searchRes.isSuccessful && searchRes.body() != null) {
-                            val fallbackRaw = (searchRes.body()!!["songs"] as? List<Map<String, Any>>)
-                                ?: (searchRes.body()!!["results"] as? List<Map<String, Any>>)
-                                ?: emptyList()
-
-                            val fallbackParsed = fallbackRaw.mapNotNull { raw ->
-                                val id = (raw["id"] as? String) ?: (raw["providerTrackId"] as? String) ?: return@mapNotNull null
-                                val title = raw["title"] as? String ?: return@mapNotNull null
-                                val artist = raw["artist"] as? String ?: "Unknown Artist"
-                                val thumbnail = raw["thumbnail"] as? String
-                                val duration = (raw["duration"] as? Number)?.toDouble() ?: 210.0
-                                val audioSource = raw["audioSource"] as? Map<*, *>
-                                val providerTrackId = (audioSource?.get("providerTrackId") as? String)
-                                    ?: (raw["providerTrackId"] as? String)
-                                    ?: (raw["videoId"] as? String)
-                                    ?: extractIdFromThumbnail(thumbnail)
-
-                                NativeTrack(
-                                    id = id,
-                                    canonicalTrackId = raw["canonicalTrackId"] as? String ?: id,
-                                    title = title,
-                                    artist = artist,
-                                    album = raw["album"] as? String,
-                                    thumbnail = thumbnail,
-                                    duration = duration,
-                                    genre = raw["genre"] as? String,
-                                    providerTrackId = providerTrackId,
-                                    streamUrl = "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
-                                )
-                            }
-
-                            mainHandler.post {
-                                val currentSlice = mutableListOf(track)
-                                val existingIds = mutableSetOf(track.id)
-                                val existingTitles = mutableSetOf(normalizeTitleForDeduplication(track.title))
-                                val fresh = mutableListOf<NativeTrack>()
-
-                                for (p in fallbackParsed) {
-                                    val norm = normalizeTitleForDeduplication(p.title)
-                                    val isDup = existingIds.contains(p.id) || existingTitles.any { exist ->
-                                        exist == norm || (norm.length >= 4 && exist.contains(norm)) || (exist.length >= 4 && norm.contains(exist))
-                                    }
-                                    if (!isDup && norm.isNotBlank()) {
-                                        fresh.add(p)
-                                        existingIds.add(p.id)
-                                        existingTitles.add(norm)
-                                    }
-                                }
-
-                                if (fresh.isNotEmpty()) {
-                                    queue.clear()
-                                    queue.addAll(currentSlice)
-                                    queue.addAll(fresh)
-                                    queueIndex = 0
-                                    listeners.forEach { it.onQueueChange(queue, queueIndex) }
-                                    Log.d(TAG, "⚡ Dynamic Autoplay Queue Fallback Morphed: ${queue.size} total tracks")
-                                }
-                            }
+                            NativeTrack(
+                                id = id,
+                                canonicalTrackId = raw["canonicalTrackId"] as? String ?: id,
+                                title = title,
+                                artist = artist,
+                                album = raw["album"] as? String,
+                                thumbnail = thumbnail,
+                                duration = duration,
+                                genre = raw["genre"] as? String,
+                                providerTrackId = providerTrackId,
+                                streamUrl = "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
+                            )
                         }
                     }
+                }
+
+                mainHandler.post {
+                    val existingIds = queue.map { it.id }.toMutableSet()
+                    val existingTitles = queue.map { normalizeTitleForDeduplication(it.title) }.toMutableSet()
+                    _currentTrack.value?.let { curr ->
+                        existingIds.add(curr.id)
+                        existingTitles.add(normalizeTitleForDeduplication(curr.title))
+                    }
+
+                    val fresh = mutableListOf<NativeTrack>()
+                    for (p in parsed) {
+                        val norm = normalizeTitleForDeduplication(p.title)
+                        val isDup = existingIds.contains(p.id) || existingTitles.any { exist ->
+                            exist == norm || (norm.length >= 4 && exist.contains(norm)) || (exist.length >= 4 && norm.contains(exist))
+                        }
+                        if (!isDup && norm.isNotBlank()) {
+                            fresh.add(p)
+                            existingIds.add(p.id)
+                            existingTitles.add(norm)
+                        }
+                    }
+
+                    if (fresh.isNotEmpty()) {
+                        if (queue.isEmpty()) {
+                            queue.addAll(fresh)
+                            queueIndex = 0
+                            listeners.forEach { it.onQueueChange(queue, queueIndex) }
+                            if (autoPlayNextIfWaiting) {
+                                playTrack(queue[0])
+                            }
+                        } else {
+                            val previousSize = queue.size
+                            queue.addAll(fresh)
+                            listeners.forEach { it.onQueueChange(queue, queueIndex) }
+                            Log.d(TAG, "⚡ Dynamic Autoplay Queue Appended: +${fresh.size} tracks (Total: ${queue.size})")
+
+                            if (autoPlayNextIfWaiting && queueIndex >= previousSize - 1) {
+                                queueIndex = previousSize
+                                playTrack(queue[queueIndex])
+                            }
+                        }
+                    } else if (autoPlayNextIfWaiting) {
+                        triggerOfflineAutoplay()
+                    }
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "fetchDynamicAutoplayQueue failed: ${e.message}")
+                if (autoPlayNextIfWaiting) {
+                    mainHandler.post { triggerOfflineAutoplay() }
+                }
             }
         }
     }
@@ -1278,9 +1276,10 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
 
         if (queue.isEmpty()) {
             if (curr != null) {
-                fetchDynamicAutoplayQueue(curr)
+                fetchDynamicAutoplayQueue(curr, autoPlayNextIfWaiting = true)
+            } else {
+                triggerOfflineAutoplay()
             }
-            triggerOfflineAutoplay()
             return
         }
 
@@ -1288,15 +1287,17 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
             queueIndex++
             playTrack(queue[queueIndex])
 
+            // Proactively fetch and append upcoming songs when approaching queue end (3 tracks left)
             if (queue.size - queueIndex <= 3 && autoplayEnabled) {
-                fetchDynamicAutoplayQueue(queue[queueIndex])
+                fetchDynamicAutoplayQueue(queue[queueIndex], autoPlayNextIfWaiting = false)
             }
         } else if (autoplayEnabled || isUserInitiated) {
             val lastTrack = _currentTrack.value ?: queue.lastOrNull()
             if (lastTrack != null) {
-                fetchDynamicAutoplayQueue(lastTrack)
+                fetchDynamicAutoplayQueue(lastTrack, autoPlayNextIfWaiting = true)
+            } else {
+                triggerOfflineAutoplay()
             }
-            triggerOfflineAutoplay()
         } else {
             _isPlaying.value = false
             pause()
@@ -1395,13 +1396,11 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
 
     private fun handleTrackEnded() {
         val currPos = _position.value
-        val dur = _duration.value
-        val isActuallyEnded = (dur > 10_000L && currPos >= (dur * 0.85).toLong())
-                || (dur > 0L && (dur - currPos) <= 5_000L && currPos > 15_000L)
-                || (dur == 0L && (System.currentTimeMillis() - trackStartTimestamp) > 30_000L)
+        val timeSinceStart = System.currentTimeMillis() - trackStartTimestamp
+        val isPremature = (timeSinceStart < 4_000L && currPos < 4_000L)
 
-        if (!isActuallyEnded) {
-            Log.w(TAG, "Spurious track-ended event received at pos=${currPos}ms / dur=${dur}ms. Ignoring false trigger.")
+        if (isPremature) {
+            Log.w(TAG, "Premature track-ended event received at ${currPos}ms (${timeSinceStart}ms since start). Ignoring.")
             return
         }
 

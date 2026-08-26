@@ -103,9 +103,6 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
             .setCallback(callback)
             .setSessionActivity(pendingIntent)
             .build()
-
-        // Post initial foreground notification to keep service alive in background
-        postInitialForegroundNotification()
     }
 
     private fun acquireLocks() {
@@ -151,34 +148,6 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
         }
     }
 
-    private fun postInitialForegroundNotification() {
-        try {
-            val openAppIntent = PendingIntent.getActivity(
-                this, 0,
-                Intent(this, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                },
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-
-            val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("MRJ Music")
-                .setContentText("Ready to play high quality music")
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentIntent(openAppIntent)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setOngoing(false)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, builder.build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-            } else {
-                startForeground(NOTIFICATION_ID, builder.build())
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "postInitialForegroundNotification failed: ${e.message}")
-        }
-    }
-
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }
@@ -200,6 +169,7 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
                     @Suppress("DEPRECATION")
                     stopForeground(true)
                 }
+                notificationManager.cancel(NOTIFICATION_ID)
                 stopSelf()
             }
         }
@@ -210,7 +180,7 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "MRJ Music Playback"
             val descriptionText = "Lock screen and background playback controls"
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val importance = NotificationManager.IMPORTANCE_LOW
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
                 setShowBadge(false)
@@ -243,6 +213,7 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
                 @Suppress("DEPRECATION")
                 stopForeground(true)
             }
+            notificationManager.cancel(NOTIFICATION_ID)
             return
         }
 
@@ -365,6 +336,13 @@ class MRJMediaSessionService : MediaSessionService(), PlayerEventListener {
 
     override fun onDestroy() {
         releaseLocks()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        notificationManager.cancel(NOTIFICATION_ID)
         playerManager.removeListener(this)
         artworkJob?.cancel()
         mediaSession?.run {

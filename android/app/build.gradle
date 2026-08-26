@@ -9,8 +9,8 @@ android {
         applicationId "com.mrj.music"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 324
-        versionName "3.17.2"
+        versionCode 325
+        versionName "3.17.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

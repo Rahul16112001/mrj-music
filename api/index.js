@@ -57,27 +57,28 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
 
 // Web & Android Version Check — returns latest version 3.17.1 with direct APK link
 // Web & Android Version Check — returns latest version 3.17.2 with direct APK link
+// Web & Android Version Check — returns latest version 3.17.3 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.17.2',
-    build: '324',
+    version: '3.17.3',
+    build: '325',
     updatedAt: '2026-08-26T00:00:00Z',
-    latestVersion: '3.17.2',
+    latestVersion: '3.17.3',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.2/mrj-music-v3.17.2.apk',
-    apkFileName: 'mrj-music-v3.17.2.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.2/mrj-music-v3.17.2.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
+    apkFileName: 'mrj-music-v3.17.3.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18386559,
-    sha256: 'a591dc0fbade4081dff436695fd6892a3196e23e922016b5d3414ac89a388d9c',
-    title: 'MRJ Music v3.17.2 Ultra-Lightweight 18MB Release & Playback Fix',
+    fileSizeBytes: 18386816,
+    sha256: '9f94cb04fef5474760979b6437af39748f00a454c88fe73bd34ab13067120738',
+    title: 'MRJ Music v3.17.3 Infinite Non-Stop Autoplay & Foreground Notification Fix',
     changelog: [
-      '⚡ Fixed 1-Second Audio Buffering Loop (smooth continuous instant streaming without stalling)',
-      '📱 Fixed Search Bar Status Bar Inset & Notch Alignment (no more clipping under Android clock/battery)',
-      '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
-      '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
-      '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
-      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets'
+      '⚡ Fixed Background Idle Notification: Persistent "Ready to play" notification removed; only active during playback',
+      '🎵 Fixed Track-to-Track Auto-Advancement: Continuous infinite playback without stopping after 3-4 songs',
+      '🧠 Deep Dynamic AI/ML Infinite Queue Replenishment with zero duplicates',
+      '⚡ Ultra-Lightweight 18 MB optimized APK package',
+      '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine',
+      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer'
     ]
   });
 });
@@ -87,29 +88,29 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.17.2',
-      build: '324',
+      version: '3.17.3',
+      build: '325',
       updatedAt: '2026-08-26T00:00:00Z',
     },
     android: {
-      versionName: '3.17.2',
-      versionCode: 324,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.2/mrj-music-v3.17.2.apk',
-      apkFileName: 'mrj-music-v3.17.2.apk',
+      versionName: '3.17.3',
+      versionCode: 325,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
+      apkFileName: 'mrj-music-v3.17.3.apk',
       fileSize: '18 MB',
-      fileSizeBytes: 18386559,
+      fileSizeBytes: 18386816,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
-      sha256: 'a591dc0fbade4081dff436695fd6892a3196e23e922016b5d3414ac89a388d9c',
+      sha256: '9f94cb04fef5474760979b6437af39748f00a454c88fe73bd34ab13067120738',
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '⚡ Fixed 1-Second Audio Buffering Loop (smooth continuous instant streaming without stalling)',
-        '📱 Fixed Search Bar Status Bar Inset & Notch Alignment (no more clipping under Android clock/battery)',
-        '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
-        '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
-        '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
-        '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets'
+        '⚡ Fixed Background Idle Notification: Persistent "Ready to play" notification removed; only active during playback',
+        '🎵 Fixed Track-to-Track Auto-Advancement: Continuous infinite playback without stopping after 3-4 songs',
+        '🧠 Deep Dynamic AI/ML Infinite Queue Replenishment with zero duplicates',
+        '⚡ Ultra-Lightweight 18 MB optimized APK package',
+        '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine',
+        '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer'
       ],
       releaseDate: '2026-08-26',
       isMandatory: false,
@@ -121,8 +122,8 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.17.2';
-  const latestVersionCode = 324;
+  const latestVersion = '3.17.3';
+  const latestVersionCode = 325;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -133,20 +134,20 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-26',
-    title: 'MRJ Music v3.17.2 Ultra-Lightweight 18MB Release & Playback Fix',
+    title: 'MRJ Music v3.17.3 Infinite Non-Stop Autoplay & Foreground Notification Fix',
     changelog: [
-      '⚡ Fixed 1-Second Audio Buffering Loop (smooth continuous instant streaming without stalling)',
-      '📱 Fixed Search Bar Status Bar Inset & Notch Alignment (no more clipping under Android clock/battery)',
-      '⚡ YouTube Music-Style Smart Downloads & Offline Vault Engine with WiFi-only auto-sync',
-      '🧠 Dynamic Deep AI/ML Up Next Queue Generator with Zero Duplicate Track filtering',
-      '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine with Google/Spotify-style intent predictions',
-      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer with presets'
+      '⚡ Fixed Background Idle Notification: Persistent "Ready to play" notification removed; only active during playback',
+      '🎵 Fixed Track-to-Track Auto-Advancement: Continuous infinite playback without stopping after 3-4 songs',
+      '🧠 Deep Dynamic AI/ML Infinite Queue Replenishment with zero duplicates',
+      '⚡ Ultra-Lightweight 18 MB optimized APK package',
+      '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine',
+      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.2/mrj-music-v3.17.2.apk',
-    apkFileName: 'mrj-music-v3.17.2.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
+    apkFileName: 'mrj-music-v3.17.3.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18386559,
-    sha256: 'a591dc0fbade4081dff436695fd6892a3196e23e922016b5d3414ac89a388d9c',
+    fileSizeBytes: 18386816,
+    sha256: '9f94cb04fef5474760979b6437af39748f00a454c88fe73bd34ab13067120738',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
