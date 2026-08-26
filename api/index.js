@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
+import { cacheMiddleware, getCached, setCached } from '../server/utils/cache.js';
 import { authService } from '../server/auth/authService.js';
 import { requireAuth, optionalAuth } from '../server/auth/authMiddleware.js';
 import { db } from '../server/db/schema.js';
@@ -380,6 +381,17 @@ app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/h
     const userId = req.user ? req.user.id : req.query.userId || null;
     const country = req.query.country || req.headers['x-country-code'] || 'IN';
     const localHour = req.query.localHour !== undefined ? Number(req.query.localHour) : new Date().getHours();
+    const regionParam = req.query.region || country || 'IN';
+
+    // Anonymous Cache Check: Serve fast cached snapshot for anonymous visitors
+    const isAnonymous = !userId;
+    const anonCacheKey = `home:anon:${country}:${localHour}:${regionParam}`;
+    if (isAnonymous) {
+      const cached = getCached(anonCacheKey, 3 * 60 * 1000);
+      if (cached) {
+        return res.json(cached);
+      }
+    }
 
     let greeting = 'Welcome to MRJ Music';
     let circadianTitle = 'Late Night Vibes';
@@ -398,30 +410,64 @@ app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/h
       circadianSubtitle = 'Party, pop & high-energy beats';
     }
 
-    const [dailyMixesRes, viralReels, charts, userProfile, userLiked, userHistory] = await Promise.all([
+    // Task 2A: Fetch taste profile in parallel with user data & charts
+    const [dailyMixesRes, viralReels, charts, userProfile, userLiked, userHistory, userTasteProfile] = await Promise.all([
       mlIntelligenceEngine.generateDailyMixes(userId, country),
       viralTrendService.getViralReelsTracks(country, 15),
       chartService.getTrending(country),
       userId ? db.getUserById(userId) : Promise.resolve(null),
       userId ? db.getLikedTracks(userId) : Promise.resolve([]),
       userId ? db.getUserHistory(userId) : Promise.resolve([]),
+      userId ? db.getTasteProfile(userId) : Promise.resolve(null),
     ]);
 
+    // Task 2B: Score quickPicks by user taste profile
+    const preferredArtists = userTasteProfile?.preferred_artists || {};
+    const preferredGenres = userTasteProfile?.preferred_genres || {};
+    const likedArtists = new Set(userTasteProfile?.liked_artists || []);
+    const likedGenres = new Set(userTasteProfile?.liked_genres || []);
+
     const combinedRaw = [
-      ...userLiked,
-      ...userHistory,
-      ...(charts.tracks || []),
+      ...userLiked.map((t) => ({ ...t, _score: 100 })),
+      ...userHistory.map((t) => ({ ...t, _score: 60 })),
+      ...(charts.tracks || []).map((t) => ({ ...t, _score: 10 })),
     ];
+
+    combinedRaw.forEach((track) => {
+      if (!track) return;
+      let score = track._score || 0;
+      const artist = (track.artist || '').trim();
+      const genre = (track.genre || '').trim();
+
+      if (preferredArtists[artist]) {
+        score += (Number(preferredArtists[artist]) || 1.0) * 40;
+      }
+      if (likedArtists.has(artist)) {
+        score += 30;
+      }
+      if (preferredGenres[genre]) {
+        score += (Number(preferredGenres[genre]) || 1.0) * 25;
+      }
+      if (likedGenres.has(genre)) {
+        score += 20;
+      }
+      track._score = score;
+    });
+
+    combinedRaw.sort((a, b) => (b._score || 0) - (a._score || 0));
+
     const uniqueQuickPicks = [];
     const seenQuick = new Set();
     for (const t of combinedRaw) {
       if (!t || !t.id || seenQuick.has(t.id)) continue;
       seenQuick.add(t.id);
-      uniqueQuickPicks.push(t);
+      const { _score, ...cleanTrack } = t;
+      uniqueQuickPicks.push(cleanTrack);
       if (uniqueQuickPicks.length >= 8) break;
     }
 
-    const artists = [
+    // Task 2C: Personalize trendingArtists for authenticated users
+    let artists = [
       { id: '1', name: 'Arijit Singh', category: 'Bollywood', followerCount: '45M+ Fans', image: 'https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg' },
       { id: '2', name: 'Karan Aujla', category: 'Punjabi', followerCount: '18M+ Fans', image: 'https://c.saavncdn.com/artists/Karan_Aujla_003_20230622081014_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Karan_Aujla_003_20230622081014_500x500.jpg' },
       { id: '3', name: 'Diljit Dosanjh', category: 'Punjabi', followerCount: '24M+ Fans', image: 'https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20221007180447_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20221007180447_500x500.jpg' },
@@ -431,6 +477,21 @@ app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/h
       { id: '7', name: 'Taylor Swift', category: 'Global Pop', followerCount: '115M+ Fans', image: 'https://i.scdn.co/image/ab6761610000e5eb5a00969a4698c3132a15fbb0', thumbnail: 'https://i.scdn.co/image/ab6761610000e5eb5a00969a4698c3132a15fbb0' },
       { id: '8', name: 'Anirudh Ravichander', category: 'South Mass', followerCount: '16M+ Fans', image: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20230914101416_500x500.jpg', thumbnail: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20230914101416_500x500.jpg' },
     ];
+
+    if (userId && userTasteProfile) {
+      const topLikedArtists = new Set([
+        ...(userTasteProfile.liked_artists || []),
+        ...Object.keys(userTasteProfile.preferred_artists || {})
+      ].map((a) => a.toLowerCase().trim()));
+
+      if (topLikedArtists.size > 0) {
+        artists = [...artists].sort((a, b) => {
+          const aMatch = topLikedArtists.has(a.name.toLowerCase().trim()) ? 1 : 0;
+          const bMatch = topLikedArtists.has(b.name.toLowerCase().trim()) ? 1 : 0;
+          return bMatch - aMatch;
+        });
+      }
+    }
 
     const regionalTrending = viralReels && viralReels.length > 0 ? viralReels : (charts.tracks || []);
     const worldwideTrending = (charts.tracks || []).slice(0, 15);
@@ -446,7 +507,7 @@ app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/h
       { id: 'devotional', name: '🪔 Devotional & Spiritual', description: 'Divine bhajans and chants', icon: 'Sun', color: '#eab308' },
     ];
 
-    res.json({
+    const responsePayload = {
       status: 'success',
       greeting,
       userName: userProfile?.name || 'Listener',
@@ -491,7 +552,14 @@ app.get(['/api/home/dashboard', '/api/recommendations/home', '/recommendations/h
         region: country,
         updatedAt: Date.now(),
       },
-    });
+    };
+
+    // Task 2D: Only cache anonymous responses
+    if (isAnonymous) {
+      setCached(anonCacheKey, responsePayload, 3 * 60 * 1000);
+    }
+
+    res.json(responsePayload);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
