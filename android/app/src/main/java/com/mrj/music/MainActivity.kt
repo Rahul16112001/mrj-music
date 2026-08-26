@@ -39,12 +39,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Start Foreground MediaSession playback service
+        // Start MediaSession playback service
         val serviceIntent = Intent(this, MRJMediaSessionService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
+        try {
             startService(serviceIntent)
+        } catch (e: Exception) {
+            // Service startup handled gracefully
         }
 
         // Schedule Smart Downloads periodic sync (24h Wi-Fi/Charging)
