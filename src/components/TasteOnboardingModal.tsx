@@ -55,6 +55,12 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
 
   const handleSkip = () => {
     markOnboardingDone();
+    if (selectedArtists.length > 0 || selectedGenres.length > 0) {
+      api.saveUserPreferences({
+        preferred_artists: selectedArtists,
+        preferred_genres: selectedGenres,
+      }).catch(() => {});
+    }
     onClose();
   };
 

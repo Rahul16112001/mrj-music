@@ -51,7 +51,8 @@ export const Home: React.FC = () => {
 
     try {
       const localHour = new Date().getHours();
-      const data = await api.getPersonalizedHome(region, localHour, region);
+      const countryCode = (new Intl.DateTimeFormat().resolvedOptions().locale?.split('-')[1] || (selectedRegion !== 'GLOBAL' ? selectedRegion : 'IN')).toUpperCase();
+      const data = await api.getPersonalizedHome(region, localHour, countryCode);
       setGreeting(data.personalized?.greeting || 'Welcome');
       setTimeOfDayMix(data.personalized?.timeOfDay || null);
       setQuickPicks(data.personalized?.quickPicks || []);
