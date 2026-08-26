@@ -399,6 +399,8 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
             var pendingId = null;
             var bufferStallTimer = null;
             var shouldBePlaying = false;
+            var isUserPaused = false;
+            var autoResumeTimer = null;
 
             function onYouTubeIframeAPIReady() {
               console.log('YT API Ready');
@@ -443,7 +445,7 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
                 if (!bufferStallTimer) {
                   bufferStallTimer = setTimeout(function() {
                     console.log('Buffer stall watchdog triggered -> Re-syncing stream');
-                    if (player && player.playVideo) {
+                    if (!isUserPaused && player && player.playVideo) {
                       var cur = player.getCurrentTime() || 0;
                       player.seekTo(cur, true);
                       player.playVideo();
@@ -463,7 +465,47 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
               console.log('YT State Change: ' + event.data);
               checkBufferingStall(event.data);
 
-              if (event.data === 0) {
+              if (event.data === 1) { // PLAYING
+                isUserPaused = false;
+                if (autoResumeTimer) {
+                  clearTimeout(autoResumeTimer);
+                  autoResumeTimer = null;
+                }
+                if (window.AndroidBridge && window.AndroidBridge.onStateChange) {
+                  window.AndroidBridge.onStateChange(1);
+                }
+                return;
+              }
+
+              if (event.data === 2) { // PAUSED
+                if (isUserPaused) {
+                  // User explicitly tapped pause
+                  if (window.AndroidBridge && window.AndroidBridge.onStateChange) {
+                    window.AndroidBridge.onStateChange(2);
+                  }
+                } else if (shouldBePlaying) {
+                  // Spontaneous pause due to network buffering / chunk switch
+                  console.log('Spontaneous stream pause detected (not user initiated) -> auto-recovering');
+                  if (autoResumeTimer) clearTimeout(autoResumeTimer);
+                  autoResumeTimer = setTimeout(function() {
+                    if (!isUserPaused && shouldBePlaying && player && player.playVideo) {
+                      try { player.unMute(); } catch(e) {}
+                      try { player.setVolume(100); } catch(e) {}
+                      player.playVideo();
+                    }
+                  }, 250);
+                }
+                return;
+              }
+
+              if (event.data === 3) { // BUFFERING
+                if (window.AndroidBridge && window.AndroidBridge.onStateChange) {
+                  window.AndroidBridge.onStateChange(3);
+                }
+                return;
+              }
+
+              if (event.data === 0) { // ENDED
                 var cur = (player && player.getCurrentTime) ? (player.getCurrentTime() || 0) : 0;
                 var dur = (player && player.getDuration) ? (player.getDuration() || 0) : 0;
                 if (cur < 2.0 && dur > 10.0) {
@@ -502,7 +544,12 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
 
             function playVideo(id) {
               console.log('JS playVideo called with id: ' + id);
+              isUserPaused = false;
               shouldBePlaying = true;
+              if (autoResumeTimer) {
+                clearTimeout(autoResumeTimer);
+                autoResumeTimer = null;
+              }
               ensureAudioEngaged();
               if (player && player.loadVideoById) {
                 try { player.unMute(); } catch(e) {}
@@ -514,17 +561,28 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
             }
 
             function pauseVideo() {
-              console.log('JS pauseVideo called explicitly');
+              console.log('JS pauseVideo called explicitly by user');
+              isUserPaused = true;
               shouldBePlaying = false;
+              if (autoResumeTimer) {
+                clearTimeout(autoResumeTimer);
+                autoResumeTimer = null;
+              }
               if (player && player.pauseVideo) player.pauseVideo();
             }
 
             function resumeVideo() {
-              console.log('JS resumeVideo called explicitly');
+              console.log('JS resumeVideo called explicitly by user');
+              isUserPaused = false;
               shouldBePlaying = true;
+              if (autoResumeTimer) {
+                clearTimeout(autoResumeTimer);
+                autoResumeTimer = null;
+              }
               ensureAudioEngaged();
               if (player && player.playVideo) {
                 try { player.unMute(); } catch(e) {}
+                try { player.setVolume(100); } catch(e) {}
                 player.playVideo();
               }
             }

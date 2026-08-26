@@ -57,24 +57,25 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
 
 // Web & Android Version Check — returns latest version 3.17.1 with direct APK link
 // Web & Android Version Check — returns latest version 3.17.2 with direct APK link
-// Web & Android Version Check — returns latest version 3.17.3 with direct APK link
+// Web & Android Version Check — returns latest version 3.17.4 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.17.3',
-    build: '325',
+    version: '3.17.4',
+    build: '326',
     updatedAt: '2026-08-26T00:00:00Z',
-    latestVersion: '3.17.3',
+    latestVersion: '3.17.4',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
-    apkFileName: 'mrj-music-v3.17.3.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.4/mrj-music-v3.17.4.apk',
+    apkFileName: 'mrj-music-v3.17.4.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.4/mrj-music-v3.17.4.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18386816,
-    sha256: '9f94cb04fef5474760979b6437af39748f00a454c88fe73bd34ab13067120738',
-    title: 'MRJ Music v3.17.3 Infinite Non-Stop Autoplay & Foreground Notification Fix',
+    fileSizeBytes: 18387042,
+    sha256: '25460ee0b00ba20becc225ce0fdc87a1ebb4584724816a294a57b90552a73d43',
+    title: 'MRJ Music v3.17.4 Uninterrupted Playback & Auto-Recovery Fix',
     changelog: [
-      '⚡ Fixed Background Idle Notification: Persistent "Ready to play" notification removed; only active during playback',
-      '🎵 Fixed Track-to-Track Auto-Advancement: Continuous infinite playback without stopping after 3-4 songs',
+      '⚡ Fixed Mid-Playback Auto-Pause: Prevents spontaneous pausing on audio chunk switches and network buffer dips',
+      '🎵 Instant Auto-Recovery Engine: Transparent background stream recovery keeps music playing non-stop',
+      '⚡ Fixed Background Idle Notification: Only active during playback',
       '🧠 Deep Dynamic AI/ML Infinite Queue Replenishment with zero duplicates',
       '⚡ Ultra-Lightweight 18 MB optimized APK package',
       '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine',
@@ -88,25 +89,26 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.17.3',
-      build: '325',
+      version: '3.17.4',
+      build: '326',
       updatedAt: '2026-08-26T00:00:00Z',
     },
     android: {
-      versionName: '3.17.3',
-      versionCode: 325,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
-      apkFileName: 'mrj-music-v3.17.3.apk',
+      versionName: '3.17.4',
+      versionCode: 326,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.4/mrj-music-v3.17.4.apk',
+      apkFileName: 'mrj-music-v3.17.4.apk',
       fileSize: '18 MB',
-      fileSizeBytes: 18386816,
+      fileSizeBytes: 18387042,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
-      sha256: '9f94cb04fef5474760979b6437af39748f00a454c88fe73bd34ab13067120738',
+      sha256: '25460ee0b00ba20becc225ce0fdc87a1ebb4584724816a294a57b90552a73d43',
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '⚡ Fixed Background Idle Notification: Persistent "Ready to play" notification removed; only active during playback',
-        '🎵 Fixed Track-to-Track Auto-Advancement: Continuous infinite playback without stopping after 3-4 songs',
+        '⚡ Fixed Mid-Playback Auto-Pause: Prevents spontaneous pausing on audio chunk switches and network buffer dips',
+        '🎵 Instant Auto-Recovery Engine: Transparent background stream recovery keeps music playing non-stop',
+        '⚡ Fixed Background Idle Notification: Only active during playback',
         '🧠 Deep Dynamic AI/ML Infinite Queue Replenishment with zero duplicates',
         '⚡ Ultra-Lightweight 18 MB optimized APK package',
         '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine',
@@ -122,8 +124,8 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.17.3';
-  const latestVersionCode = 325;
+  const latestVersion = '3.17.4';
+  const latestVersionCode = 326;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -134,20 +136,21 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-26',
-    title: 'MRJ Music v3.17.3 Infinite Non-Stop Autoplay & Foreground Notification Fix',
+    title: 'MRJ Music v3.17.4 Uninterrupted Playback & Auto-Recovery Fix',
     changelog: [
-      '⚡ Fixed Background Idle Notification: Persistent "Ready to play" notification removed; only active during playback',
-      '🎵 Fixed Track-to-Track Auto-Advancement: Continuous infinite playback without stopping after 3-4 songs',
+      '⚡ Fixed Mid-Playback Auto-Pause: Prevents spontaneous pausing on audio chunk switches and network buffer dips',
+      '🎵 Instant Auto-Recovery Engine: Transparent background stream recovery keeps music playing non-stop',
+      '⚡ Fixed Background Idle Notification: Only active during playback',
       '🧠 Deep Dynamic AI/ML Infinite Queue Replenishment with zero duplicates',
       '⚡ Ultra-Lightweight 18 MB optimized APK package',
       '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine',
       '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.3/mrj-music-v3.17.3.apk',
-    apkFileName: 'mrj-music-v3.17.3.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.4/mrj-music-v3.17.4.apk',
+    apkFileName: 'mrj-music-v3.17.4.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18386816,
-    sha256: '9f94cb04fef5474760979b6437af39748f00a454c88fe73bd34ab13067120738',
+    fileSizeBytes: 18387042,
+    sha256: '25460ee0b00ba20becc225ce0fdc87a1ebb4584724816a294a57b90552a73d43',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
