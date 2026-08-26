@@ -268,6 +268,40 @@ export const api = {
     }
   },
 
+  // ==================== USER TASTE PREFERENCES ====================
+  async saveUserPreferences(preferences: {
+    preferred_genres?: string[];
+    preferred_artists?: string[];
+    preferred_languages?: string[];
+    preferred_moods?: string[];
+  }): Promise<{ status: string; tasteProfile?: any }> {
+    try {
+      const res = await fetch(`${API_BASE}/user/preferences`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(preferences),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save preferences');
+      return data;
+    } catch (err: any) {
+      console.warn('saveUserPreferences fallback:', err.message);
+      return { status: 'fallback' };
+    }
+  },
+
+  async getUserPreferences(): Promise<{ status: string; tasteProfile?: any }> {
+    try {
+      const res = await fetch(`${API_BASE}/user/preferences`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      return data;
+    } catch {
+      return { status: 'error' };
+    }
+  },
+
   // ==================== OFFICIAL CHARTS API ====================
   async getTrending(region: string = 'GLOBAL'): Promise<{ tracks: Track[]; region: string; updatedAt: number }> {
     try {
@@ -291,14 +325,14 @@ export const api = {
     }
   },
 
-  async getTopArtists(region: string = 'GLOBAL'): Promise<{ artists: any[]; region: string }> {
+  async getTopArtists(region: string = 'GLOBAL'): Promise<any[]> {
     try {
-      const res = await fetch(`${API_BASE}/charts/top-artists?region=${encodeURIComponent(region)}`);
-      if (!res.ok) throw new Error('Top artists fetch failed');
+      const res = await fetch(`${API_BASE}/charts/artists?region=${encodeURIComponent(region)}`);
+      if (!res.ok) throw new Error('Artists fetch failed');
       const data = await res.json();
-      return { artists: data.artists || [], region: data.region || region };
+      return data.artists || [];
     } catch {
-      return { artists: [], region };
+      return [];
     }
   },
 
@@ -324,8 +358,23 @@ export const api = {
     }
   },
 
+  async getGenreTracks(genre: string): Promise<Track[]> {
+    try {
+      const res = await fetch(`${API_BASE}/music/category/${encodeURIComponent(genre)}`);
+      if (!res.ok) throw new Error('Genre fetch failed');
+      const data = await res.json();
+      return data.tracks || [];
+    } catch {
+      return [];
+    }
+  },
+
   // ==================== RECOMMENDATION & AUTOPLAY API ====================
-  async getPersonalizedHome(region: string = 'IN'): Promise<{
+  async getPersonalizedHome(
+    region: string = 'IN',
+    localHour?: number,
+    countryCode?: string
+  ): Promise<{
     personalized: {
       greeting?: string;
       timeOfDay?: { sectionTitle: string; tracks: Track[] };
@@ -340,7 +389,14 @@ export const api = {
     moods: MoodStation[];
   }> {
     try {
-      const res = await fetch(`${API_BASE}/recommendations/home?region=${encodeURIComponent(region)}`, { headers: getAuthHeaders() });
+      const currentHour = localHour !== undefined ? localHour : new Date().getHours();
+      const country = countryCode || region || 'IN';
+      const params = new URLSearchParams({
+        region,
+        country,
+        localHour: currentHour.toString(),
+      });
+      const res = await fetch(`${API_BASE}/recommendations/home?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Home recommendation failed');
       const data = await res.json();
 

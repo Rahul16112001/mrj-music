@@ -863,6 +863,73 @@ app.post('/api/user/events', optionalAuth, async (req, res) => {
   res.json({ status: 'success', processed: events?.length || 0 });
 });
 
+// User Taste Profile Preferences & Onboarding Endpoints
+app.post(['/api/user/preferences', '/api/user/onboarding'], requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { preferred_genres, preferred_artists, preferred_languages, preferred_moods } = req.body;
+
+    const existing = await db.getTasteProfile(userId);
+
+    const updatedArtists = { ...(existing.preferred_artists || {}) };
+    if (Array.isArray(preferred_artists)) {
+      preferred_artists.forEach((artist) => {
+        if (artist && typeof artist === 'string' && artist.trim()) {
+          updatedArtists[artist.trim()] = Math.max(updatedArtists[artist.trim()] || 0, 1.0);
+        }
+      });
+    }
+
+    const updatedGenres = { ...(existing.preferred_genres || {}) };
+    if (Array.isArray(preferred_genres)) {
+      preferred_genres.forEach((genre) => {
+        if (genre && typeof genre === 'string' && genre.trim()) {
+          updatedGenres[genre.trim()] = Math.max(updatedGenres[genre.trim()] || 0, 1.0);
+        }
+      });
+    }
+
+    const updatedLanguages = { ...(existing.preferred_languages || {}) };
+    if (Array.isArray(preferred_languages)) {
+      preferred_languages.forEach((lang) => {
+        if (lang && typeof lang === 'string' && lang.trim()) {
+          updatedLanguages[lang.trim()] = Math.max(updatedLanguages[lang.trim()] || 0, 1.0);
+        }
+      });
+    }
+
+    const updatedProfile = {
+      ...existing,
+      preferred_artists: updatedArtists,
+      preferred_genres: updatedGenres,
+      preferred_languages: updatedLanguages,
+      liked_artists: Array.from(new Set([...(existing.liked_artists || []), ...(preferred_artists || [])])),
+      liked_genres: Array.from(new Set([...(existing.liked_genres || []), ...(preferred_genres || [])])),
+      updated_at: Date.now(),
+    };
+
+    await db.saveTasteProfile(userId, updatedProfile);
+
+    res.json({
+      status: 'success',
+      message: 'User taste preferences saved successfully',
+      tasteProfile: updatedProfile,
+    });
+  } catch (err) {
+    console.error('Error saving user preferences:', err);
+    res.status(500).json({ error: 'Failed to save preferences: ' + err.message });
+  }
+});
+
+app.get(['/api/user/preferences', '/api/user/taste-profile'], requireAuth, async (req, res) => {
+  try {
+    const profile = await db.getTasteProfile(req.user.id);
+    res.json({ status: 'success', tasteProfile: profile });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch preferences: ' + err.message });
+  }
+});
+
 app.post('/api/user/migrate', requireAuth, async (req, res) => {
   const { likedTracks, playlists, history } = req.body;
   const userId = req.user.id;

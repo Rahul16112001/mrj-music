@@ -50,7 +50,8 @@ export const Home: React.FC = () => {
     else setIsLoading(true);
 
     try {
-      const data = await api.getPersonalizedHome(region);
+      const localHour = new Date().getHours();
+      const data = await api.getPersonalizedHome(region, localHour, region);
       setGreeting(data.personalized?.greeting || 'Welcome');
       setTimeOfDayMix(data.personalized?.timeOfDay || null);
       setQuickPicks(data.personalized?.quickPicks || []);

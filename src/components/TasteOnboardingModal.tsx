@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, Check, Music, X } from 'lucide-react';
 import { syncService } from '../services/syncService';
+import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 interface TasteOnboardingModalProps {
@@ -57,10 +58,20 @@ export const TasteOnboardingModal: React.FC<TasteOnboardingModalProps> = ({
     onClose();
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     markOnboardingDone();
 
-    // Commit initial seed preferences as LIKE events to user taste profile dataset
+    // 1. Direct API persistence to User Taste Profile DB
+    try {
+      await api.saveUserPreferences({
+        preferred_artists: selectedArtists,
+        preferred_genres: selectedGenres,
+      });
+    } catch (err) {
+      console.warn('Preferences save warning:', err);
+    }
+
+    // 2. Commit initial seed preferences as LIKE events to user taste profile dataset
     for (const artist of selectedArtists) {
       syncService.queueEvent({
         eventType: 'LIKE',
