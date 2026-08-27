@@ -466,6 +466,32 @@ export const api = {
     }
   },
 
+  async getDynamicQueue(params: {
+    currentTrack: Track | null;
+    playedTrackIds: string[];
+    currentQueueIds: string[];
+    countryCode?: string;
+    localHour?: number;
+    sessionId?: string;
+    isEarlySkip?: boolean;
+  }): Promise<{ queue: Track[]; circadianPhase?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/dynamic-queue`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) throw new Error('Dynamic queue failed');
+      const data = await res.json();
+      return {
+        queue: data.queue || [],
+        circadianPhase: data.circadianPhase,
+      };
+    } catch {
+      return { queue: [] };
+    }
+  },
+
   async tuneRecommendations(tuneConfig: any, currentTrack?: Track | null, currentQueueIds?: string[]): Promise<{ tracks: Track[] }> {
     try {
       const res = await fetch(`${API_BASE}/recommendations/tune`, {

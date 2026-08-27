@@ -175,10 +175,17 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const lastSeekTimestampRef = useRef<number>(0);
   const isFetchingAutoplay = useRef<boolean>(false);
   const sessionIdRef = useRef<string>('sess_' + Math.random().toString(36).substring(2, 9));
+  const isEarlySkipRef = useRef<boolean>(false);
+  const playbackHistoryRef = useRef<string[]>([]);
   // Ref always points to the latest handleTrackEnded — prevents stale-closure autoplay failure
   const handleTrackEndedRef = useRef<() => void>(() => {});
   const currentTrackRef = useRef<Track | null>(null);
   const loadWatchdogTimerRef = useRef<any>(null);
+
+  // Sync playbackHistoryRef whenever playbackHistory state changes
+  useEffect(() => {
+    playbackHistoryRef.current = playbackHistory.map(t => t.id);
+  }, [playbackHistory]);
 
   // High-Fidelity Audio Failover Helper
   const triggerAudioFallback = (targetTrack: Track | null) => {
@@ -481,16 +488,22 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setSourceQueue([track]);
       setSourceType(source || 'single');
 
-      // Auto-populate seed radio / autoplay queue in background
-      api.getNextRecommendations({
+      // Auto-populate seed radio / autoplay queue in background using Dynamic ML Queue
+      const countryCode = (typeof Intl !== 'undefined' ? new Intl.DateTimeFormat().resolvedOptions().locale?.split('-')[1]?.toUpperCase() : '') || 'IN';
+      const localHour = new Date().getHours();
+      api.getDynamicQueue({
         currentTrack: track,
         playedTrackIds: [track.id],
         currentQueueIds: [track.id],
+        countryCode,
+        localHour,
+        sessionId: sessionIdRef.current,
+        isEarlySkip: false,
       }).then(rec => {
-        if (rec.tracks && rec.tracks.length > 0) {
+        if (rec.queue && rec.queue.length > 0) {
           setQueue(prev => {
             const currentHead = prev[0] || track;
-            const fresh = rec.tracks.filter(t => t.id !== currentHead.id && (t.providerTrackId || t.id) !== (currentHead.providerTrackId || currentHead.id));
+            const fresh = rec.queue.filter(t => t.id !== currentHead.id && (t.providerTrackId || t.id) !== (currentHead.providerTrackId || currentHead.id));
             return [currentHead, ...fresh];
           });
         }
@@ -717,14 +730,23 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       try {
         if (typeof navigator !== 'undefined' && navigator.onLine) {
-          const nextBatch = await api.getNextRecommendations({
+          const countryCode = (typeof Intl !== 'undefined' ? new Intl.DateTimeFormat().resolvedOptions().locale?.split('-')[1]?.toUpperCase() : '') || 'IN';
+          const localHour = new Date().getHours();
+          const isEarlySkip = isEarlySkipRef.current;
+          isEarlySkipRef.current = false; // Reset after reading
+
+          const dynamicRes = await api.getDynamicQueue({
             currentTrack,
-            playedTrackIds: playbackHistory.map(t => t.id),
+            playedTrackIds: playbackHistoryRef.current,
             currentQueueIds: currentQueue.map(t => t.id),
+            countryCode,
+            localHour,
+            sessionId: sessionIdRef.current,
+            isEarlySkip,
           });
 
-          if (genId === autoplayGenerationId.current && nextBatch.tracks.length > 0) {
-            const uniqueNewTracks = nextBatch.tracks.filter(
+          if (genId === autoplayGenerationId.current && dynamicRes.queue.length > 0) {
+            const uniqueNewTracks = dynamicRes.queue.filter(
               nt => !currentQueue.some(cq => cq.id === nt.id)
             );
 
@@ -737,7 +759,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           const offlineNext = await offlineRecommendationEngine.getNextOfflineTracks(
             currentTrack,
             5,
-            [...playbackHistory.map(t => t.id), ...currentQueue.map(t => t.id)]
+            [...playbackHistoryRef.current, ...currentQueue.map(t => t.id)]
           );
 
           if (genId === autoplayGenerationId.current && offlineNext.length > 0) {
@@ -745,12 +767,12 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         }
       } catch (e) {
-        console.warn('Autoplay generation notice:', e);
+        console.warn('Dynamic ML autoplay generation notice:', e);
       } finally {
         isFetchingAutoplay.current = false;
       }
     }
-  }, [autoplayEnabled, currentTrack, playbackHistory]);
+  }, [autoplayEnabled, currentTrack]);
 
   // ==================== 3. NEXT & PREVIOUS BUTTONS ====================
 
@@ -761,7 +783,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     if (currentTrack) {
-      const isEarlySkip = currentTime < 15;
+      const isEarlySkip = duration > 0 ? (currentTime / duration < 0.3) : (currentTime < 15);
+      isEarlySkipRef.current = isEarlySkip;
+
       syncService.queueEvent({
         eventType: isEarlySkip ? 'SKIP_EARLY' : 'SKIP_LATE',
         trackId: currentTrack.id,
@@ -772,7 +796,9 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         sessionId: sessionIdRef.current,
       });
 
-      setPlaybackHistory(prev => [currentTrack, ...prev.filter(t => t.id !== currentTrack.id)].slice(0, 30));
+      const updatedHistory = [currentTrack, ...playbackHistory.filter(t => t.id !== currentTrack.id)].slice(0, 30);
+      setPlaybackHistory(updatedHistory);
+      playbackHistoryRef.current = updatedHistory.map(t => t.id);
     }
 
     let nextIdx = queueIndex + 1;
@@ -783,14 +809,23 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       } else if (autoplayEnabled) {
         if (typeof navigator !== 'undefined' && navigator.onLine) {
           try {
-            const res = await api.getNextRecommendations({
+            const countryCode = (typeof Intl !== 'undefined' ? new Intl.DateTimeFormat().resolvedOptions().locale?.split('-')[1]?.toUpperCase() : '') || 'IN';
+            const localHour = new Date().getHours();
+            const isEarlySkip = isEarlySkipRef.current;
+            isEarlySkipRef.current = false;
+
+            const res = await api.getDynamicQueue({
               currentTrack,
-              playedTrackIds: playbackHistory.map(t => t.id),
+              playedTrackIds: playbackHistoryRef.current,
               currentQueueIds: queue.map(t => t.id),
+              countryCode,
+              localHour,
+              sessionId: sessionIdRef.current,
+              isEarlySkip,
             });
-            if (res.tracks.length > 0) {
-              const nextTrackItem = res.tracks[0];
-              setQueue(prev => [...prev, ...res.tracks]);
+            if (res.queue.length > 0) {
+              const nextTrackItem = res.queue[0];
+              setQueue(prev => [...prev, ...res.queue]);
               setQueueIndex(queue.length);
               playTrack(nextTrackItem);
               return;
@@ -802,7 +837,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const offlineTracks = await offlineRecommendationEngine.getNextOfflineTracks(
           currentTrack,
           5,
-          playbackHistory.map(t => t.id)
+          playbackHistoryRef.current
         );
         if (offlineTracks.length > 0) {
           const nextTrackItem = offlineTracks[0];
