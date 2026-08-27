@@ -169,7 +169,7 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#111114] border border-[#222226] text-xs">
           <div className="flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[11px] font-bold text-[#aaaaaa]">MRJ Music v2.1.0</span>
+            <span className="text-[11px] font-bold text-[#aaaaaa]">MRJ Music v3.18.0</span>
           </div>
           <span className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
             Latest
