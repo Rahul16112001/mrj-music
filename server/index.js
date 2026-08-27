@@ -792,6 +792,7 @@ app.get('/api/music/suggestions', optionalAuth, async (req, res) => {
     region,
     language,
   });
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.json({ status: 'success', ...data });
 });
 
