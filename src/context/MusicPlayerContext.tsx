@@ -293,7 +293,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   const toPlay = pendingPlayIdRef.current;
                   pendingPlayIdRef.current = null;
                   try {
-                    ytPlayerRef.current?.loadVideoById(toPlay);
+                    ytPlayerRef.current?.loadVideoById({ videoId: toPlay, startSeconds: 0, suggestedQuality: 'highres' });
+                    try { ytPlayerRef.current?.setPlaybackQuality?.('highres'); } catch {}
                     ytPlayerRef.current?.playVideo();
                     setIsPlaying(true);
                     setIsLoading(false);
@@ -304,6 +305,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               },
               onStateChange: (event: any) => {
                 if (event.data === 1) { // PLAYING
+                  try { ytPlayerRef.current?.setPlaybackQuality?.('highres'); } catch {}
                   if (loadWatchdogTimerRef.current) {
                     clearTimeout(loadWatchdogTimerRef.current);
                     loadWatchdogTimerRef.current = null;
@@ -581,7 +583,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
           if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
             try {
-              ytPlayerRef.current.loadVideoById(streamId);
+              ytPlayerRef.current.loadVideoById({ videoId: streamId, startSeconds: 0, suggestedQuality: 'highres' });
+              try { ytPlayerRef.current.setPlaybackQuality?.('highres'); } catch {}
               ytPlayerRef.current.playVideo();
               setIsPlaying(true);
             } catch (err) {

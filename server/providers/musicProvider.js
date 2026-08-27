@@ -4,7 +4,7 @@ import { searchIntentEngine, INTENT_TYPES } from '../catalog/searchIntentEngine.
 import { canonicalMusicResolver } from '../catalog/canonicalMusicResolver.js';
 import { searchRelevanceEngine } from '../catalog/searchRelevanceEngine.js';
 import { trackIdentityManager } from '../catalog/trackIdentityManager.js';
-import { searchYouTubeHighEnd } from '../catalog/youtubeScraper.js';
+import { searchYouTubeHighEnd, searchYouTubeMusic } from '../catalog/youtubeScraper.js';
 
 // Multiple resilient multi-region stream endpoints
 const PIPED_INSTANCES = [
@@ -52,8 +52,9 @@ export const musicProvider = {
 
     try {
       const qTrim = query.trim();
-      const [canonicalRes, audioYtRes, generalYtRes] = await Promise.allSettled([
+      const [canonicalRes, ytMusicRes, audioYtRes, generalYtRes] = await Promise.allSettled([
         canonicalMusicResolver.searchCanonicalEntities(query, intent),
+        searchYouTubeMusic(qTrim, 20),
         searchYouTubeHighEnd(`${qTrim} official audio`, 15),
         searchYouTubeHighEnd(qTrim, 15),
       ]);
@@ -70,6 +71,7 @@ export const musicProvider = {
           }
         }
       };
+      addCand(ytMusicRes);
       addCand(audioYtRes);
       addCand(generalYtRes);
       const ytArtists = [];
@@ -90,6 +92,19 @@ export const musicProvider = {
       const candidateSongs = [];
       const candidateVideos = [];
       const podcasts = [];
+
+      // Add verified YouTube Music tracks directly
+      if (ytMusicRes.status === 'fulfilled' && Array.isArray(ytMusicRes.value)) {
+        for (const ytSong of ytMusicRes.value) {
+          candidateSongs.push({
+            ...ytSong,
+            playbackFormat: 'audio',
+            sourceType: 'youtube_music',
+            isOfficialMusic: true,
+            confidenceScore: 100,
+          });
+        }
+      }
 
       const isExplicitVariant = intent.wantsSlowed || intent.wantsRemix || intent.wantsCover || intent.wantsLive || intent.wantsLyrics;
 

@@ -554,7 +554,8 @@ class MRJExoPlayerManager private constructor(private val context: Context) : Au
               if (player && player.loadVideoById) {
                 try { player.unMute(); } catch(e) {}
                 try { player.setVolume(100); } catch(e) {}
-                player.loadVideoById({ videoId: id, startSeconds: 0 });
+                player.loadVideoById({ videoId: id, startSeconds: 0, suggestedQuality: 'highres' });
+                try { player.setPlaybackQuality('highres'); } catch(e) {}
               } else {
                 pendingId = id;
               }

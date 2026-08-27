@@ -183,3 +183,115 @@ export async function getYoutubeMusicSuggestions(query) {
     return { suggestions: [], songs: [] };
   }
 }
+
+/**
+ * YouTube Music Direct Catalog Search
+ * Queries YouTube Music search RPC to return authentic official tracks, albums, and artists
+ */
+export async function searchYouTubeMusic(query, limit = 20) {
+  if (!query || !query.trim()) return [];
+
+  const cleanQuery = query.trim().replace(/[^a-zA-Z0-9\s]+$/g, '').trim() || query.trim();
+
+  try {
+    const payload = {
+      context: {
+        client: {
+          clientName: 'WEB_REMIX',
+          clientVersion: '1.20240318.01.00',
+          hl: 'en',
+          gl: 'IN',
+        },
+      },
+      query: cleanQuery,
+    };
+
+    const res = await axios.post('https://music.youtube.com/youtubei/v1/search', payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Referer: 'https://music.youtube.com/',
+        Origin: 'https://music.youtube.com',
+      },
+      timeout: 5000,
+    });
+
+    const songs = [];
+    const secList =
+      res.data?.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents ||
+      [];
+
+    for (const s of secList) {
+      const items = s.itemSectionRenderer?.contents || [];
+      for (const item of items) {
+        const r = item.musicResponsiveListItemRenderer;
+        if (!r) continue;
+
+        const flexColumns = r.flexColumns || [];
+        const title = flexColumns[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text;
+        const subRuns = flexColumns[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+        const fullSub = subRuns.map((x) => x.text).join('');
+
+        const videoId =
+          r.playlistItemData?.videoId ||
+          r.doubleTapCommand?.watchEndpoint?.videoId ||
+          r.navigationEndpoint?.watchEndpoint?.videoId;
+        const thumb = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+
+        let artist = 'Popular Artist';
+        let album = '';
+        let durationSec = 210;
+
+        const parts = fullSub.split('•').map((x) => x.trim());
+        if (parts.length >= 2) {
+          artist = parts[1];
+          if (parts.length >= 3) album = parts[2];
+        }
+
+        const lastCol = flexColumns[flexColumns.length - 1];
+        const durText = lastCol?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text || '';
+        if (durText && durText.includes(':')) {
+          const p = durText.split(':').map(Number);
+          if (p.length === 2) durationSec = p[0] * 60 + p[1];
+        }
+
+        const isPodcast = fullSub.toLowerCase().includes('podcast') || fullSub.toLowerCase().includes('episode');
+
+        if (title && videoId && !isPodcast) {
+          songs.push({
+            id: videoId,
+            videoId,
+            providerTrackId: videoId,
+            rawTitle: title,
+            title,
+            artist,
+            album,
+            duration: durationSec,
+            thumbnail: thumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            audioSource: {
+              sourceId: `src_${videoId}`,
+              provider: 'youtube',
+              providerTrackId: videoId,
+              title,
+              artist,
+              album,
+              duration: durationSec,
+              format: 'audio',
+              sourceType: 'audio',
+              confidenceScore: 100,
+            },
+          });
+        }
+
+        if (songs.length >= limit) break;
+      }
+      if (songs.length >= limit) break;
+    }
+
+    return songs;
+  } catch (err) {
+    console.warn('YouTube Music search warning for "' + query + '":', err.message);
+    return [];
+  }
+}
