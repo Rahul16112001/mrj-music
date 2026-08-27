@@ -308,7 +308,7 @@ export const SettingsPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white">MRJ Music Engine</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  v3.18.0 (Production)
+                  v3.18.1 (Production)
                 </span>
               </div>
               <p className="text-xs text-[#888888] mt-0.5">

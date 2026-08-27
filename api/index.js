@@ -147,11 +147,11 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
       '📞 Native Phone Call Interruption & Auto-Resume Bridge',
       '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
-    apkFileName: 'mrj-music-v3.18.0.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.1/mrj-music-v3.18.1.apk',
+    apkFileName: 'mrj-music-v3.18.1.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18389855,
-    sha256: '850cd70880ec9d60dff1a15b246b9db018e43df4fe24eb69ef2f709f1958fbb1',
+    fileSizeBytes: 18395941,
+    sha256: '0819f4841b7f368866deffbb8d382a0d6c5810bfcd63746c503510f8716f0eb7',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
