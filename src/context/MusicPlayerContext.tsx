@@ -86,6 +86,7 @@ interface MusicPlayerContextType {
   refreshLibrary: () => Promise<void>;
 
   // UI Actions
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   setFullScreenPlayerOpen: (open: boolean) => void;
   setLyricsOpen: (open: boolean) => void;
   setQueueOpen: (open: boolean) => void;
@@ -161,6 +162,16 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [downloadedTrackIds, setDownloadedTrackIds] = useState<Set<string>>(new Set());
   const [likedTrackIds, setLikedTrackIds] = useState<Set<string>>(new Set());
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [toast, setToast] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const toastTimerRef = useRef<any>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ id: String(Date.now()), message, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+    }, 3200);
+  }, []);
 
   const ytPlayerRef = useRef<any>(null);
   const ytPlayerReadyRef = useRef<boolean>(false);
@@ -1055,14 +1066,35 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const downloadTrack = async (track: Track, type: 'manual' | 'smart' = 'manual'): Promise<boolean> => {
+    if (!track) return false;
+
+    // Task 4A: Robust Priority Order for ID resolution (using valid Track type fields)
+    const resolvedId =
+      track.providerTrackId ||
+      track.audioSource?.providerTrackId ||
+      track.videoSource?.providerTrackId ||
+      track.canonicalTrackId ||
+      track.id;
+
+    // Task 4C: Check if already downloaded before downloading
+    if (downloadedTrackIds.has(track.id) || (resolvedId && downloadedTrackIds.has(resolvedId))) {
+      showToast('Already in your offline library', 'info');
+      return true;
+    }
+
     try {
-      const blob = await api.downloadAudioBlob(track.id);
-      if (!blob) return false;
+      const blob = await api.downloadAudioBlob(resolvedId);
+      if (!blob) {
+        showToast(`❌ Download failed for "${track.title}". Try again.`, 'error');
+        return false;
+      }
       const lyrics = await api.getLyrics(track.title, track.artist, track.duration);
-      await offlineStorage.saveDownloadedTrack(track, blob, lyrics, type);
-      setDownloadedTrackIds(prev => new Set(prev).add(track.id));
+      await offlineStorage.saveDownloadedTrack({ ...track, id: track.id || resolvedId }, blob, lyrics, type);
+      setDownloadedTrackIds(prev => new Set(prev).add(track.id).add(resolvedId));
+      showToast(`✅ "${track.title}" saved for offline`, 'success');
       return true;
     } catch {
+      showToast(`❌ Download failed for "${track.title}". Try again.`, 'error');
       return false;
     }
   };
@@ -1075,6 +1107,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         next.delete(trackId);
         return next;
       });
+      showToast('Removed from offline library', 'info');
       return true;
     } catch {
       return false;
@@ -1187,6 +1220,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         removeTrackFromPlaylist,
         deletePlaylist,
         refreshLibrary,
+        showToast,
         setFullScreenPlayerOpen,
         setLyricsOpen,
         setQueueOpen,
@@ -1195,6 +1229,27 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }}
     >
       {children}
+
+      {/* Floating Toast Notification Banner */}
+      {toast && (
+        <div
+          data-testid="toast-notification"
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 max-w-[90vw]"
+        >
+          <div
+            className={`px-4 py-2.5 rounded-full backdrop-blur-xl border text-xs font-semibold shadow-2xl flex items-center gap-2 ${
+              toast.type === 'success'
+                ? 'bg-[#121214]/95 text-white border-emerald-500/50 shadow-emerald-950/40'
+                : toast.type === 'error'
+                ? 'bg-[#121214]/95 text-white border-red-500/50 shadow-red-950/40'
+                : 'bg-[#121214]/95 text-white border-white/20 shadow-black/60'
+            }`}
+          >
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div
         id="mrj-yt-audio-container"
         style={{
