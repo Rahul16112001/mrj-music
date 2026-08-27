@@ -177,7 +177,36 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const sessionIdRef = useRef<string>('sess_' + Math.random().toString(36).substring(2, 9));
   // Ref always points to the latest handleTrackEnded — prevents stale-closure autoplay failure
   const handleTrackEndedRef = useRef<() => void>(() => {});
+  const currentTrackRef = useRef<Track | null>(null);
+  const loadWatchdogTimerRef = useRef<any>(null);
 
+  // High-Fidelity Audio Failover Helper
+  const triggerAudioFallback = (targetTrack: Track | null) => {
+    if (loadWatchdogTimerRef.current) {
+      clearTimeout(loadWatchdogTimerRef.current);
+      loadWatchdogTimerRef.current = null;
+    }
+    if (!targetTrack) {
+      setIsLoading(false);
+      return;
+    }
+    const fallbackUrl = targetTrack.previewUrl || (targetTrack.audioSource?.providerTrackId ? `https://mrj-music.vercel.app/api/music/stream-raw/${targetTrack.audioSource.providerTrackId}` : null);
+    if (fallbackUrl && htmlAudioRef.current) {
+      console.log('⚡ YouTube iframe blocked or timeout. Seamlessly switching to HQ direct audio stream:', targetTrack.title);
+      isUsingHtmlAudio.current = true;
+      try { ytPlayerRef.current?.pauseVideo?.(); } catch {}
+      htmlAudioRef.current.src = fallbackUrl;
+      htmlAudioRef.current.play().then(() => {
+        setIsPlaying(true);
+        setIsLoading(false);
+      }).catch((err) => {
+        console.warn('Direct stream fallback play notice:', err);
+        setIsLoading(false);
+      });
+    } else {
+      setIsLoading(false);
+    }
+  };
 
   // Initialize playback & library storage
   useEffect(() => {
@@ -192,7 +221,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsLoading(loading);
       },
       onTrackChange: (t) => {
-        if (t) setCurrentTrack(t);
+        if (t) {
+          setCurrentTrack(t);
+          currentTrackRef.current = t;
+        }
       },
       onPositionChange: (pos, dur) => {
         setCurrentTime(pos);
@@ -233,14 +265,14 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           if (!container) {
             container = document.createElement('div');
             container.id = 'mrj-yt-audio-container';
-            container.style.cssText = 'position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:9999;';
+            container.style.cssText = 'position:fixed;bottom:-9999px;right:-9999px;width:200px;height:200px;opacity:1;pointer-events:none;z-index:-1;';
             document.body.appendChild(container);
           }
 
           ytPlayerRef.current = new window.YT.Player('mrj-yt-audio-container', {
             height: '200',
             width: '200',
-            host: 'https://www.youtube-nocookie.com',
+            host: 'https://www.youtube.com',
             playerVars: {
               autoplay: 1,
               controls: 0,
@@ -272,6 +304,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               },
               onStateChange: (event: any) => {
                 if (event.data === 1) { // PLAYING
+                  if (loadWatchdogTimerRef.current) {
+                    clearTimeout(loadWatchdogTimerRef.current);
+                    loadWatchdogTimerRef.current = null;
+                  }
                   setIsPlaying(true);
                   setIsLoading(false);
                   acquireWakeLock();
@@ -282,14 +318,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
                   releaseWakeLock();
                 } else if (event.data === 0) { // ENDED
                   handleTrackEndedRef.current();
-
                 } else if (event.data === 3) { // BUFFERING
                   setIsLoading(true);
                 }
               },
               onError: (err: any) => {
                 console.warn('YouTube player error event:', err);
-                setIsLoading(false);
+                triggerAudioFallback(currentTrackRef.current);
               },
             },
           });
@@ -528,6 +563,22 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         if (streamId) {
+          currentTrackRef.current = track;
+
+          // Clear any previous watchdog
+          if (loadWatchdogTimerRef.current) {
+            clearTimeout(loadWatchdogTimerRef.current);
+            loadWatchdogTimerRef.current = null;
+          }
+
+          // Start 3.8s watchdog: If YouTube player does not transition to PLAYING within 3.8s, failover to HQ stream
+          loadWatchdogTimerRef.current = setTimeout(() => {
+            if (!isUsingHtmlAudio.current) {
+              console.log('⏳ Stream buffering watchdog triggered for:', track.title);
+              triggerAudioFallback(track);
+            }
+          }, 3800);
+
           if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
             try {
               ytPlayerRef.current.loadVideoById(streamId);
@@ -535,10 +586,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               setIsPlaying(true);
             } catch (err) {
               console.warn('YT loadVideoById error:', err);
+              triggerAudioFallback(track);
             }
           } else {
             pendingPlayIdRef.current = streamId;
           }
+        } else {
+          triggerAudioFallback(track);
         }
 
         // Fetch lyrics in background (with cache)
@@ -1107,13 +1161,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         id="mrj-yt-audio-container"
         style={{
           position: 'fixed',
-          bottom: 0,
-          right: 0,
+          bottom: '-9999px',
+          right: '-9999px',
           width: '200px',
           height: '200px',
-          opacity: 0.001,
+          opacity: 1,
           pointerEvents: 'none',
-          zIndex: 9999,
+          zIndex: -1,
         }}
       />
     </MusicPlayerContext.Provider>

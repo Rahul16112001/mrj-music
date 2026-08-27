@@ -22,6 +22,7 @@ export interface Track {
   views?: string;
   genre?: string;
   audioUrl?: string;
+  previewUrl?: string;
   contentType?: ContentType;
   isOfficialMusic?: boolean;
   isAudioOnly?: boolean;
