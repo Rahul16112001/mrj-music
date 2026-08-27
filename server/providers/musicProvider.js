@@ -94,11 +94,13 @@ export const musicProvider = {
       const isExplicitVariant = intent.wantsSlowed || intent.wantsRemix || intent.wantsCover || intent.wantsLive || intent.wantsLyrics;
 
       if (!isExplicitVariant && canonicalSongs.length > 0) {
-        // A. CANONICAL MUSIC ENTITY FIRST
-        for (const canonical of canonicalSongs.slice(0, 15)) {
-          const bound = await canonicalMusicResolver.bindPlaybackSources(canonical, allClassifiedYt);
-          candidateSongs.push(bound);
-        }
+        // A. CANONICAL MUSIC ENTITY FIRST (Parallel Source Resolution)
+        const boundCandidates = await Promise.all(
+          canonicalSongs.slice(0, 8).map((canonical) =>
+            canonicalMusicResolver.bindPlaybackSources(canonical, allClassifiedYt)
+          )
+        );
+        candidateSongs.push(...boundCandidates.filter(Boolean));
 
         // Separate Videos
         for (const track of allClassifiedYt) {

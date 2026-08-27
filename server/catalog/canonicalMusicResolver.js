@@ -145,8 +145,13 @@ export const canonicalMusicResolver = {
       'video'
     );
 
-    // If audio candidate is missing or unverified, fetch dedicated studio audio source
-    if (!validatedAudioSource || (validatedAudioSource.confidenceScore || 0) < 85) {
+    const isStudioMaster =
+      validatedAudioSource &&
+      ((validatedAudioSource.confidenceScore || 0) >= 95 ||
+        (validatedAudioSource.title && validatedAudioSource.title.toLowerCase().includes('official audio')));
+
+    // If audio candidate is not a verified pure studio master, fetch dedicated studio audio source
+    if (!isStudioMaster) {
       try {
         const resolvedAudio = await trackIdentityManager.fetchAndResolveSource(canonicalSong, 'audio');
         if (resolvedAudio && (resolvedAudio.confidenceScore || 0) >= 80) {
