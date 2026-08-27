@@ -16,6 +16,13 @@ function cleanPhonetic(str = '') {
     .replace(/ii+/g, 'i')
     .replace(/uu+/g, 'u')
     .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'\[\]]/g, ' ')
+    .replace(/\b(mai|mein|main)\b/g, 'main')
+    .replace(/\b(yaha|yahan|yahaan)\b/g, 'yahan')
+    .replace(/\b(hoon|hun|hu|ho)\b/g, 'hun')
+    .replace(/\b(kyu|kyun|kyo|kyon)\b/g, 'kyun')
+    .replace(/\b(nahi|nhi|naa|nahin)\b/g, 'nahi')
+    .replace(/\b(tere|tera|teri)\b/g, 'tera')
+    .replace(/\b(mere|mera|meri)\b/g, 'mera')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -186,17 +193,27 @@ export const searchRelevanceEngine = {
 
     // Token Coverage in Title
     let titleTokenHits = 0;
+    let missingCoreToken = false;
     for (const qToken of queryTokens) {
-      if (titleTokens.includes(qToken) || (phonTitle && cleanPhonetic(qToken) && phonTitle.includes(cleanPhonetic(qToken)))) {
+      const phonQToken = cleanPhonetic(qToken);
+      const hasMatch =
+        titleTokens.includes(qToken) ||
+        (phonTitle && phonQToken && phonTitle.includes(phonQToken));
+
+      if (hasMatch) {
         titleTokenHits++;
+      } else if (qToken.length >= 4) {
+        missingCoreToken = true;
       }
     }
     const titleTokenRatio = titleTokenHits / queryTokens.length;
-    relevanceScore += Math.round(titleTokenRatio * 200);
+    relevanceScore += Math.round(titleTokenRatio * 250);
 
-    // If all query tokens exist in title (in any order)
+    // If all query tokens exist in title (Complete Query Coverage)
     if (titleTokenRatio === 1.0) {
-      relevanceScore += 150;
+      relevanceScore += 300;
+    } else if (missingCoreToken && queryTokens.length >= 2) {
+      relevanceScore -= 200; // Heavily penalize candidates missing an essential word like "yahaan"
     }
 
     // B. ARTIST MATCHING (High Weight)
@@ -253,10 +270,18 @@ export const searchRelevanceEngine = {
       finalScore += 50;
     }
 
-    // Boost established mainstream / chart artists (so blockbuster hits rank above obscure bedroom recordings)
-    const isMainstreamArtist = /honey singh|arijit singh|karan aujla|diljit dosanjh|sidhu moose wala|shreya ghoshal|the weeknd|taylor swift|anirudh|badshah|pritam|ap dhillon|king|sonu nigam|kumar sanu|alka yagnik|armaan malik|darshan raval|pawan singh|khesari lal/i.test(normArtist || normRawArtist);
+    // Boost established mainstream / chart artists (Conditioned on relevanceScore >= 280)
+    const isMainstreamArtist =
+      /honey singh|arijit singh|karan aujla|diljit dosanjh|sidhu moose wala|shreya ghoshal|the weeknd|taylor swift|anirudh|badshah|pritam|ap dhillon|king|sonu nigam|kumar sanu|alka yagnik|armaan malik|darshan raval|pawan singh|khesari lal|udit narayan|lata mangeshkar|mohammed rafi|kishore kumar|mukesh|asha bhosle|jagjit singh|nusrat fateh ali khan|kk|atif aslam|rahat fateh ali khan|sunidhi chauhan|masoom sharma|kd desirock|khasa aala chahar/i.test(
+        normArtist || normRawArtist
+      );
+
     if (isMainstreamArtist) {
-      finalScore += 220;
+      if (relevanceScore >= 280) {
+        finalScore += 180;
+      } else {
+        finalScore += 30; // Small bonus only, never allow it to beat a relevant song
+      }
     }
 
     // 5. INTENT & VARIANT PENALTIES

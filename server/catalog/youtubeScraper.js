@@ -180,6 +180,17 @@ export async function getYoutubeMusicSuggestions(query) {
       }
     }
 
+    // If no direct track predictions found, fall back to fast catalog search
+    if (songs.length === 0) {
+      const topQuery = suggestions[0] || cleanQuery;
+      if (topQuery) {
+        try {
+          const directSongs = await searchYouTubeMusic(topQuery, 6);
+          songs.push(...directSongs);
+        } catch {}
+      }
+    }
+
     return { suggestions, songs };
   } catch (err) {
     console.warn('YouTube Music autocomplete warning:', err.message);
