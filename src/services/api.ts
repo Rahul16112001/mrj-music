@@ -691,7 +691,9 @@ export const api = {
     results: Track[];
   }> {
     try {
-      const res = await fetch(`${API_BASE}/music/search?q=${encodeURIComponent(query)}&type=${type}`);
+      const res = await fetch(`${API_BASE}/music/search?q=${encodeURIComponent(query)}&type=${type}`, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       return {

@@ -1031,7 +1031,7 @@ app.get('/api/music/charts', async (req, res) => {
   res.json({ status: 'success', trending: charts.tracks, quickPicks: charts.tracks.slice(0, 10) });
 });
 
-app.get('/api/music/search', async (req, res) => {
+app.get('/api/music/search', optionalAuth, async (req, res) => {
   const query = req.query.q;
   const type = req.query.type || 'all';
   if (!query) return res.status(400).json({ error: 'Query parameter q is required' });
