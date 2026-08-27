@@ -102,36 +102,41 @@ export const trackIdentityManager = {
       };
     }
 
-    // 4. ARTIST MATCHING & VERIFIED LABELS
+    // 4. ARTIST MATCHING & STRICT SINGER DISAMBIGUATION
     const canonArtistTokens = searchRelevanceEngine.tokenize(normCanonArtist);
     let matchedArtistTokens = 0;
     for (const token of canonArtistTokens) {
-      if (normCandRawTitle.includes(token) || normCandRawArtist.includes(token)) {
+      if (token.length > 2 && (normCandRawTitle.includes(token) || normCandRawArtist.includes(token))) {
         matchedArtistTokens++;
       }
     }
     const artistMatchRatio = canonArtistTokens.length > 0 ? matchedArtistTokens / canonArtistTokens.length : 0;
+    const isTopicChannel = normCandRawArtist.includes('topic') && (normCandRawArtist.includes(normCanonArtist) || artistMatchRatio >= 0.5);
 
-    const isVerifiedLabel =
-      /t-series|sony\s*music|zee\s*music|yrf|tips|speed\s*records|white\s*hill|vevo|topic/i.test(
-        candRawArtist
-      );
+    // Hard reject if artist does not match (prevents wrong singer playing under common song title)
+    if (artistMatchRatio < 0.4 && !isTopicChannel) {
+      return {
+        isValid: false,
+        confidenceScore: 0,
+        reason: `ARTIST_MISMATCH: Candidate "${candRawArtist}" - "${candRawTitle}" does not match singer "${canonicalTrack.artist}"`,
+      };
+    }
 
     if (normCandArtist === normCanonArtist || normCandRawTitle.includes(normCanonArtist)) {
-      confidenceScore += 30;
-    } else if (artistMatchRatio >= 0.5 || isVerifiedLabel) {
-      confidenceScore += 20;
+      confidenceScore += 35;
+    } else if (artistMatchRatio >= 0.5 || isTopicChannel) {
+      confidenceScore += 25;
     } else {
       confidenceScore -= 30;
     }
 
-    // 5. DURATION PROXIMITY SCORING
+    // 5. DURATION PROXIMITY SCORING (Studio Track Duration Lock)
     if (durDiff <= 15) {
-      confidenceScore += 20;
+      confidenceScore += 25;
     } else if (durDiff <= 35) {
       confidenceScore += 10;
-    } else if (durDiff > 90) {
-      confidenceScore -= 25;
+    } else if (durDiff > 75) {
+      confidenceScore -= 30;
     }
 
     // 6. FORMAT & RECORDING BONUSES
