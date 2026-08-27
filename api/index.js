@@ -150,7 +150,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
     apkFileName: 'mrj-music-v3.18.0.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18387112,
+    fileSizeBytes: 18389855,
+    sha256: 'f2b86ee678ee964a9c7280cf034cc6d74b7241621765a82c1e5ae077b2c071a2',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
