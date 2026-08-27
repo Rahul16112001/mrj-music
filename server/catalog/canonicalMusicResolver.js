@@ -134,16 +134,28 @@ export const canonicalMusicResolver = {
   async bindPlaybackSources(canonicalSong, youtubeCandidates = []) {
     if (!canonicalSong) return null;
 
-    const validatedAudioSource = trackIdentityManager.resolvePlaybackSource(
+    let validatedAudioSource = trackIdentityManager.resolvePlaybackSource(
       canonicalSong,
       youtubeCandidates,
       'audio'
     );
-    const validatedVideoSource = trackIdentityManager.resolvePlaybackSource(
+    let validatedVideoSource = trackIdentityManager.resolvePlaybackSource(
       canonicalSong,
       youtubeCandidates,
       'video'
     );
+
+    // If audio candidate is missing or unverified, fetch dedicated studio audio source
+    if (!validatedAudioSource || (validatedAudioSource.confidenceScore || 0) < 85) {
+      try {
+        const resolvedAudio = await trackIdentityManager.fetchAndResolveSource(canonicalSong, 'audio');
+        if (resolvedAudio && (resolvedAudio.confidenceScore || 0) >= 80) {
+          validatedAudioSource = resolvedAudio;
+        }
+      } catch (e) {
+        console.warn('Active audio resolve notice:', e.message);
+      }
+    }
 
     const providerTrackId = validatedAudioSource?.providerTrackId || validatedVideoSource?.providerTrackId || null;
 

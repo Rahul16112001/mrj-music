@@ -208,7 +208,7 @@ export const trackIdentityManager = {
       canonicalTrack.canonicalTrackId ||
       canonicalTrack.id ||
       this.generateCanonicalTrackId(canonicalTrack.title, canonicalTrack.artist);
-    const cacheKey = `source:${canonId}:${targetFormat}`;
+    const cacheKey = `source_v2:${canonId}:${targetFormat}`;
     const cached = sourceCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SOURCE_CACHE_TTL_MS) {
       return cached.source;
