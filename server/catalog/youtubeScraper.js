@@ -217,11 +217,74 @@ export async function searchYouTubeMusic(query, limit = 20) {
       timeout: 5000,
     });
 
-    const songs = [];
     const secList =
       res.data?.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents ||
       [];
 
+    // Check Did You Mean auto-correction
+    let correctedQuery = null;
+    for (const s of secList) {
+      const items = s.itemSectionRenderer?.contents || [];
+      for (const item of items) {
+        if (item.didYouMeanRenderer?.correctedQueryEndpoint?.searchEndpoint?.query) {
+          correctedQuery = item.didYouMeanRenderer.correctedQueryEndpoint.searchEndpoint.query;
+          break;
+        }
+      }
+      if (correctedQuery) break;
+    }
+
+    if (correctedQuery && correctedQuery !== cleanQuery) {
+      return searchYouTubeMusic(correctedQuery, limit);
+    }
+
+    const songs = [];
+    const seenVideoIds = new Set();
+
+    // 1. Check Top Hit Card
+    for (const s of secList) {
+      if (s.musicCardShelfRenderer) {
+        const c = s.musicCardShelfRenderer;
+        const title = c.title?.runs?.[0]?.text;
+        const subRuns = c.subtitle?.runs || [];
+        const fullSub = subRuns.map((x) => x.text).join('');
+        const videoId =
+          c.title?.runs?.[0]?.navigationEndpoint?.watchEndpoint?.videoId ||
+          c.buttons?.[0]?.buttonRenderer?.navigationEndpoint?.watchEndpoint?.videoId;
+        const thumb = c.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+
+        let artist = 'Popular Artist';
+        const parts = fullSub.split('•').map((x) => x.trim());
+        if (parts.length >= 2) artist = parts[1];
+
+        if (title && videoId && !seenVideoIds.has(videoId)) {
+          seenVideoIds.add(videoId);
+          songs.push({
+            id: videoId,
+            videoId,
+            providerTrackId: videoId,
+            rawTitle: title,
+            title,
+            artist,
+            album: '',
+            duration: 210,
+            thumbnail: thumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            audioSource: {
+              sourceId: `src_${videoId}`,
+              provider: 'youtube',
+              providerTrackId: videoId,
+              title,
+              artist,
+              format: 'audio',
+              sourceType: 'audio',
+              confidenceScore: 100,
+            },
+          });
+        }
+      }
+    }
+
+    // 2. Check Standard Section Items
     for (const s of secList) {
       const items = s.itemSectionRenderer?.contents || [];
       for (const item of items) {
@@ -258,7 +321,8 @@ export async function searchYouTubeMusic(query, limit = 20) {
 
         const isPodcast = fullSub.toLowerCase().includes('podcast') || fullSub.toLowerCase().includes('episode');
 
-        if (title && videoId && !isPodcast) {
+        if (title && videoId && !isPodcast && !seenVideoIds.has(videoId)) {
+          seenVideoIds.add(videoId);
           songs.push({
             id: videoId,
             videoId,
