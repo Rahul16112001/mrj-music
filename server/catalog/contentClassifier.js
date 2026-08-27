@@ -96,7 +96,7 @@ const REMIX_PATTERNS = [
 ];
 
 const COVER_PATTERNS = [
-  /\b(cover|acoustic\s*cover|tribute|karaoke|instrumental|female\s*version|male\s*version|unplugged\s*cover)\b/i,
+  /\b(cover|acoustic\s*cover|acc?oustic(\s*version)?|tribute|karaoke|instrumental|female\s*version|male\s*version|unplugged(\s*cover)?)\b/i,
   /\bfemale\s*cover\b/i,
   /\bmale\s*cover\b/i,
 ];
