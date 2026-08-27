@@ -4,6 +4,7 @@ import { searchIntentEngine, INTENT_TYPES } from '../catalog/searchIntentEngine.
 import { canonicalMusicResolver } from '../catalog/canonicalMusicResolver.js';
 import { searchRelevanceEngine } from '../catalog/searchRelevanceEngine.js';
 import { trackIdentityManager } from '../catalog/trackIdentityManager.js';
+import { searchYouTubeHighEnd } from '../catalog/youtubeScraper.js';
 
 // Multiple resilient multi-region stream endpoints
 const PIPED_INSTANCES = [
@@ -50,76 +51,28 @@ export const musicProvider = {
     const normQuery = searchRelevanceEngine.normalize(query);
 
     try {
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query.trim())}`;
-
-      const [canonicalRes, ytResponse] = await Promise.allSettled([
+      const qTrim = query.trim();
+      const [canonicalRes, audioYtRes, generalYtRes] = await Promise.allSettled([
         canonicalMusicResolver.searchCanonicalEntities(query, intent),
-        axios.get(searchUrl, {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-          },
-          timeout: 6000,
-        }),
+        searchYouTubeHighEnd(`${qTrim} official audio`, 15),
+        searchYouTubeHighEnd(qTrim, 15),
       ]);
 
       const rawCandidates = [];
-      const ytArtists = [];
-
-      if (ytResponse.status === 'fulfilled' && ytResponse.value?.data) {
-        const match = ytResponse.value.data.match(/var ytInitialData = ({.+?});<\/script>/);
-        if (match) {
-          const data = JSON.parse(match[1]);
-          const contents =
-            data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
-
-          for (const section of contents) {
-            const items = section?.itemSectionRenderer?.contents || [];
-            for (const item of items) {
-              if (item.videoRenderer) {
-                const v = item.videoRenderer;
-                const videoId = v.videoId;
-                const rawTitle = v.title?.runs?.[0]?.text || v.title?.accessibility?.accessibilityData?.label || 'Untitled';
-                const artist = v.ownerText?.runs?.[0]?.text || 'Popular Artist';
-                const lengthText = v.lengthText?.simpleText || '3:30';
-
-                const parts = lengthText.split(':').map(Number);
-                const durationSec =
-                  parts.length === 2
-                    ? parts[0] * 60 + parts[1]
-                    : parts.length === 3
-                    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-                    : 210;
-
-                rawCandidates.push({
-                  id: videoId,
-                  videoId,
-                  providerTrackId: videoId,
-                  rawTitle,
-                  title: rawTitle,
-                  artist,
-                  duration: durationSec,
-                  thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                  views: v.viewCountText?.simpleText || null,
-                });
-              }
-
-              if (item.channelRenderer) {
-                const c = item.channelRenderer;
-                ytArtists.push({
-                  id: c.channelId,
-                  name: c.title?.simpleText || 'Artist',
-                  thumbnail:
-                    c.thumbnail?.thumbnails?.[0]?.url ||
-                    'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
-                  subscribers: c.subscriberCountText?.simpleText || null,
-                });
-              }
+      const seenCandIds = new Set();
+      const addCand = (res) => {
+        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+          for (const c of res.value) {
+            if (c && c.id && !seenCandIds.has(c.id)) {
+              seenCandIds.add(c.id);
+              rawCandidates.push(c);
             }
           }
         }
-      }
+      };
+      addCand(audioYtRes);
+      addCand(generalYtRes);
+      const ytArtists = [];
 
       // Classify YouTube candidates
       const allClassifiedYt = [];
