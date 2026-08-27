@@ -94,17 +94,17 @@ app.get('/api/app/release', (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.18.0',
-      build: '330',
+      version: '3.18.1',
+      build: '331',
       updatedAt: '2026-08-27T00:00:00Z',
     },
     android: {
-      versionName: '3.18.0',
-      versionCode: 330,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
-      apkFileName: 'mrj-music-v3.18.0.apk',
+      versionName: '3.18.1',
+      versionCode: 331,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.1/mrj-music-v3.18.1.apk',
+      apkFileName: 'mrj-music-v3.18.1.apk',
       fileSize: '18 MB',
-      fileSizeBytes: 18387112,
+      fileSizeBytes: 18395941,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
@@ -125,12 +125,12 @@ app.get('/api/app/release', (req, res) => {
 });
 
 // App Update Check Endpoint — returns platform-specific data
-app.get('/api/app/check-update', (req, res) => {
+app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.18.0';
-  const latestVersionCode = 330;
+  const latestVersion = '3.18.1';
+  const latestVersionCode = 331;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -141,7 +141,7 @@ app.get('/api/app/check-update', (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-27',
-    title: 'MRJ Music v3.18.0 Official Search Engine & Studio Audio Upgrade',
+    title: 'MRJ Music v3.18.1 Native Optimization & Direct Update',
     changelog: [
       '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
       '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
