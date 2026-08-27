@@ -4,6 +4,22 @@ import { INTENT_TYPES } from './searchIntentEngine.js';
 // Hard minimum threshold for text relevance
 const MIN_TEXT_RELEVANCE_THRESHOLD = 30;
 
+function cleanPhonetic(str = '') {
+  if (typeof str !== 'string') return '';
+  return str
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/aa+/g, 'a')
+    .replace(/ee+/g, 'e')
+    .replace(/oo+/g, 'o')
+    .replace(/ii+/g, 'i')
+    .replace(/uu+/g, 'u')
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'\[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function cleanString(str = '') {
   if (typeof str !== 'string') return '';
   return str
@@ -144,11 +160,16 @@ export const searchRelevanceEngine = {
     let relevanceScore = 0;
 
     // A. TITLE MATCHING (Highest Weight)
-    if (normTitle === normQuery || normRawTitle === normQuery) {
-      relevanceScore += 500; // EXACT TITLE MATCH
-    } else if (normTitle.startsWith(normQuery) || normRawTitle.startsWith(normQuery)) {
+    const phonTitle = cleanPhonetic(normTitle);
+    const phonRawTitle = cleanPhonetic(normRawTitle);
+    const phonQuery = cleanPhonetic(normQuery);
+    const isPhoneticExact = (phonTitle && phonTitle === phonQuery) || (phonRawTitle && phonRawTitle === phonQuery);
+
+    if (normTitle === normQuery || normRawTitle === normQuery || isPhoneticExact) {
+      relevanceScore += 500; // EXACT / PHONETIC TITLE MATCH
+    } else if (normTitle.startsWith(normQuery) || normRawTitle.startsWith(normQuery) || (phonTitle && phonTitle.startsWith(phonQuery))) {
       relevanceScore += 350; // PREFIX TITLE MATCH (e.g. "desi" matches "desi kalakaar")
-    } else if (hasPhraseInTitle) {
+    } else if (hasPhraseInTitle || (phonTitle && phonTitle.includes(phonQuery))) {
       relevanceScore += 280; // PHRASE TITLE MATCH
     }
 
@@ -166,7 +187,9 @@ export const searchRelevanceEngine = {
     // Token Coverage in Title
     let titleTokenHits = 0;
     for (const qToken of queryTokens) {
-      if (titleTokens.includes(qToken)) titleTokenHits++;
+      if (titleTokens.includes(qToken) || (phonTitle && cleanPhonetic(qToken) && phonTitle.includes(cleanPhonetic(qToken)))) {
+        titleTokenHits++;
+      }
     }
     const titleTokenRatio = titleTokenHits / queryTokens.length;
     relevanceScore += Math.round(titleTokenRatio * 200);
@@ -228,6 +251,12 @@ export const searchRelevanceEngine = {
     }
     if (classification.contentType === CONTENT_TYPES.MUSIC) {
       finalScore += 50;
+    }
+
+    // Boost established mainstream / chart artists (so blockbuster hits rank above obscure bedroom recordings)
+    const isMainstreamArtist = /honey singh|arijit singh|karan aujla|diljit dosanjh|sidhu moose wala|shreya ghoshal|the weeknd|taylor swift|anirudh|badshah|pritam|ap dhillon|king|sonu nigam|kumar sanu|alka yagnik|armaan malik|darshan raval|pawan singh|khesari lal/i.test(normArtist || normRawArtist);
+    if (isMainstreamArtist) {
+      finalScore += 220;
     }
 
     // 5. INTENT & VARIANT PENALTIES
