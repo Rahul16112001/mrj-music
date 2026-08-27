@@ -163,28 +163,47 @@ export const trackIdentityManager = {
       confidenceScore -= 30;
     }
 
-    // 5. DURATION PROXIMITY SCORING (Studio Track Duration Lock)
-    if (durDiff <= 15) {
-      confidenceScore += 25;
-    } else if (durDiff <= 35) {
-      confidenceScore += 10;
-    } else if (durDiff > 75) {
-      confidenceScore -= 30;
+    // 5. DURATION PROXIMITY SCORING (Strict Studio Track Duration Lock)
+    if (targetFormat === 'audio') {
+      if (durDiff > 45) {
+        return {
+          isValid: false,
+          confidenceScore: 0,
+          reason: `DURATION_MISMATCH: Candidate duration ${candDuration}s vs canonical ${canonDuration}s (Diff ${durDiff}s exceeds tolerance)`,
+        };
+      }
+      if (durDiff <= 8) {
+        confidenceScore += 40; // Exact album master duration match
+      } else if (durDiff <= 20) {
+        confidenceScore += 20;
+      } else if (durDiff > 30) {
+        confidenceScore -= 40;
+      }
+    } else {
+      if (durDiff <= 25) confidenceScore += 20;
     }
 
-    // 6. FORMAT & RECORDING BONUSES
+    // 6. VERIFIED RECORD LABEL & CHANNEL BONUSES
+    const isRecognizedLabel =
+      /t-series|sony\s*music|zee\s*music|speed\s*records|yrf|tips|saregama|white\s*hill|vevo|topic|universal|warner|aditya\s*music/i.test(
+        candRawArtist
+      );
+    if (isRecognizedLabel || isTopicChannel) {
+      confidenceScore += 30;
+    }
+
+    // 7. FORMAT & RECORDING BONUSES
     if (targetFormat === 'audio') {
       const isOfficialAudio =
         normCandRawTitle.includes('official audio') ||
         normCandRawTitle.includes('full audio') ||
         normCandRawTitle.includes('audio song') ||
         normCandRawArtist.includes('topic') ||
-        normCandRawTitle.includes('पूरा ऑडियो') ||
-        normCandRawTitle.includes('lyrical');
+        normCandRawTitle.includes('पूरा ऑडियो');
 
-      if (isOfficialAudio) confidenceScore += 25;
-      if (classification.isOfficialMusic) confidenceScore += 15;
-      if (classification.contentType === CONTENT_TYPES.MUSIC) confidenceScore += 10;
+      if (isOfficialAudio) confidenceScore += 35;
+      if (classification.isOfficialMusic) confidenceScore += 20;
+      if (classification.contentType === CONTENT_TYPES.MUSIC && !classification.isMusicVideo) confidenceScore += 15;
     } else {
       if (classification.isMusicVideo || classification.contentType === CONTENT_TYPES.VIDEO) {
         confidenceScore += 30;
@@ -208,7 +227,7 @@ export const trackIdentityManager = {
       canonicalTrack.canonicalTrackId ||
       canonicalTrack.id ||
       this.generateCanonicalTrackId(canonicalTrack.title, canonicalTrack.artist);
-    const cacheKey = `source_v2:${canonId}:${targetFormat}`;
+    const cacheKey = `source_v3:${canonId}:${targetFormat}`;
     const cached = sourceCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SOURCE_CACHE_TTL_MS) {
       return cached.source;
@@ -270,7 +289,7 @@ export const trackIdentityManager = {
       canonicalTrack.canonicalTrackId ||
       canonicalTrack.id ||
       this.generateCanonicalTrackId(canonicalTrack.title, canonicalTrack.artist);
-    const cacheKey = `source_v2:${canonId}:${targetFormat}`;
+    const cacheKey = `source_v3:${canonId}:${targetFormat}`;
     const cached = sourceCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SOURCE_CACHE_TTL_MS) {
       return cached.source;
