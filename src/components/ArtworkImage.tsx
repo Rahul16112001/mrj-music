@@ -9,6 +9,8 @@ interface ArtworkImageProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'custom';
 }
 
+const studioArtworkCache = new Map<string, string>();
+
 export const ArtworkImage: React.FC<ArtworkImageProps> = ({
   src,
   alt,
@@ -34,21 +36,40 @@ export const ArtworkImage: React.FC<ArtworkImageProps> = ({
         .replace(/=w\d+-h\d+[^&]*/g, '=w800-h800-l90-rj')
         .replace(/=s\d+[^&]*/g, '=s800');
     }
-    // 2. YouTube i.ytimg.com (Upgrade to 1080p maxresdefault)
+    // 2. Apple Music / iTunes (Upgrade to 800x800)
+    else if (optimizedSrc.includes('mzstatic.com')) {
+      optimizedSrc = optimizedSrc.replace(/\/\d+x\d+bb\.jpg/, '/800x800bb.jpg');
+    }
+    // 3. YouTube i.ytimg.com (Upgrade to 1080p maxresdefault + Auto-fetch Studio Album Master)
     else if (optimizedSrc.includes('ytimg.com') || optimizedSrc.includes('youtube.com')) {
       const match = optimizedSrc.match(/\/vi\/([a-zA-Z0-9_-]+)\//);
       if (match && match[1]) {
         const videoId = match[1];
         optimizedSrc = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
       }
-    }
-    // 3. Apple Music / iTunes (Upgrade to 800x800)
-    else if (optimizedSrc.includes('mzstatic.com')) {
-      optimizedSrc = optimizedSrc.replace(/\/\d+x\d+bb\.jpg/, '/800x800bb.jpg');
+
+      // If alt text contains song info, resolve official square studio cover art
+      const cleanAlt = alt ? alt.replace(/\(Official.*?\)/gi, '').replace(/\(Video.*?\)/gi, '').replace(/\[.*?\]/g, '').trim() : '';
+      if (cleanAlt && cleanAlt.length > 2 && cleanAlt !== 'Artwork' && cleanAlt !== 'Track') {
+        if (studioArtworkCache.has(cleanAlt)) {
+          optimizedSrc = studioArtworkCache.get(cleanAlt)!;
+        } else {
+          fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(cleanAlt)}&entity=song&limit=1`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+              if (data?.results?.[0]?.artworkUrl100) {
+                const studioArt = data.results[0].artworkUrl100.replace('100x100bb', '800x800bb');
+                studioArtworkCache.set(cleanAlt, studioArt);
+                setCurrentSrc(studioArt);
+              }
+            })
+            .catch(() => {});
+        }
+      }
     }
 
     setCurrentSrc(optimizedSrc);
-  }, [src]);
+  }, [src, alt]);
 
   const handleError = () => {
     if (currentSrc && currentSrc.includes('maxresdefault.jpg')) {

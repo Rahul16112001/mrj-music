@@ -187,6 +187,119 @@ fun SearchScreen(
                         }
                     }
 
+                    if (displaySongs.isNotEmpty()) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp, bottom = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.MusicNote,
+                                        contentDescription = null,
+                                        tint = CrimsonRed,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = "REAL MUSIC TRACKS",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 1.sp,
+                                            fontSize = 11.5.sp
+                                        ),
+                                        color = TextPrimary
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0x1A22C55E)
+                                ) {
+                                    Text(
+                                        text = "Studio Master",
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF22C55E)
+                                    )
+                                }
+                            }
+                        }
+
+                        items(displaySongs.take(8)) { track ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { playerViewModel.playTrack(track) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    AsyncImage(
+                                        model = track.thumbnail,
+                                        contentDescription = track.title,
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(SurfaceDark),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = track.title,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.5.sp
+                                            ),
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Song • ${track.artist}",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.5.sp
+                                            ),
+                                            color = TextSecondary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                val mins = (track.duration / 60).toInt()
+                                val secs = (track.duration % 60).toInt()
+                                Text(
+                                    text = String.format("%d:%02d", mins, secs),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 11.sp
+                                    ),
+                                    color = TextMuted,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                        }
+
+                        item {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = SurfaceBorder.copy(alpha = 0.4f),
+                                thickness = 0.5.dp
+                            )
+                        }
+                    }
+
                     if (uiState.suggestions.isNotEmpty()) {
                         item {
                             Row(
@@ -195,24 +308,24 @@ fun SearchScreen(
                                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             ) {
                                 Icon(
-                                    Icons.Default.AutoAwesome,
+                                    Icons.Default.Search,
                                     contentDescription = null,
                                     tint = CrimsonRed,
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Text(
-                                    text = "SUGGESTIONS",
+                                    text = "SEARCH KEYWORDS",
                                     style = MaterialTheme.typography.titleSmall.copy(
                                         fontWeight = FontWeight.Black,
                                         letterSpacing = 1.sp,
                                         fontSize = 11.5.sp
                                     ),
-                                    color = CrimsonRed
+                                    color = TextSecondary
                                 )
                             }
                         }
 
-                        items(uiState.suggestions.take(7)) { suggestion ->
+                        items(uiState.suggestions.take(6)) { suggestion ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -237,7 +350,7 @@ fun SearchScreen(
                                         text = suggestion,
                                         style = MaterialTheme.typography.bodyMedium.copy(
                                             fontWeight = FontWeight.SemiBold,
-                                            fontSize = 14.5.sp
+                                            fontSize = 14.sp
                                         ),
                                         color = TextPrimary,
                                         maxLines = 1,
@@ -257,48 +370,6 @@ fun SearchScreen(
                                     )
                                 }
                             }
-                        }
-
-                        item {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                color = SurfaceBorder.copy(alpha = 0.4f),
-                                thickness = 0.5.dp
-                            )
-                        }
-                    }
-
-                    if (displaySongs.isNotEmpty()) {
-                        item {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.MusicNote,
-                                    contentDescription = null,
-                                    tint = CrimsonRed,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = "SONGS",
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = FontWeight.Black,
-                                        letterSpacing = 1.sp,
-                                        fontSize = 11.5.sp
-                                    ),
-                                    color = CrimsonRed
-                                )
-                            }
-                        }
-
-                        items(displaySongs) { track ->
-                            SearchResultCard(
-                                track = track,
-                                onPlay = { playerViewModel.playTrack(track) },
-                                onArtistClick = { onArtistClick(track.artist) }
-                            )
                         }
                     }
                 } else {

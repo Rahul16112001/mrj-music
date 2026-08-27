@@ -217,7 +217,7 @@ export const FullScreenPlayer: React.FC = () => {
             >
               <ArtworkImage
                 src={currentTrack.thumbnail}
-                alt={currentTrack.title}
+                alt={`${currentTrack.title} ${currentTrack.artist}`}
                 className="w-full h-full object-cover shadow-inner"
               />
             </div>

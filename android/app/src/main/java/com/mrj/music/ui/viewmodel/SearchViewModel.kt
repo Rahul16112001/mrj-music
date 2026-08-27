@@ -175,41 +175,22 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private suspend fun fetchPredictiveSearch(query: String) {
         try {
-            val token = secureStorage.getAccessToken()
-            val authHeader = if (token != null) "Bearer $token" else null
-            val country = java.util.Locale.getDefault().country.ifBlank { "IN" }
-
-            val res = MRJApiClient.apiService.getPredictiveSearch(authHeader, query.trim(), country)
+            // Primary: fetch directly from /api/music/suggestions (exact engine used by Web)
+            val res = MRJApiClient.apiService.getSuggestions(query.trim())
             if (res.isSuccessful && res.body() != null) {
                 val body = res.body()!!
                 val suggestionsList = (body["suggestions"] as? List<String>) ?: emptyList()
-                val instantRaw = (body["instantSongs"] as? List<Map<String, Any>>) ?: emptyList()
-                val parsedInstant = instantRaw.mapNotNull { parseTrack(it) }
+                val rawSongs = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
+                val parsedInstant = rawSongs.mapNotNull { parseTrack(it) }
 
-                var topPred: TopPrediction? = null
-                val rawPred = body["topPrediction"] as? Map<String, Any>
-                if (rawPred != null) {
-                    val pType = rawPred["type"] as? String ?: "artist"
-                    val pTitle = rawPred["title"] as? String ?: ""
-                    val pSubtitle = rawPred["subtitle"] as? String ?: ""
-                    val pThumb = rawPred["thumbnail"] as? String
-                    val pCategory = rawPred["category"] as? String
-                    val trackObj = if (pType == "song") parseTrack(rawPred) else null
-
-                    topPred = TopPrediction(
-                        type = pType,
-                        title = pTitle,
-                        subtitle = pSubtitle,
-                        thumbnail = pThumb,
-                        category = pCategory,
-                        track = trackObj
-                    )
-                }
+                val rawArtists = (body["artists"] as? List<Map<String, Any>>) ?: emptyList()
+                val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
 
                 _uiState.value = _uiState.value.copy(
                     suggestions = if (suggestionsList.isNotEmpty()) suggestionsList else _uiState.value.suggestions,
                     instantSongs = parsedInstant,
-                    topPrediction = topPred ?: _uiState.value.topPrediction
+                    artists = if (rawArtists.isNotEmpty()) rawArtists else _uiState.value.artists,
+                    albums = if (rawAlbums.isNotEmpty()) rawAlbums else _uiState.value.albums
                 )
             }
         } catch (_: Exception) {}
