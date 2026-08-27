@@ -12,6 +12,18 @@ function cleanSlug(text = '') {
     .replace(/(^-|-$)/g, '');
 }
 
+function extractPrimarySongTitle(rawTitle) {
+  let t = rawTitle || '';
+  t = t.replace(/^(exclusive|official|lyrical|video|audio|full\s*song|hd|4k)\s*[:|-]\s*/i, '');
+  t = t.replace(/^[\"\'\s]+|[\"\'\s]+$/g, '');
+
+  const cutMatch = t.match(/^(.*?)(?:\s*(?:full\s*(?:audio|video|song|track)|official\s*(?:video|audio|song)|lyrical(?:\s*video)?|video\s*song|audio\s*song|lyrics|\(|\||-|:))/i);
+  if (cutMatch && cutMatch[1] && cutMatch[1].trim().length >= 2) {
+    return cutMatch[1].trim().replace(/^[\"\'\s]+|[\"\'\s]+$/g, '');
+  }
+  return t.split(/[\-\|\:]/)[0].trim();
+}
+
 // Memory cache for validated playback sources keyed by canonicalTrackId + format
 const sourceCache = new Map();
 const SOURCE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -78,7 +90,28 @@ export const trackIdentityManager = {
       }
     }
 
-    // 3. TITLE MATCHING
+    // 3. TITLE MATCHING & ALBUM TRACK DISAMBIGUATION
+    // Disambiguate different songs in the same album (e.g. Love Dose in Desi Kalakaar album)
+    const extractedSongName = extractPrimarySongTitle(candRawTitle);
+    const normExtractedSongName = searchRelevanceEngine.normalize(extractedSongName);
+
+    if (
+      normExtractedSongName.length >= 3 &&
+      !normExtractedSongName.includes(normCanonTitle) &&
+      !normCanonTitle.includes(normExtractedSongName)
+    ) {
+      const targetTokens = searchRelevanceEngine.tokenize(normCanonTitle);
+      const extractedTokens = searchRelevanceEngine.tokenize(normExtractedSongName);
+      const matched = targetTokens.filter((t) => extractedTokens.includes(t)).length;
+      if (matched === 0) {
+        return {
+          isValid: false,
+          confidenceScore: 0,
+          reason: `DIFFERENT_SONG_IN_SAME_ALBUM: Candidate primary song "${extractedSongName}" does not match target "${canonicalTrack.title}"`,
+        };
+      }
+    }
+
     const canonTitleTokens = searchRelevanceEngine.tokenize(normCanonTitle);
     let matchedTitleTokens = 0;
     for (const token of canonTitleTokens) {
@@ -88,7 +121,7 @@ export const trackIdentityManager = {
 
     let confidenceScore = 0;
 
-    if (normCandTitle === normCanonTitle || normCandRawTitle === normCanonTitle) {
+    if (normCandTitle === normCanonTitle || normCandRawTitle === normCanonTitle || normExtractedSongName === normCanonTitle) {
       confidenceScore += 50; // Exact title match
     } else if (normCandRawTitle.includes(normCanonTitle) || normCanonTitle.includes(normCandTitle)) {
       confidenceScore += 40; // Phrase match
