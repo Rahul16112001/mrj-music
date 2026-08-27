@@ -151,12 +151,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                 val userLiked = favoritesRepository.likedTracks.value
 
-                // 1. Fetch Backend Recommendations
-                val res = MRJApiClient.apiService.getDashboard(
-                    authHeader = authHeader,
-                    country = country,
-                    localHour = currentHour
-                )
+                // 1. Fetch Dynamic Backend Recommendations from /api/recommendations/home
+                val res = try {
+                    MRJApiClient.apiService.getPersonalizedHome(
+                        region = country,
+                        authHeader = authHeader
+                    )
+                } catch (e: Exception) {
+                    MRJApiClient.apiService.getDashboard(
+                        authHeader = authHeader,
+                        country = country,
+                        localHour = currentHour
+                    )
+                }
 
                 var greeting = circadianMood.moodTitle
                 var backendQuickPicks: List<NativeTrack> = emptyList()
@@ -165,11 +172,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
-                    greeting = body["greeting"] as? String ?: circadianMood.moodTitle
-                    val qpRaw = (body["quickPicks"] as? List<Map<String, Any>>) ?: emptyList()
+                    val personalized = body["personalized"] as? Map<*, *>
+                    val charts = body["charts"] as? Map<*, *>
+
+                    greeting = (personalized?.get("greeting") as? String)
+                        ?: (body["greeting"] as? String)
+                        ?: circadianMood.moodTitle
+
+                    val qpRaw = (personalized?.get("quickPicks") as? List<Map<String, Any>>)
+                        ?: (body["quickPicks"] as? List<Map<String, Any>>)
+                        ?: emptyList()
                     backendQuickPicks = qpRaw.mapNotNull { parseTrack(it) }
 
-                    val rawMixes = (body["dailyMixes"] as? List<Map<String, Any>>) ?: emptyList()
+                    val rawMixes = (personalized?.get("dailyMixes") as? List<Map<String, Any>>)
+                        ?: (body["dailyMixes"] as? List<Map<String, Any>>)
+                        ?: emptyList()
                     backendDailyMixes = rawMixes.map { mixMap ->
                         val mId = mixMap["id"] as? String ?: "mix"
                         val mTitle = mixMap["title"] as? String ?: "Daily Mix"
@@ -191,8 +208,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
 
-                    val rawReels = (body["viralReels"] as? List<Map<String, Any>>) ?: emptyList()
-                    backendViralReels = rawReels.mapNotNull { parseTrack(it) }
+                    val trendingRegionalRaw = (charts?.get("trendingRegional") as? List<Map<String, Any>>)
+                        ?: (body["viralReels"] as? List<Map<String, Any>>)
+                        ?: emptyList()
+                    backendViralReels = trendingRegionalRaw.mapNotNull { parseTrack(it) }
                 }
 
                 // 2. Curate Distinct Dynamic Scraped Tracks for Each Individual Section
@@ -458,11 +477,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     userAvatar = null,
                     userEmail = userEmail,
                     circadianMood = circadianMood,
-                    featuredThisWeek = featuredThisWeek,
+                    featuredThisWeek = backendDailyMixes.ifEmpty { featuredThisWeek },
                     playlistsForYou = playlistsForYou,
                     trendingPlaylists = trendingPlaylists,
                     hotPlaylists = hotPlaylists,
-                    basedOnRecents = basedOnRecents,
+                    basedOnRecents = backendQuickPicks.ifEmpty { basedOnRecents },
                     albumsForYou = albumsForYou,
                     mostLovedArtists = mostLovedArtists,
                     popularHindiSongs = baelistTracks + bollywood100Tracks,

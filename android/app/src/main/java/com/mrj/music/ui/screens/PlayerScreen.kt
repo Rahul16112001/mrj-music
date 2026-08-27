@@ -398,16 +398,20 @@ fun FullScreenPlayerSheet(
                                 }
 
                                 // Download
+                                val downloadedTrackIds by playerViewModel.downloadedTrackIds.collectAsState()
+                                val isDownloaded = downloadedTrackIds.contains(track.id)
                                 IconButton(
                                     onClick = {
-                                        android.widget.Toast.makeText(context, "Saved \"${track.title}\" for offline playback", android.widget.Toast.LENGTH_SHORT).show()
+                                        playerViewModel.downloadTrack(track) { _, msg ->
+                                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     },
                                     modifier = Modifier.size(38.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Download,
-                                        contentDescription = "Download",
-                                        tint = TextSecondary,
+                                        imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
+                                        contentDescription = if (isDownloaded) "Downloaded" else "Download",
+                                        tint = if (isDownloaded) Color(0xFF22C55E) else TextSecondary,
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }

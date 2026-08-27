@@ -52,8 +52,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     val dynamicThemeColor: StateFlow<androidx.compose.ui.graphics.Color> = _dynamicThemeColor.asStateFlow()
 
     val likedTrackIds: StateFlow<Set<String>> = favoritesRepo.likedTrackIds
+    private val offlineStorage = com.mrj.music.storage.NativeOfflineStorage(application)
+    private val _downloadedTrackIds = MutableStateFlow<Set<String>>(emptySet())
+    val downloadedTrackIds: StateFlow<Set<String>> = _downloadedTrackIds.asStateFlow()
 
     fun isLiked(trackId: String): Boolean = favoritesRepo.isLiked(trackId)
+    fun isDownloaded(trackId: String): Boolean = offlineStorage.isTrackDownloaded(trackId)
+
+    fun refreshDownloadedTracks() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val list = offlineStorage.getAllDownloadedTracks()
+            _downloadedTrackIds.value = list.map { it.id }.toSet()
+        }
+    }
+
     fun toggleLike(track: NativeTrack) {
         val wasLiked = favoritesRepo.isLiked(track.id)
         favoritesRepo.toggleLike(track)
@@ -61,6 +73,59 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             behaviorTracker.onTrackLiked(track)
             // Proactively refresh dynamic queue to reflect positive taste reinforcement
             playerManager.fetchDynamicAutoplayQueue(track)
+        }
+    }
+
+    fun downloadTrack(track: NativeTrack, onResult: (isSuccess: Boolean, message: String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (offlineStorage.isTrackDownloaded(track.id)) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(true, "Already in your offline library")
+                }
+                return@launch
+            }
+
+            try {
+                val targetId = track.providerTrackId ?: track.canonicalTrackId ?: track.id
+                val streamUrl = "https://mrj-music.vercel.app/api/music/stream/$targetId"
+
+                val client = okhttp3.OkHttpClient.Builder()
+                    .followRedirects(true)
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val request = okhttp3.Request.Builder()
+                    .url(streamUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; MRJMusic)")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful || response.body == null) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(false, "Download failed. Please try again.")
+                    }
+                    return@launch
+                }
+
+                val saved = response.body!!.byteStream().use { input ->
+                    offlineStorage.saveTrackAudio(track, input, downloadType = "manual")
+                }
+
+                refreshDownloadedTracks()
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (saved != null) {
+                        onResult(true, "Saved \"${track.title}\" for offline playback")
+                    } else {
+                        onResult(false, "Download failed. Please try again.")
+                    }
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(false, "Download error: ${e.message}")
+                }
+            }
         }
     }
 

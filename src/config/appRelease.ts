@@ -23,7 +23,7 @@ export const APP_RELEASE: AppReleaseInfo = {
   fileSizeBytes: 18389855,
   minAndroidVersion: 'Android 8.0 (Oreo) or higher',
   targetAndroidVersion: 'Android 14 (API 34)',
-  sha256: '3f4a8fc3e4e8bb81cce5b81b2ffbe36a15a65e92a7bf55f63c6beedb0a52a382',
+  sha256: '8d3bce8144e83113daf7f984a29ce9bdde6e81ed96fa14d458ee0655f3de1675',
   isAvailable: true,
   features: [
     'Official YouTube Music High-Precision Search Engine & Instant Keystroke Suggestions',
