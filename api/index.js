@@ -122,6 +122,7 @@ app.get(['/api/app/release', '/app/release'], (req, res) => {
 
 // App Update Check Endpoint — returns platform-specific data
 app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
   const latestVersion = '3.18.0';
