@@ -26,24 +26,39 @@ export const ArtworkImage: React.FC<ArtworkImageProps> = ({
       return;
     }
 
-    // Direct clean image URL
-    if (src.includes('ytimg.com') || src.includes('youtube.com')) {
-      const match = src.match(/\/vi\/([a-zA-Z0-9_-]+)\//);
+    let optimizedSrc = src;
+
+    // 1. Google / YouTube Music UserContent (Upgrade tiny 60px/120px to 800x800 Studio Master Artwork)
+    if (optimizedSrc.includes('googleusercontent.com')) {
+      optimizedSrc = optimizedSrc
+        .replace(/=w\d+-h\d+[^&]*/g, '=w800-h800-l90-rj')
+        .replace(/=s\d+[^&]*/g, '=s800');
+    }
+    // 2. YouTube i.ytimg.com (Upgrade to 1080p maxresdefault)
+    else if (optimizedSrc.includes('ytimg.com') || optimizedSrc.includes('youtube.com')) {
+      const match = optimizedSrc.match(/\/vi\/([a-zA-Z0-9_-]+)\//);
       if (match && match[1]) {
         const videoId = match[1];
-        setCurrentSrc(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
-        return;
+        optimizedSrc = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
       }
     }
+    // 3. Apple Music / iTunes (Upgrade to 800x800)
+    else if (optimizedSrc.includes('mzstatic.com')) {
+      optimizedSrc = optimizedSrc.replace(/\/\d+x\d+bb\.jpg/, '/800x800bb.jpg');
+    }
 
-    setCurrentSrc(src);
+    setCurrentSrc(optimizedSrc);
   }, [src]);
 
   const handleError = () => {
-    if (currentSrc && currentSrc.includes('hqdefault.jpg')) {
+    if (currentSrc && currentSrc.includes('maxresdefault.jpg')) {
+      setCurrentSrc(currentSrc.replace('maxresdefault.jpg', 'sddefault.jpg'));
+    } else if (currentSrc && currentSrc.includes('sddefault.jpg')) {
+      setCurrentSrc(currentSrc.replace('sddefault.jpg', 'hqdefault.jpg'));
+    } else if (currentSrc && currentSrc.includes('hqdefault.jpg')) {
       setCurrentSrc(currentSrc.replace('hqdefault.jpg', 'mqdefault.jpg'));
-    } else if (currentSrc && currentSrc.includes('mqdefault.jpg')) {
-      setCurrentSrc(currentSrc.replace('mqdefault.jpg', 'default.jpg'));
+    } else if (currentSrc && currentSrc.includes('=w800-h800-l90-rj')) {
+      setCurrentSrc(currentSrc.replace('=w800-h800-l90-rj', '=w400-h400-l90-rj'));
     } else {
       setHasError(true);
     }

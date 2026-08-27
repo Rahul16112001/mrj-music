@@ -146,7 +146,10 @@ export async function getYoutubeMusicSuggestions(query) {
 
           const videoId =
             r.navigationEndpoint?.watchEndpoint?.videoId || r.doubleTapCommand?.watchEndpoint?.videoId;
-          const thumb = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+          const rawThumb = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+          const thumb = rawThumb
+            ? rawThumb.replace(/=w\d+-h\d+[^&]*/g, '=w800-h800-l90-rj').replace(/=s\d+[^&]*/g, '=s800')
+            : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
           if (videoId) {
             songs.push({
@@ -154,8 +157,8 @@ export async function getYoutubeMusicSuggestions(query) {
               title,
               artist,
               plays,
-              subtitle: fullSubtitle,
-              thumbnail: thumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              subtitle: `Song • ${artist}`,
+              thumbnail: thumb,
               providerTrackId: videoId,
               audioSource: {
                 sourceId: `src_${videoId}`,
@@ -251,7 +254,10 @@ export async function searchYouTubeMusic(query, limit = 20) {
         const videoId =
           c.title?.runs?.[0]?.navigationEndpoint?.watchEndpoint?.videoId ||
           c.buttons?.[0]?.buttonRenderer?.navigationEndpoint?.watchEndpoint?.videoId;
-        const thumb = c.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+        const rawThumb = c.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+        const thumb = rawThumb
+          ? rawThumb.replace(/=w\d+-h\d+[^&]*/g, '=w800-h800-l90-rj').replace(/=s\d+[^&]*/g, '=s800')
+          : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
         let artist = 'Popular Artist';
         const parts = fullSub.split('•').map((x) => x.trim());
@@ -268,7 +274,7 @@ export async function searchYouTubeMusic(query, limit = 20) {
             artist,
             album: '',
             duration: 210,
-            thumbnail: thumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            thumbnail: thumb,
             audioSource: {
               sourceId: `src_${videoId}`,
               provider: 'youtube',
@@ -300,7 +306,10 @@ export async function searchYouTubeMusic(query, limit = 20) {
           r.playlistItemData?.videoId ||
           r.doubleTapCommand?.watchEndpoint?.videoId ||
           r.navigationEndpoint?.watchEndpoint?.videoId;
-        const thumb = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+        const rawThumb = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url;
+        const thumb = rawThumb
+          ? rawThumb.replace(/=w\d+-h\d+[^&]*/g, '=w800-h800-l90-rj').replace(/=s\d+[^&]*/g, '=s800')
+          : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
         let artist = 'Popular Artist';
         let album = '';
@@ -332,7 +341,7 @@ export async function searchYouTubeMusic(query, limit = 20) {
             artist,
             album,
             duration: durationSec,
-            thumbnail: thumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            thumbnail: thumb,
             audioSource: {
               sourceId: `src_${videoId}`,
               provider: 'youtube',

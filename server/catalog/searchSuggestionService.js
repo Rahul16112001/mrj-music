@@ -230,7 +230,7 @@ export const searchSuggestionService = {
       intent: intent.primaryIntent,
       recent: recentMatches.slice(0, 4),
       suggestions: finalSuggestions,
-      songs: fusedSongs.slice(0, 6),
+      songs: fusedSongs.slice(0, 10),
       artists: [],
       albums: [],
       videos: [],

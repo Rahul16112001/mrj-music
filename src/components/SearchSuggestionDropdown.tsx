@@ -110,8 +110,8 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
               Studio Master
             </span>
           </div>
-          <div className="space-y-1">
-            {data.songs.slice(0, 5).map((track) => (
+          <div className="space-y-1 max-h-[380px] overflow-y-auto custom-scrollbar">
+            {data.songs.slice(0, 8).map((track) => (
               <div
                 key={track.id}
                 onClick={() => onSelectTrack(track)}
