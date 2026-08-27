@@ -65,24 +65,26 @@ const strictAuthLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Web & Android Version Check — returns latest version 3.14.0 with direct APK link
+// Web & Android Version Check — returns latest version 3.18.0 with direct APK link
 app.get('/version.json', (req, res) => {
   res.json({
-    version: '3.14.0',
-    build: '319',
-    updatedAt: '2026-08-25T00:00:00Z',
-    latestVersion: '3.14.0',
+    version: '3.18.0',
+    build: '330',
+    updatedAt: '2026-08-27T00:00:00Z',
+    latestVersion: '3.18.0',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
-    apkFileName: 'mrj-music-v3.14.0.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
-    title: 'MRJ Music v3.14.0 Track Action Sheet & Native Share',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
+    apkFileName: 'mrj-music-v3.18.0.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
+    title: 'MRJ Music v3.18.0 Official Search Engine & Studio Audio Upgrade',
     changelog: [
-      '✨ 3-Dot Track Action Bottom Sheet (Play Next, Add to Queue, Add to Playlist, Artist Profile, Song Radio)',
-      '📲 Native Android Share Integration (Share tracks directly to WhatsApp, Instagram, Telegram, etc.)',
-      '💿 Circular Vinyl Turntable Player with smooth spinning rotation',
-      '⭕ Circular Arc Progress Ring with glowing scrubber indicator dot',
-      '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
+      '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
+      '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
+      '🎵 320kbps High-Bitrate Studio Audio Streaming Pipeline',
+      '🧠 Dynamic ML Autoplay Queue with Skip Penalties & Circadian Moods',
+      '💾 Smart Downloads & Manual Download ID Resolution with Offline Toasts',
+      '📞 Native Phone Call Interruption & Auto-Resume Bridge',
+      '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
     ]
   });
 });
@@ -92,30 +94,31 @@ app.get('/api/app/release', (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.14.0',
-      build: '319',
-      updatedAt: '2026-08-25T00:00:00Z',
+      version: '3.18.0',
+      build: '330',
+      updatedAt: '2026-08-27T00:00:00Z',
     },
     android: {
-      versionName: '3.14.0',
-      versionCode: 319,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.14.0/mrj-music-v3.14.0.apk',
-      apkFileName: 'mrj-music-v3.14.0.apk',
-      fileSize: '111 MB',
-      fileSizeBytes: 116386039,
+      versionName: '3.18.0',
+      versionCode: 330,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
+      apkFileName: 'mrj-music-v3.18.0.apk',
+      fileSize: '18 MB',
+      fileSizeBytes: 18387112,
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
-      sha256: 'c6aac4e8c8e2fd9a559899cabd4d259d00020c1040b53ff8e2d2598cbd3d45d2',
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
       isAvailable: true,
       releaseNotes: [
-        '✨ 3-Dot Track Action Bottom Sheet (Play Next, Add to Queue, Add to Playlist, Artist Profile, Song Radio)',
-        '📲 Native Android Share Integration (Share tracks directly to WhatsApp, Instagram, Telegram, etc.)',
-        '💿 Circular Vinyl Turntable Player with smooth spinning rotation',
-        '⭕ Circular Arc Progress Ring with glowing scrubber indicator dot',
-        '📊 Real-Time Audio Frequency Waveform Visualizer & direct touch scrubber'
+        '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
+        '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
+        '🎵 320kbps High-Bitrate Studio Audio Streaming Pipeline',
+        '🧠 Dynamic ML Autoplay Queue with Skip Penalties & Circadian Moods',
+        '💾 Smart Downloads & Manual Download ID Resolution with Offline Toasts',
+        '📞 Native Phone Call Interruption & Auto-Resume Bridge',
+        '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
       ],
-      releaseDate: '2026-08-25',
+      releaseDate: '2026-08-27',
       isMandatory: false,
     },
   });
@@ -125,8 +128,8 @@ app.get('/api/app/release', (req, res) => {
 app.get('/api/app/check-update', (req, res) => {
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.17.5';
-  const latestVersionCode = 327;
+  const latestVersion = '3.18.0';
+  const latestVersionCode = 330;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -136,22 +139,21 @@ app.get('/api/app/check-update', (req, res) => {
     currentVersion: clientVersion,
     latestVersion,
     versionCode: latestVersionCode,
-    releaseDate: '2026-08-26',
-    title: 'MRJ Music v3.17.5 App Startup Crash & Uninterrupted Playback Fix',
+    releaseDate: '2026-08-27',
+    title: 'MRJ Music v3.18.0 Official Search Engine & Studio Audio Upgrade',
     changelog: [
-      '⚡ Fixed App Startup Crash: Resolved ForegroundServiceDidNotStartInTimeException on launch',
-      '🎵 Instant Stream Auto-Recovery: Transparent background stream recovery keeps music playing non-stop',
-      '⚡ Fixed Background Idle Notification: Only active during playback',
-      '🧠 Deep Dynamic AI/ML Infinite Queue Replenishment with zero duplicates',
-      '⚡ Ultra-Lightweight 18 MB optimized APK package',
-      '🔍 Real-Time Fuzzy Search & Typo Auto-Correction Engine',
-      '🎛️ Native 5-Band Equalizer, Sub-Bass Boost & 3D Spatializer'
+      '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
+      '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
+      '🎵 320kbps High-Bitrate Studio Audio Streaming Pipeline',
+      '🧠 Dynamic ML Autoplay Queue with Skip Penalties & Circadian Moods',
+      '💾 Smart Downloads & Manual Download ID Resolution with Offline Toasts',
+      '📞 Native Phone Call Interruption & Auto-Resume Bridge',
+      '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.17.5/mrj-music-v3.17.5.apk',
-    apkFileName: 'mrj-music-v3.17.5.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
+    apkFileName: 'mrj-music-v3.18.0.apk',
     fileSize: '18 MB',
     fileSizeBytes: 18387112,
-    sha256: 'f67ffc603a89628b34c18d4d9f4d34078fb8d1476060e816cd6ba4e95652f149',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
