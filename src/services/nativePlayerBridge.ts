@@ -76,6 +76,16 @@ class NativePlayerBridge {
           callbacks.onError?.(data.error);
         });
 
+        NativePlayer.addListener('audioFocusLoss', () => {
+          console.log('📞 [MRJ Native] Audio Focus Lost (Phone Call / Disconnect) -> Pausing');
+          window.dispatchEvent(new CustomEvent('mrj-audio-focus-loss'));
+        });
+
+        NativePlayer.addListener('audioFocusGain', () => {
+          console.log('📞 [MRJ Native] Audio Focus Restored (Phone Call Ended) -> Resuming');
+          window.dispatchEvent(new CustomEvent('mrj-audio-focus-gain'));
+        });
+
         return true;
       }
     } catch (err) {

@@ -430,6 +430,31 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
     window.addEventListener('mrj-app-state-change', handleAppStateChange);
 
+    // 6. Native Audio Focus & Phone Call Interruption Listeners (Phase 7 / Bug 6)
+    const handleAudioFocusLoss = () => {
+      console.log('📞 Audio focus lost / phone call ringing -> Pausing player');
+      if (isUsingHtmlAudio.current && htmlAudioRef.current && !htmlAudioRef.current.paused) {
+        htmlAudioRef.current.pause();
+      } else if (ytPlayerRef.current) {
+        try { ytPlayerRef.current.pauseVideo(); } catch {}
+      }
+      setIsPlaying(false);
+    };
+
+    const handleAudioFocusGain = () => {
+      console.log('📞 Audio focus restored / phone call ended -> Resuming player');
+      if (isPlayingRef.current) {
+        if (isUsingHtmlAudio.current && htmlAudioRef.current?.paused) {
+          htmlAudioRef.current.play().catch(() => {});
+        } else if (ytPlayerRef.current) {
+          try { ytPlayerRef.current.playVideo(); } catch {}
+        }
+        setIsPlaying(true);
+      }
+    };
+    window.addEventListener('mrj-audio-focus-loss', handleAudioFocusLoss);
+    window.addEventListener('mrj-audio-focus-gain', handleAudioFocusGain);
+
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -437,6 +462,8 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       window.removeEventListener('offline', handleOffline);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('mrj-app-state-change', handleAppStateChange);
+      window.removeEventListener('mrj-audio-focus-loss', handleAudioFocusLoss);
+      window.removeEventListener('mrj-audio-focus-gain', handleAudioFocusGain);
       releaseWakeLock();
     };
   }, []);
