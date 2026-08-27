@@ -129,7 +129,7 @@ export const SearchSuggestionDropdown: React.FC<SearchSuggestionDropdownProps> =
                       {track.title}
                     </p>
                     <p className="text-[11px] text-[#aaaaaa] truncate">
-                      Song • {track.artist}
+                      {(track as any).subtitle || `Song • ${track.artist}${((track as any).plays ? ` • ${(track as any).plays}` : '')}`}
                     </p>
                   </div>
                 </div>

@@ -2,6 +2,7 @@ import { db } from '../db/schema.js';
 import { musicProvider } from '../providers/musicProvider.js';
 import { searchIntentEngine } from './searchIntentEngine.js';
 import { searchRelevanceEngine } from './searchRelevanceEngine.js';
+import { getYoutubeMusicSuggestions } from './youtubeScraper.js';
 
 // Popular trending search seeds for instant fallback
 const POPULAR_SEARCH_SEEDS = [
@@ -130,21 +131,15 @@ export const searchSuggestionService = {
       }
     }
 
-    // 5. QUERY CATALOG WITH RELEVANCE ENGINE
-    let searchResults = { songs: [], videos: [], artists: [], albums: [], podcasts: [] };
-    try {
-      searchResults = await musicProvider.search(rawClean, 'all', 20);
-    } catch (e) {
-      console.warn('Search suggestion provider notice:', e.message);
-    }
+    // 5. INSTANT YOUTUBE MUSIC PREDICTIONS (Sub-200ms Autocomplete)
+    const ytMusicRes = await getYoutubeMusicSuggestions(rawClean).catch(() => ({ suggestions: [], songs: [] }));
 
-    for (const song of searchResults.songs || []) {
+    for (const q of ytMusicRes.suggestions || []) {
+      rawSuggestions.add(q);
+    }
+    for (const song of ytMusicRes.songs || []) {
       rawSuggestions.add(song.title);
       if (song.artist) rawSuggestions.add(`${song.title} ${song.artist}`);
-    }
-    for (const artist of searchResults.artists || []) {
-      rawSuggestions.add(artist.name);
-      rawSuggestions.add(`${artist.name} songs`);
     }
 
     // 6. MULTI-SIGNAL SUGGESTION SCORING (Query Relevance Dominates + Persona Boost)
@@ -227,38 +222,19 @@ export const searchSuggestionService = {
       if (finalSuggestions.length >= 8) break;
     }
 
-    // 7. MUSIC MATCHES FILTERED BY SEARCH RELEVANCE ENGINE
-    const relevantSongs = searchRelevanceEngine.filterAndRank(
-      searchResults.songs || [],
-      rawClean,
-      intent,
-      6
-    );
-
-    const relevantArtists = (searchResults.artists || [])
-      .filter((a) => {
-        const normArt = searchRelevanceEngine.normalize(a.name);
-        return normArt.includes(normQuery) || normQuery.includes(normArt);
-      })
-      .slice(0, 3);
-
-    const relevantAlbums = (searchResults.albums || [])
-      .filter((a) => {
-        const normAlb = searchRelevanceEngine.normalize(a.title + ' ' + a.artist);
-        return normAlb.includes(normQuery) || normQuery.includes(normAlb);
-      })
-      .slice(0, 2);
+    // 7. REAL MUSIC TRACKS FUSION (YT Music Official Tracks)
+    const fusedSongs = ytMusicRes.songs || [];
 
     return {
       query: rawClean,
       intent: intent.primaryIntent,
       recent: recentMatches.slice(0, 4),
       suggestions: finalSuggestions,
-      songs: relevantSongs,
-      artists: relevantArtists,
-      albums: relevantAlbums,
-      videos: (searchResults.videos || []).slice(0, 3),
-      podcasts: (searchResults.podcasts || []).slice(0, 2),
+      songs: fusedSongs.slice(0, 6),
+      artists: [],
+      albums: [],
+      videos: [],
+      podcasts: [],
     };
   },
 };
