@@ -6,6 +6,8 @@ export interface MediaSessionHandlers {
   onNext: () => void;
   onPrevious: () => void;
   onSeek: (seconds: number) => void;
+  onSeekBackward?: (skipSeconds: number) => void;
+  onSeekForward?: (skipSeconds: number) => void;
   onStop?: () => void;
 }
 
@@ -75,11 +77,19 @@ export const setupMediaSession = (
     try {
       navigator.mediaSession.setActionHandler('seekbackward', (details) => {
         const skipTime = details.seekOffset || 10;
-        handlers.onSeek(Math.max(0, (details.seekTime || 0) - skipTime));
+        if (handlers.onSeekBackward) {
+          handlers.onSeekBackward(skipTime);
+        } else if (details.seekTime !== undefined && !isNaN(details.seekTime)) {
+          handlers.onSeek(Math.max(0, details.seekTime - skipTime));
+        }
       });
       navigator.mediaSession.setActionHandler('seekforward', (details) => {
         const skipTime = details.seekOffset || 10;
-        handlers.onSeek((details.seekTime || 0) + skipTime);
+        if (handlers.onSeekForward) {
+          handlers.onSeekForward(skipTime);
+        } else if (details.seekTime !== undefined && !isNaN(details.seekTime)) {
+          handlers.onSeek(details.seekTime + skipTime);
+        }
       });
     } catch {}
 

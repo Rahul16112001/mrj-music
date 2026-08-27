@@ -94,15 +94,21 @@ export const Downloads: React.FC = () => {
 
   const handleToggleSmartDownloads = async () => {
     if (!settings) return;
+    const willEnable = !settings.smartDownloads.enabled;
     const updated = {
       ...settings,
       smartDownloads: {
         ...settings.smartDownloads,
-        enabled: !settings.smartDownloads.enabled,
+        enabled: willEnable,
       },
     };
     await offlineStorage.saveSettings(updated);
     setSettings(updated);
+
+    // Task 6B: Trigger smart downloads sync when enabling toggle
+    if (willEnable) {
+      smartDownloadEngine.syncSmartDownloads().catch(() => {});
+    }
   };
 
   const handleUpdateSmartDownloads = async () => {

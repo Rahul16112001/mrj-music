@@ -25,6 +25,8 @@ import { androidLifecycleService } from './services/androidLifecycleService';
 import { updateService, UpdateCheckResult } from './services/updateService';
 import { UpdateModal } from './components/UpdateModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { offlineStorage } from './services/offlineStorage';
+import { smartDownloadEngine } from './services/smartDownloadEngine';
 
 const AppContent: React.FC = () => {
   const navigate = useNavigate();
@@ -42,6 +44,22 @@ const AppContent: React.FC = () => {
         setIsUpdateModalOpen(true);
       }
     }).catch(() => {});
+
+    // Task 6A: Smart Downloads Auto-Trigger on Startup (10s delay after player/auth init)
+    const triggerSmartDownloads = async () => {
+      try {
+        const settings = await offlineStorage.getSettings();
+        if (!settings?.smartDownloads?.enabled) return;
+        const isWifi = (navigator as any).connection
+          ? (navigator as any).connection.effectiveType === '4g' || (navigator as any).connection.type === 'wifi'
+          : true;
+        if (!isWifi) return;
+        await smartDownloadEngine.syncSmartDownloads();
+      } catch {}
+    };
+    const smartDownloadTimer = setTimeout(triggerSmartDownloads, 10000);
+
+    return () => clearTimeout(smartDownloadTimer);
   }, [navigate]);
 
   return (

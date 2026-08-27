@@ -285,12 +285,10 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (typeof window === 'undefined') return;
       if (window.YT && window.YT.Player && !ytPlayerRef.current) {
         try {
-          let container = document.getElementById('mrj-yt-audio-container');
+          const container = document.getElementById('mrj-yt-audio-container');
           if (!container) {
-            container = document.createElement('div');
-            container.id = 'mrj-yt-audio-container';
-            container.style.cssText = 'position:fixed;bottom:-9999px;right:-9999px;width:200px;height:200px;opacity:1;pointer-events:none;z-index:-1;';
-            document.body.appendChild(container);
+            console.warn('YouTube audio container not found in DOM');
+            return;
           }
 
           ytPlayerRef.current = new window.YT.Player('mrj-yt-audio-container', {
@@ -698,6 +696,18 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         onNext: handleNextTrack,
         onPrevious: handlePreviousTrack,
         onSeek: seek,
+        onSeekBackward: (skipSeconds = 10) => {
+          const currentPos = isUsingHtmlAudio.current
+            ? (htmlAudioRef.current?.currentTime || 0)
+            : (ytPlayerRef.current?.getCurrentTime?.() || 0);
+          seek(Math.max(0, currentPos - skipSeconds));
+        },
+        onSeekForward: (skipSeconds = 10) => {
+          const currentPos = isUsingHtmlAudio.current
+            ? (htmlAudioRef.current?.currentTime || 0)
+            : (ytPlayerRef.current?.getCurrentTime?.() || 0);
+          seek(currentPos + skipSeconds);
+        },
       });
 
       nativePlayerBridge.updateMetadata(track, true);
