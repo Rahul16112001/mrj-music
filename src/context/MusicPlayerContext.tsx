@@ -188,6 +188,7 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const sessionIdRef = useRef<string>('sess_' + Math.random().toString(36).substring(2, 9));
   const isEarlySkipRef = useRef<boolean>(false);
   const playbackHistoryRef = useRef<string[]>([]);
+  const isPlayingRef = useRef<boolean>(false);
   // Ref always points to the latest handleTrackEnded — prevents stale-closure autoplay failure
   const handleTrackEndedRef = useRef<() => void>(() => {});
   const currentTrackRef = useRef<Track | null>(null);
@@ -197,6 +198,11 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   useEffect(() => {
     playbackHistoryRef.current = playbackHistory.map(t => t.id);
   }, [playbackHistory]);
+
+  // Sync isPlayingRef whenever isPlaying state changes
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   // High-Fidelity Audio Failover Helper
   const triggerAudioFallback = (targetTrack: Track | null) => {
@@ -395,10 +401,44 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // 4. Background Visibility & Screen-Lock Re-acquisition (Task 5B-1)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Screen became visible again — re-acquire WakeLock and resume if was playing
+        if (isPlayingRef.current) {
+          acquireWakeLock();
+          // If using HTML audio and it's paused, resume it
+          if (isUsingHtmlAudio.current && htmlAudioRef.current?.paused) {
+            htmlAudioRef.current.play().catch(() => {});
+          }
+          // If using YT player, nudge it to resume
+          if (!isUsingHtmlAudio.current && ytPlayerRef.current?.getPlayerState?.() === 2) {
+            try { ytPlayerRef.current.playVideo(); } catch {}
+          }
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 5. Native Android App Lifecycle Listener (Task 5B-3)
+    const handleAppStateChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.isActive && isPlayingRef.current) {
+        acquireWakeLock();
+        if (isUsingHtmlAudio.current && htmlAudioRef.current?.paused) {
+          htmlAudioRef.current.play().catch(() => {});
+        }
+      }
+    };
+    window.addEventListener('mrj-app-state-change', handleAppStateChange);
+
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('mrj-app-state-change', handleAppStateChange);
       releaseWakeLock();
     };
   }, []);
@@ -415,6 +455,13 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       if ('wakeLock' in navigator && !wakeLockRef.current) {
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        const reacquireWakeLock = async () => {
+          wakeLockRef.current = null;
+          if (isPlayingRef.current) {
+            await acquireWakeLock();
+          }
+        };
+        wakeLockRef.current.addEventListener('release', reacquireWakeLock);
       }
     } catch {}
   };
