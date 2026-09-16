@@ -65,18 +65,18 @@ const strictAuthLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Web & Android Version Check — returns latest version 3.18.0 with direct APK link
+// Web & Android Version Check — returns latest version 3.18.2 with direct APK link
 app.get('/version.json', (req, res) => {
   res.json({
-    version: '3.18.0',
-    build: '330',
+    version: '3.18.2',
+    build: '332',
     updatedAt: '2026-08-27T00:00:00Z',
-    latestVersion: '3.18.0',
+    latestVersion: '3.18.2',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
-    apkFileName: 'mrj-music-v3.18.0.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.0/mrj-music-v3.18.0.apk',
-    title: 'MRJ Music v3.18.0 Official Search Engine & Studio Audio Upgrade',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
+    apkFileName: 'mrj-music-v3.18.2.apk',
+    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
+    title: 'MRJ Music v3.18.2 Native Unified Playback',
     changelog: [
       '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
       '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
@@ -94,15 +94,15 @@ app.get('/api/app/release', (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.18.1',
-      build: '331',
+      version: '3.18.2',
+      build: '332',
       updatedAt: '2026-08-27T00:00:00Z',
     },
     android: {
-      versionName: '3.18.1',
-      versionCode: 331,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.1/mrj-music-v3.18.1.apk',
-      apkFileName: 'mrj-music-v3.18.1.apk',
+      versionName: '3.18.2',
+      versionCode: 332,
+      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
+      apkFileName: 'mrj-music-v3.18.2.apk',
       fileSize: '18 MB',
       fileSizeBytes: 18395941,
       minAndroidVersion: 'Android 8.0+',
@@ -118,7 +118,7 @@ app.get('/api/app/release', (req, res) => {
         '📞 Native Phone Call Interruption & Auto-Resume Bridge',
         '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
       ],
-      releaseDate: '2026-08-27',
+      releaseDate: '2026-09-16',
       isMandatory: false,
     },
   });
@@ -129,8 +129,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.18.1';
-  const latestVersionCode = 331;
+  const latestVersion = '3.18.2';
+  const latestVersionCode = 332;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -141,7 +141,7 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-08-27',
-    title: 'MRJ Music v3.18.1 Native Optimization & Direct Update',
+    title: 'MRJ Music v3.18.2 Native Unified Playback Update',
     changelog: [
       '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
       '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
@@ -151,11 +151,11 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
       '📞 Native Phone Call Interruption & Auto-Resume Bridge',
       '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.1/mrj-music-v3.18.1.apk',
-    apkFileName: 'mrj-music-v3.18.1.apk',
+    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
+    apkFileName: 'mrj-music-v3.18.2.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18395941,
-    sha256: '0819f4841b7f368866deffbb8d382a0d6c5810bfcd63746c503510f8716f0eb7',
+    fileSizeBytes: 18938926,
+    sha256: '5b53573834bf1ef500b644714eff6e4ae7812f2fbfe26e155e163cae648cfe97',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
