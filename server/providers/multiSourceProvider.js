@@ -1,6 +1,8 @@
 import crypto from 'crypto';
+import axios from 'axios';
 import { db } from '../db/schema.js';
 import { searchYouTubeHighEnd } from '../catalog/youtubeScraper.js';
+import { normalizeArtworkUrl } from './providerUtils.js';
 import { innertubeProvider } from './innertubeProvider.js';
 import { jiosaavnProvider } from './jiosaavnProvider.js';
 import { jamendoProvider } from './jamendoProvider.js';
@@ -86,6 +88,54 @@ function dedupeKey(track) {
   return `${String(track.title || '').toLowerCase().replace(/\W+/g, ' ').trim()}::${String(track.artist || '').toLowerCase().replace(/\W+/g, ' ').trim()}`;
 }
 
+function decodeHtml(value) {
+  if (typeof value !== 'string') return value || '';
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#039;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+function extractArtistAndTitle(rawTitle, rawArtist) {
+  let title = String(rawTitle || '').trim();
+  let artist = String(rawArtist || '').trim();
+
+  // Clean channel artifacts from artist
+  artist = artist.replace(/vevo$/i, '').replace(/\s*-\s*topic$/i, '').replace(/\s*official\s*(channel)?$/i, '').trim();
+
+  const isLabelArtist = !artist || artist.toLowerCase() === 'youtube' || /vevo|records|series|music|channel|official|company|entertainment|media/i.test(artist);
+
+  if (title.includes(' | ')) {
+    const parts = title.split(' | ').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      title = parts[0];
+      if (isLabelArtist) artist = parts[1];
+    }
+  } else if (title.includes(' - ')) {
+    const parts = title.split(' - ').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const candidateArtist = parts[0];
+      const candidateTitle = parts.slice(1).join(' - ');
+      if (isLabelArtist) {
+        artist = candidateArtist;
+        title = candidateTitle;
+      } else {
+        title = candidateTitle;
+      }
+    }
+  }
+
+  title = cleanTitleString(title);
+  artist = artist.replace(/vevo$/i, '').trim();
+
+  return { title, artist };
+}
+
 function cleanTitleString(value) {
   return String(value || '')
     .normalize('NFKD')
@@ -93,7 +143,88 @@ function cleanTitleString(value) {
     .replace(/^(official|lyrical|audio|video|exclusive|full\s*song|hd|4k)\s*[:|-]\s*/gi, '')
     .replace(/\s*\|\s*.*$/g, '')
     .replace(/\s*-\s*(official|lyrical|audio|video|exclusive).*$/gi, '')
+    .replace(/\s*(feat\.?|ft\.?)\s+.*$/gi, '')
     .trim();
+}
+
+async function searchArtists(query, limit = 15) {
+  try {
+    const url = `https://www.jiosaavn.com/api.php?__call=search.getArtistResults&_format=json&_marker=0&cc=in&includeMetaTags=1&q=${encodeURIComponent(query)}&n=${limit}&p=1`;
+    const res = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 3500 });
+    const results = res.data?.results || [];
+    return results.map((a) => {
+      const id = a.id || a.artistid || a.name;
+      const name = decodeHtml(a.name || a.title);
+      const image = normalizeArtworkUrl(a.image?.replace(/50x50/g, '500x500').replace(/150x150/g, '500x500')) || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400';
+      return {
+        id,
+        name,
+        title: name,
+        image,
+        thumbnail: image,
+        category: 'Artist',
+        role: a.role || 'Artist',
+        followerCount: a.follower_count ? `${a.follower_count} Followers` : 'Popular Artist',
+        type: 'artist',
+      };
+    });
+  } catch (_) {
+    return [];
+  }
+}
+
+async function searchAlbums(query, limit = 15) {
+  try {
+    const url = `https://www.jiosaavn.com/api.php?__call=search.getAlbumResults&_format=json&_marker=0&cc=in&includeMetaTags=1&q=${encodeURIComponent(query)}&n=${limit}&p=1`;
+    const res = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 3500 });
+    const results = res.data?.results || [];
+    return results.map((alb) => {
+      const id = alb.albumid || alb.id;
+      const title = decodeHtml(alb.title || alb.name);
+      const artist = decodeHtml(alb.primary_artists || alb.music || (typeof alb.artist === 'string' ? alb.artist : 'Various Artists'));
+      const image = normalizeArtworkUrl(alb.image?.replace(/50x50/g, '500x500').replace(/150x150/g, '500x500'));
+      return {
+        id: id || title,
+        albumId: id,
+        title,
+        name: title,
+        artist,
+        thumbnail: image,
+        image,
+        year: alb.year || (alb.release_date ? alb.release_date.slice(0, 4) : '2024'),
+        trackCount: Number(alb.more_info?.song_pids ? alb.more_info.song_pids.split(',').length : (alb.numsongs || 10)),
+        type: 'album',
+      };
+    });
+  } catch (_) {
+    return [];
+  }
+}
+
+async function searchPlaylists(query, limit = 15) {
+  try {
+    const url = `https://www.jiosaavn.com/api.php?__call=search.getPlaylistResults&_format=json&_marker=0&cc=in&includeMetaTags=1&q=${encodeURIComponent(query)}&n=${limit}&p=1`;
+    const res = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 3500 });
+    const results = res.data?.results || [];
+    return results.map((p) => {
+      const id = p.listid || p.id;
+      const title = decodeHtml(p.listname || p.title || p.name);
+      const image = normalizeArtworkUrl(p.image?.replace(/50x50/g, '500x500').replace(/150x150/g, '500x500'));
+      return {
+        id: id || title,
+        playlistId: id,
+        title,
+        name: title,
+        author: decodeHtml(p.firstname ? `${p.firstname} ${p.lastname || ''}`.trim() : (p.username || 'JioSaavn Editor')),
+        thumbnail: image,
+        image,
+        trackCount: Number(p.count || p.numsongs || 20),
+        type: 'playlist',
+      };
+    });
+  } catch (_) {
+    return [];
+  }
 }
 
 function titleKey(value) {
@@ -121,7 +252,8 @@ function matchesRequestedTrack(candidate, title, artist) {
   const rawRequested = rawTitleKey(title);
   const rawCandidate = rawTitleKey(candidate.title);
   const titlesMatch = (requestedTitle && candidateTitle === requestedTitle)
-    || (rawRequested && rawCandidate === rawRequested);
+    || (rawRequested && rawCandidate === rawRequested)
+    || (candidateTitle && requestedTitle && (candidateTitle.includes(requestedTitle) || requestedTitle.includes(candidateTitle)));
   if (!titlesMatch) return false;
   const requestedArtistTokens = tokenSet(artist);
   if (requestedArtistTokens.size === 0) return true;
@@ -136,16 +268,20 @@ function isLikelySameTrack(left, right) {
 
 export const multiSourceProvider = {
   async search(query, type = 'all', limit = 30) {
-    if (!query?.trim()) return { query: '', songs: [], videos: [], artists: [], albums: [], podcasts: [], results: [] };
-    // Keep room for lower-priority providers in the merged result. Asking the
-    // primary provider for the full limit used to crowd out every YouTube-video
-    // fallback before it could be displayed.
+    if (!query?.trim()) return { query: '', songs: [], videos: [], artists: [], albums: [], playlists: [], podcasts: [], results: [] };
     const providerLimit = Math.max(10, Math.ceil(limit / 2));
-    const responses = await Promise.all([
-      ...providers.slice(0, 4).map((provider) => provider.search(query, providerLimit).catch(() => [])),
-      // Regular YouTube is search fallback only; it is still needed in results
-      // when InnerTube/providers do not carry a regional or rare song.
-      searchYouTubeHighEnd(`${query} official audio`, providerLimit).catch(() => []),
+    const fetchArtists = type === 'all' || type === 'artists';
+    const fetchAlbums = type === 'all' || type === 'albums';
+    const fetchPlaylists = type === 'all' || type === 'playlists';
+
+    const [responses, artists, albums, playlists] = await Promise.all([
+      Promise.all([
+        ...providers.slice(0, 4).map((provider) => provider.search(query, providerLimit).catch(() => [])),
+        searchYouTubeHighEnd(`${query} official audio`, providerLimit).catch(() => []),
+      ]),
+      fetchArtists ? searchArtists(query, 15) : Promise.resolve([]),
+      fetchAlbums ? searchAlbums(query, 15) : Promise.resolve([]),
+      fetchPlaylists ? searchPlaylists(query, 15) : Promise.resolve([]),
     ]);
     const songs = [];
     const seen = new Set();
@@ -181,23 +317,29 @@ export const multiSourceProvider = {
       }
     }
     await Promise.all(mappingWrites);
-    return { query: query.trim(), songs, videos: [], artists: [], albums: [], podcasts: [], results: songs };
+    return { query: query.trim(), songs, videos: [], artists, albums, playlists, podcasts: [], results: songs };
   },
 
   async searchMulti(query, limit = 30) {
-    const result = await this.search(query, 'songs', limit);
+    const result = await this.search(query, 'all', limit);
     return { ...result, providerPriority: ['youtube_music', 'jiosaavn', 'jamendo', 'audius', 'youtube_video', 'scraper'] };
   },
 
   async resolveStream(trackOrId) {
     const rawId = typeof trackOrId === 'string' ? trackOrId : trackOrId?.canonicalTrackId || trackOrId?.id;
-    const effectiveTitle = typeof trackOrId === 'object' ? trackOrId?.title : null;
+    const rawTitle = typeof trackOrId === 'object' ? trackOrId?.title : null;
+    const rawArtist = typeof trackOrId === 'object' ? trackOrId?.artist : null;
+    const extracted = extractArtistAndTitle(rawTitle, rawArtist);
+    const title = extracted.title || rawTitle;
+    const artist = extracted.artist || rawArtist;
+    const effectiveTitle = title || rawTitle;
     if (!rawId && !effectiveTitle) return null;
-    const id = rawId || `track_${crypto.createHash('sha256').update(`${effectiveTitle}:${trackOrId?.artist || ''}`).digest('hex').slice(0, 16)}`;
+    const id = rawId || `track_${crypto.createHash('sha256').update(`${effectiveTitle}:${artist || ''}`).digest('hex').slice(0, 16)}`;
 
     let candidates = [];
     if (id.startsWith('ytm_')) {
-      candidates.push({ provider: innertubeProvider, providerTrackId: id.slice(4) });
+      const cleanVideoId = id.slice(4);
+      candidates.push({ provider: innertubeProvider, providerTrackId: cleanVideoId });
       const mappings = await getCachedMappings(id);
       console.info('[resolver] canonical mapping lookup', {
         canonicalTrackId: id,
@@ -208,14 +350,24 @@ export const multiSourceProvider = {
         provider: providers.find((provider) => provider.name === mapping.provider_name),
         providerTrackId: mapping.provider_track_id,
       })).filter((candidate) => candidate.provider && candidate.provider.name !== 'youtube_music'));
-
-      // InnerTube search IDs are also YouTube media IDs. When the private
-      // music player endpoint is unavailable to an unauthenticated server,
-      // try the exact media ID through the regular direct-audio extractors
-      // before broad metadata-based searches. This preserves the requested
-      // YouTube version and avoids silently substituting a different song
-      // from JioSaavn when the original YouTube audio is still playable.
-      candidates.push({ provider: youtubeVideoProvider, providerTrackId: id.slice(4) });
+      candidates.push({ provider: youtubeVideoProvider, providerTrackId: cleanVideoId });
+    } else if (id.startsWith('ytv_')) {
+      const cleanVideoId = id.slice(4);
+      candidates.push({ provider: youtubeVideoProvider, providerTrackId: cleanVideoId });
+      candidates.push({ provider: innertubeProvider, providerTrackId: cleanVideoId });
+      const mappings = await getCachedMappings(id);
+      candidates.push(...mappings.map((mapping) => ({
+        provider: providers.find((provider) => provider.name === mapping.provider_name),
+        providerTrackId: mapping.provider_track_id,
+      })).filter((candidate) => candidate.provider));
+    } else if (id.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(id)) {
+      candidates.push({ provider: innertubeProvider, providerTrackId: id });
+      candidates.push({ provider: youtubeVideoProvider, providerTrackId: id });
+      const mappings = await getCachedMappings(id);
+      candidates.push(...mappings.map((mapping) => ({
+        provider: providers.find((provider) => provider.name === mapping.provider_name),
+        providerTrackId: mapping.provider_track_id,
+      })).filter((candidate) => candidate.provider));
     } else if (id.startsWith('map_')) {
       const mappings = await getCachedMappings(id);
       candidates = mappings.map((mapping) => ({
@@ -238,8 +390,6 @@ export const multiSourceProvider = {
     } else {
       candidates = providers.map((provider) => ({ provider, providerTrackId: id }));
     }
-    const title = typeof trackOrId === 'object' ? trackOrId.title : null;
-    const artist = typeof trackOrId === 'object' ? trackOrId.artist : null;
 
     // Fast-path: When title is present, resolve via JioSaavn studio audio immediately (sub-350ms)
     if (title) {

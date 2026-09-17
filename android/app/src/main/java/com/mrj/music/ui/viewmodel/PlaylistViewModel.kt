@@ -70,13 +70,23 @@ class PlaylistViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(selectedPlaylist = null, isLoading = true, message = null)
             val fetched = withContext(Dispatchers.IO) {
                 runCatching {
+                    // 1. Try public curated / search playlist first
+                    val publicRes = runCatching { MRJApiClient.apiService.getPublicPlaylist(playlistId) }.getOrNull()
+                    val publicPlaylist = publicRes?.takeIf { it.isSuccessful }?.body()?.get("playlist") as? Map<*, *>
+                    val parsedPublic = parsePlaylist(publicPlaylist, playlistId)
+                    if (parsedPublic != null && parsedPublic.tracks.isNotEmpty()) {
+                        return@withContext parsedPublic
+                    }
+
+                    // 2. Try private user cloud playlist
                     val token = authStorage.getAccessToken()
                     val auth = token?.let { "Bearer $it" }
                     val detail = if (auth != null) {
-                        MRJApiClient.apiService.getPlaylistDetail(auth, playlistId)
+                        runCatching { MRJApiClient.apiService.getPlaylistDetail(auth, playlistId) }.getOrNull()
                     } else null
                     val detailMap = detail?.takeIf { it.isSuccessful }?.body()?.get("playlist") as? Map<*, *>
                     parsePlaylist(detailMap, playlistId)
+                        ?: parsedPublic
                         ?: run {
                             val search = MRJApiClient.apiService.search(playlistId, "playlists")
                             val playlists = search.body()?.get("playlists") as? List<*>

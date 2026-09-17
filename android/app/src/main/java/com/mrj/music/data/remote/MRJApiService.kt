@@ -217,6 +217,11 @@ interface MRJApiService {
         @Header("Authorization") authHeader: String
     ): Response<Map<String, Any>>
 
+    @GET("api/music/playlist/{playlistId}")
+    suspend fun getPublicPlaylist(
+        @Path("playlistId") playlistId: String
+    ): Response<Map<String, Any>>
+
     @GET("api/user/playlists/{playlistId}")
     suspend fun getPlaylistDetail(
         @Header("Authorization") authHeader: String,

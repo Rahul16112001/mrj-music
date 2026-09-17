@@ -1,5 +1,6 @@
 import { db } from '../db/schema.js';
 import { musicProvider } from '../providers/musicProvider.js';
+import { multiSourceProvider } from '../providers/multiSourceProvider.js';
 import { searchRelevanceEngine } from '../catalog/searchRelevanceEngine.js';
 
 // Levenshtein distance for fuzzy typo correction
@@ -472,7 +473,18 @@ class PredictiveSearchEngine {
     let rawResults = { songs: [], artists: [], albums: [], playlists: [] };
 
     try {
-      rawResults = await musicProvider.search(rawClean, providerType, 30);
+      const [musicRes, multiRes] = await Promise.allSettled([
+        musicProvider.search(rawClean, providerType, 30),
+        multiSourceProvider.search(rawClean, providerType, 30),
+      ]);
+      const mData = musicRes.status === 'fulfilled' ? (musicRes.value || {}) : {};
+      const sData = multiRes.status === 'fulfilled' ? (multiRes.value || {}) : {};
+      rawResults = {
+        songs: (mData.songs && mData.songs.length > 0) ? mData.songs : (sData.songs || []),
+        artists: (sData.artists && sData.artists.length > 0) ? sData.artists : (mData.artists || []),
+        albums: (sData.albums && sData.albums.length > 0) ? sData.albums : (mData.albums || []),
+        playlists: (sData.playlists && sData.playlists.length > 0) ? sData.playlists : (mData.playlists || []),
+      };
     } catch (err) {
       console.warn('Categorized search provider fallback:', err.message);
     }

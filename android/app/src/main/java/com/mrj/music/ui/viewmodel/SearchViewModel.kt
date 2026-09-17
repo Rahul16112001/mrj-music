@@ -247,10 +247,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 // The categorized/ML endpoint intentionally favors canonical music
                 // entities. Merge the provider-boundary search as well so regular
                 // YouTube fallback tracks and regional-only tracks are not hidden.
-                val multiSongs = runCatching {
-                    MRJApiClient.apiService.getMultiSearch(query.trim(), 50)
-                        .body()?.get("songs") as? List<Map<String, Any>>
-                }.getOrNull().orEmpty()
+                val multiRes = runCatching {
+                    MRJApiClient.apiService.getMultiSearch(query.trim(), 50).body()
+                }.getOrNull()
+                val multiSongs = (multiRes?.get("songs") as? List<Map<String, Any>>).orEmpty()
+                val multiArtists = (multiRes?.get("artists") as? List<Map<String, Any>>).orEmpty()
+                val multiAlbums = (multiRes?.get("albums") as? List<Map<String, Any>>).orEmpty()
+                val multiPlaylists = (multiRes?.get("playlists") as? List<Map<String, Any>>).orEmpty()
 
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
@@ -265,9 +268,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
                     _uiState.value = _uiState.value.copy(
                         songs = parsedSongs,
-                        artists = rawArtists,
-                        albums = rawAlbums,
-                        playlists = rawPlaylists,
+                        artists = if (rawArtists.isNotEmpty()) rawArtists else multiArtists,
+                        albums = if (rawAlbums.isNotEmpty()) rawAlbums else multiAlbums,
+                        playlists = if (rawPlaylists.isNotEmpty()) rawPlaylists else multiPlaylists,
                         isLoading = false
                     )
 
@@ -287,9 +290,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
                         _uiState.value = _uiState.value.copy(
                             songs = parsedSongs,
-                            artists = rawArtists,
-                            albums = rawAlbums,
-                            playlists = rawPlaylists,
+                            artists = if (rawArtists.isNotEmpty()) rawArtists else multiArtists,
+                            albums = if (rawAlbums.isNotEmpty()) rawAlbums else multiAlbums,
+                            playlists = if (rawPlaylists.isNotEmpty()) rawPlaylists else multiPlaylists,
                             isLoading = false
                         )
                     } else {

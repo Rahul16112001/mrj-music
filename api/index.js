@@ -107,26 +107,23 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
 // Web & Android Version Check — returns latest version 3.18.2 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.20.6',
-    build: '347',
-    updatedAt: '2026-09-18T00:27:00Z',
-    latestVersion: '3.20.6',
+    version: '3.20.7',
+    build: '348',
+    updatedAt: '2026-09-18T00:55:00Z',
+    latestVersion: '3.20.7',
     isUpdateAvailable: true,
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.20.6.apk',
+    apkFileName: 'mrj-music-v3.20.7.apk',
     downloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
     fileSize: '18 MB',
     fileSizeBytes: 18983749,
-    sha256: '043ca4342044c3ffce7a05af3c6514e6a1d841880bebd72a3cbfe09a69ceb1f8',
-    title: 'MRJ Music v3.20.6 YouTube Device Resolver & Playback Reliability Upgrade',
+    title: 'MRJ Music v3.20.7 YouTube Playlists, Artist & Album Tabs & Instant Stream Fix',
     changelog: [
-      '⚡ Restored Android On-Device YouTube Music Resolver with Native Android Client',
-      '🎧 Uninterrupted Background Playback (30-second advance pre-resolution fix)',
-      '🎯 Exact Cross-Provider Title Normalization (Wang Da Naap & Punjabi track fixes)',
-      '⬇️ Real Offline Downloads & Smart Downloads via unified StreamResolver',
-      '⏱️ Active Sleep Timer Countdown with end-of-track pause support',
-      '📋 Search & Public Playlist full track loading with spinner',
-      '🎵 Relaxed Fallback Pipeline ensuring all catalog tracks stream smoothly'
+      '⚡ Concurrent Zero-Delay Stream Resolution (Plays in <300ms without 10-second lag)',
+      '🎶 Full YouTube & Curated Playlist Support (Mood and all search playlists load and play all tracks)',
+      '🎤 Search Artists Tab Populated with Photos & Follower Counts',
+      '💿 Search Albums Tab Populated with High-Resolution Artwork & Tracks',
+      '🎯 Smart Cross-Provider Normalization for YouTube Video Songs (Wang Da Naap, Punjabi & Hip-hop hits)'
     ]
   });
 });
@@ -172,8 +169,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.20.6';
-  const latestVersionCode = 347;
+  const latestVersion = '3.20.7';
+  const latestVersionCode = 348;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -184,21 +181,19 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-09-18',
-    title: 'MRJ Music v3.20.6 YouTube Device Resolver & Playback Reliability Upgrade',
+    title: 'MRJ Music v3.20.7 YouTube Playlists, Artist & Album Tabs & Instant Stream Fix',
     changelog: [
-      '⚡ Restored Android On-Device YouTube Music Resolver with Native Android Client',
-      '🎧 Uninterrupted Background Playback (30-second advance pre-resolution fix)',
-      '🎯 Exact Cross-Provider Title Normalization (Wang Da Naap & Punjabi track fixes)',
-      '⬇️ Real Offline Downloads & Smart Downloads via unified StreamResolver',
-      '⏱️ Active Sleep Timer Countdown with end-of-track pause support',
-      '📋 Search & Public Playlist full track loading with spinner',
-      '🎵 Relaxed Fallback Pipeline ensuring all catalog tracks stream smoothly'
+      '⚡ Concurrent Zero-Delay Stream Resolution (Plays in <300ms without 10-second lag)',
+      '🎶 Full YouTube & Curated Playlist Support (Mood and all search playlists load and play all tracks)',
+      '🎤 Search Artists Tab Populated with Photos & Follower Counts',
+      '💿 Search Albums Tab Populated with High-Resolution Artwork & Tracks',
+      '🎯 Smart Cross-Provider Normalization for YouTube Video Songs (Wang Da Naap, Punjabi & Hip-hop hits)'
     ],
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.20.6.apk',
+    apkFileName: 'mrj-music-v3.20.7.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18983749,
-    sha256: '043ca4342044c3ffce7a05af3c6514e6a1d841880bebd72a3cbfe09a69ceb1f8',
+    fileSizeBytes: 18985295,
+    sha256: '1791db80ea5937f11a113e53fea1b951447d8663e2ecf528339e10f6f52698fc',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
@@ -1151,6 +1146,55 @@ app.get(['/api/music/album/:id', '/music/album/:id'], async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get(['/api/music/playlist/:id', '/api/playlist/:id'], async (req, res) => {
+  const playlistId = req.params.id;
+  if (!playlistId) return res.status(400).json({ error: 'Playlist ID is required' });
+
+  try {
+    const saavnUrl = `https://www.jiosaavn.com/api.php?__call=playlist.getDetails&listid=${encodeURIComponent(playlistId)}&_format=json&cc=in`;
+    const response = await axios.get(saavnUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      timeout: 5000,
+    });
+    const data = response.data;
+    if (data && (data.songs || data.listname || data.title)) {
+      const rawSongs = data.songs || [];
+      const thumbnail = (data.image || '').replace(/50x50/g, '500x500').replace(/150x150/g, '500x500');
+      const tracks = rawSongs.map((s) => ({
+        id: s.id,
+        canonicalTrackId: `jiosaavn_${s.id}`,
+        title: s.song || s.title,
+        artist: s.singers || s.primary_artists || s.music || 'Various Artists',
+        album: s.album || data.listname || 'Playlist',
+        thumbnail: (s.image || thumbnail).replace(/50x50/g, '500x500').replace(/150x150/g, '500x500'),
+        duration: Number(s.duration || 210),
+        providerTrackId: s.id,
+        provider: 'jiosaavn',
+        streamUrl: `https://mrj-music.vercel.app/api/music/stream/${s.id}`,
+      }));
+
+      return res.json({
+        status: 'success',
+        playlist: {
+          id: data.listid || data.id || playlistId,
+          playlistId: data.listid || data.id || playlistId,
+          title: data.listname || data.title || data.name || 'Curated Playlist',
+          name: data.listname || data.title || data.name || 'Curated Playlist',
+          description: data.header_desc || data.description || '',
+          thumbnail,
+          image: thumbnail,
+          trackCount: Number(data.count || data.numsongs || tracks.length),
+          tracks,
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Public playlist fetch notice:', err.message);
+  }
+
+  res.status(404).json({ error: 'Playlist not found' });
 });
 
 app.get(['/api/music/resolve-source', '/music/resolve-source'], async (req, res) => {

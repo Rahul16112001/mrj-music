@@ -420,6 +420,46 @@ export const musicProvider = {
       const res = await axios.get(`https://itunes.apple.com/lookup?id=${encodeURIComponent(collectionId)}&entity=song`, { timeout: 4500 });
       const results = res.data?.results || [];
 
+      if (results.length === 0 || /^\d+$/.test(collectionId)) {
+        try {
+          const saavnRes = await axios.get(`https://www.jiosaavn.com/api.php?__call=content.getAlbumDetails&albumid=${encodeURIComponent(collectionId)}&_format=json&cc=in`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            timeout: 4500,
+          });
+          const saavnData = saavnRes.data;
+          if (saavnData && (saavnData.songs || saavnData.list)) {
+            const rawSongs = saavnData.songs || saavnData.list || [];
+            const saavnArtwork = (saavnData.image || '').replace(/50x50/g, '500x500').replace(/150x150/g, '500x500');
+            const saavnTracks = rawSongs.map((s) => ({
+              id: s.id,
+              canonicalTrackId: `jiosaavn_${s.id}`,
+              title: s.song || s.title,
+              artist: s.singers || s.primary_artists || s.music || saavnData.primary_artists || 'Various Artists',
+              album: saavnData.title || saavnData.name || 'Album',
+              duration: Number(s.duration || 210),
+              thumbnail: (s.image || saavnArtwork).replace(/50x50/g, '500x500').replace(/150x150/g, '500x500'),
+              genre: saavnData.language || 'Music',
+              releaseYear: saavnData.year || '2024',
+              isOfficialMusic: true,
+              playbackFormat: 'audio',
+              provider: 'jiosaavn',
+              providerTrackId: s.id,
+              streamUrl: `https://mrj-music.vercel.app/api/music/stream/${s.id}`,
+            }));
+            return {
+              id: albumId,
+              title: saavnData.title || saavnData.name || 'Album',
+              artist: saavnData.primary_artists || saavnData.music || 'Artist',
+              thumbnail: saavnArtwork,
+              year: saavnData.year || '2024',
+              trackCount: saavnTracks.length,
+              genre: saavnData.language || 'Music',
+              tracks: saavnTracks,
+            };
+          }
+        } catch (_) {}
+      }
+
       if (results.length === 0) return null;
 
       const albumMeta = results[0];

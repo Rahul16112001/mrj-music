@@ -46,50 +46,63 @@ class StreamResolver {
             return@withContext cached.stream
         }
 
-        // 1. Try the user's device/network first for YouTube tracks.
-        // Mobile IP bypasses cloud datacenter bot challenges and plays exact YouTube tracks.
-        if (isYouTubeTrack(track)) {
-            val deviceStream = runCatching {
-                withTimeout(3_500L) { resolveYouTubeOnDevice(track) }
-            }.getOrNull()
-            if (deviceStream != null) {
-                synchronized(recent) { recent[key] = Cached(deviceStream, System.currentTimeMillis()) }
-                return@withContext deviceStream
+        // Concurrently race backend resolver and on-device resolver
+        // Backend resolves studio tracks / JioSaavn in <300ms.
+        // Device resolver provides fallback for unmapped mobile IP YouTube streams.
+        val resolved = coroutineScope {
+            val backendJob = async {
+                runCatching {
+                    withTimeout(4_000L) {
+                        val response = MRJApiClient.apiService.resolveStream(
+                            id = key,
+                            title = track.title,
+                            artist = track.artist,
+                            duration = track.duration,
+                            provider = track.provider
+                        )
+                        if (response.isSuccessful) {
+                            val body = response.body()
+                            val streamUrl = (body?.get("streamUrl") as? String ?: body?.get("url") as? String)?.trim()
+                                ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+                            if (streamUrl != null && body != null) {
+                                ResolvedStream(
+                                    url = streamUrl,
+                                    provider = body["provider"] as? String,
+                                    providerTrackId = body["providerTrackId"] as? String ?: body["videoId"] as? String,
+                                    expiresAt = (body["expiresAt"] as? Number)?.toLong()
+                                        ?: (System.currentTimeMillis() + 4 * 60 * 1000L),
+                                    mimeType = body["mimeType"] as? String,
+                                    codec = body["codec"] as? String,
+                                    bitrate = body["bitrate"]?.toString(),
+                                    sampleRate = body["sampleRate"]?.toString()
+                                )
+                            } else null
+                        } else null
+                    }
+                }.getOrNull()
+            }
+
+            val deviceJob = async {
+                if (isYouTubeTrack(track)) {
+                    runCatching {
+                        withTimeout(3_000L) { resolveYouTubeOnDevice(track) }
+                    }.getOrNull()
+                } else null
+            }
+
+            // Await backend first if available within timeout, else await device
+            val backendResult = backendJob.await()
+            if (backendResult != null) {
+                deviceJob.cancel()
+                backendResult
+            } else {
+                deviceJob.await()
             }
         }
 
-        // 2. Fallback: Query backend provider chain (JioSaavn 320kbps studio / multiSource)
-        val response = runCatching {
-            withTimeout(5_000L) {
-                MRJApiClient.apiService.resolveStream(
-                    id = key,
-                    title = track.title,
-                    artist = track.artist,
-                    duration = track.duration,
-                    provider = track.provider
-                )
-            }
-        }.getOrNull()
-
-        if (response != null && response.isSuccessful) {
-            val body = response.body()
-            val streamUrl = (body?.get("streamUrl") as? String ?: body?.get("url") as? String)?.trim()
-                ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
-            if (streamUrl != null && body != null) {
-                val resolved = ResolvedStream(
-                    url = streamUrl,
-                    provider = body["provider"] as? String,
-                    providerTrackId = body["providerTrackId"] as? String ?: body["videoId"] as? String,
-                    expiresAt = (body["expiresAt"] as? Number)?.toLong()
-                        ?: (System.currentTimeMillis() + 4 * 60 * 1000L),
-                    mimeType = body["mimeType"] as? String,
-                    codec = body["codec"] as? String,
-                    bitrate = body["bitrate"]?.toString(),
-                    sampleRate = body["sampleRate"]?.toString()
-                )
-                synchronized(recent) { recent[key] = Cached(resolved, System.currentTimeMillis()) }
-                return@withContext resolved
-            }
+        if (resolved != null) {
+            synchronized(recent) { recent[key] = Cached(resolved, System.currentTimeMillis()) }
+            return@withContext resolved
         }
         return@withContext null
     }
