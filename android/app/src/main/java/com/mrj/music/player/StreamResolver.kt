@@ -33,9 +33,9 @@ class StreamResolver {
     private data class Cached(val stream: ResolvedStream, val cachedAt: Long)
     private val recent = mutableMapOf<String, Cached>()
     private val youtubeClient = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(4, TimeUnit.SECONDS)
-        .callTimeout(5, TimeUnit.SECONDS)
+        .connectTimeout(2500, TimeUnit.MILLISECONDS)
+        .readTimeout(2500, TimeUnit.MILLISECONDS)
+        .callTimeout(3500, TimeUnit.MILLISECONDS)
         .build()
 
     suspend fun resolve(track: NativeTrack): ResolvedStream? = withContext(Dispatchers.IO) {
@@ -46,9 +46,21 @@ class StreamResolver {
             return@withContext cached.stream
         }
 
-        // Query backend directly for instant 320kbps resolution (sub-350ms).
+        // 1. Try the user's device/network first for YouTube tracks.
+        // Mobile IP bypasses cloud datacenter bot challenges and plays exact YouTube tracks.
+        if (isYouTubeTrack(track)) {
+            val deviceStream = runCatching {
+                withTimeout(3_500L) { resolveYouTubeOnDevice(track) }
+            }.getOrNull()
+            if (deviceStream != null) {
+                synchronized(recent) { recent[key] = Cached(deviceStream, System.currentTimeMillis()) }
+                return@withContext deviceStream
+            }
+        }
+
+        // 2. Fallback: Query backend provider chain (JioSaavn 320kbps studio / multiSource)
         val response = runCatching {
-            withTimeout(8_000L) {
+            withTimeout(5_000L) {
                 MRJApiClient.apiService.resolveStream(
                     id = key,
                     title = track.title,
@@ -79,17 +91,6 @@ class StreamResolver {
                 return@withContext resolved
             }
         }
-
-        // Fallback: If backend is unreachable or missing, try device-side extraction
-        if (isYouTubeTrack(track)) {
-            val deviceStream = runCatching {
-                withTimeout(2_500L) { resolveYouTubeOnDevice(track) }
-            }.getOrNull()
-            if (deviceStream != null) {
-                synchronized(recent) { recent[key] = Cached(deviceStream, System.currentTimeMillis()) }
-                return@withContext deviceStream
-            }
-        }
         return@withContext null
     }
 
@@ -105,6 +106,7 @@ class StreamResolver {
 
         val clients = listOf(
             Triple("ANDROID_MUSIC", "6.41.52", "com.google.android.apps.youtube.music/6.41.52 (Linux; U; Android 14; en_US)"),
+            Triple("ANDROID", "19.29.37", "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US)"),
             Triple("WEB_REMIX", "1.20240918.01.00", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131 Mobile Safari/537.36")
         )
         val result = clients.map { (name, version, userAgent) ->
@@ -117,9 +119,11 @@ class StreamResolver {
     }
 
     private fun requestYouTubePlayer(videoId: String, clientName: String, clientVersion: String, userAgent: String): ResolvedStream? {
+        val endpoint = if (clientName == "ANDROID") "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+                       else "https://music.youtube.com/youtubei/v1/player?prettyPrint=false"
         val payload = """{"context":{"client":{"clientName":"$clientName","clientVersion":"$clientVersion","hl":"en","gl":"IN"}},"videoId":"$videoId","contentCheckOk":true,"racyCheckOk":true}"""
         val request = Request.Builder()
-            .url("https://music.youtube.com/youtubei/v1/player?prettyPrint=false")
+            .url(endpoint)
             .post(payload.toRequestBody("application/json".toMediaType()))
             .header("Content-Type", "application/json")
             .header("User-Agent", userAgent)

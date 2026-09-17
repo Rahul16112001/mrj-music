@@ -32,11 +32,12 @@ async function raceInstances(instances, pathBuilder, parser) {
   const attempts = instances.map(async (base) => {
     const response = await axios.get(`${base}${pathBuilder()}`, {
       headers: { Accept: 'application/json', 'User-Agent': 'MRJMusic/4.0' },
-      timeout: 3500,
+      timeout: 2000,
     });
     return parser(response.data);
   });
-  return Promise.any(attempts);
+  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('raceInstances timeout')), 2000));
+  return Promise.race([Promise.any(attempts), timeoutPromise]);
 }
 
 export const youtubeVideoProvider = {

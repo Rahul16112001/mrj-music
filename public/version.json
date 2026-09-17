@@ -11,8 +11,8 @@
   "apkFileName": "mrj-music-v3.20.5.apk",
   "downloadUrl": "https://mrj-music.vercel.app/downloads/mrj-music.apk",
   "fileSize": "18 MB",
-  "fileSizeBytes": 18983656,
-  "sha256": "c6c4ba649c63ecfe07fc0d1a225040aa5c593892c730721978509d40acad8944",
+  "fileSizeBytes": 18983736,
+  "sha256": "04c6238882c5347d6066f1b12378c9faf4a0c4f5ca5ec7a3ff112be7525778e8",
   "title": "MRJ Music v3.20.5 Device Stream Resolver & Background Stability Upgrade",
   "changelog": [
     "⚡ Device-Side YouTube Music Resolver with automated carrier IP bypass",
