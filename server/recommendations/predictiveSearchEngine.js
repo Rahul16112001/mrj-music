@@ -480,7 +480,7 @@ class PredictiveSearchEngine {
       const mData = musicRes.status === 'fulfilled' ? (musicRes.value || {}) : {};
       const sData = multiRes.status === 'fulfilled' ? (multiRes.value || {}) : {};
       rawResults = {
-        songs: (mData.songs && mData.songs.length > 0) ? mData.songs : (sData.songs || []),
+        songs: (sData.songs && sData.songs.length > 0) ? sData.songs : (mData.songs || []),
         artists: (sData.artists && sData.artists.length > 0) ? sData.artists : (mData.artists || []),
         albums: (sData.albums && sData.albums.length > 0) ? sData.albums : (mData.albums || []),
         playlists: (sData.playlists && sData.playlists.length > 0) ? sData.playlists : (mData.playlists || []),

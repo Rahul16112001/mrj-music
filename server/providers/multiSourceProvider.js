@@ -10,8 +10,8 @@ import { audiusProvider } from './audiusProvider.js';
 import { youtubeVideoProvider } from './youtubeVideoProvider.js';
 
 const providers = [
-  innertubeProvider,
   jiosaavnProvider,
+  innertubeProvider,
   jamendoProvider,
   audiusProvider,
   youtubeVideoProvider,
@@ -246,7 +246,7 @@ function tokenSet(value) {
   return new Set(titleKey(value).split(/\s+/).filter((token) => token.length > 1));
 }
 
-function matchesRequestedTrack(candidate, title, artist) {
+function matchesRequestedTrack(candidate, title, artist, rawContext = '') {
   const requestedTitle = titleKey(title);
   const candidateTitle = titleKey(candidate.title);
   const rawRequested = rawTitleKey(title);
@@ -258,7 +258,16 @@ function matchesRequestedTrack(candidate, title, artist) {
   const requestedArtistTokens = tokenSet(artist);
   if (requestedArtistTokens.size === 0) return true;
   const candidateArtistTokens = tokenSet(candidate.artist);
-  return [...requestedArtistTokens].some((token) => candidateArtistTokens.has(token));
+  const directArtistMatch = [...requestedArtistTokens].some((token) => candidateArtistTokens.has(token));
+  if (directArtistMatch) return true;
+
+  if (rawContext) {
+    const contextLower = String(rawContext).toLowerCase();
+    if ([...candidateArtistTokens].some((token) => token.length > 3 && contextLower.includes(token))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isLikelySameTrack(left, right) {
@@ -322,13 +331,26 @@ export const multiSourceProvider = {
 
   async searchMulti(query, limit = 30) {
     const result = await this.search(query, 'all', limit);
-    return { ...result, providerPriority: ['youtube_music', 'jiosaavn', 'jamendo', 'audius', 'youtube_video', 'scraper'] };
+    return { ...result, providerPriority: ['jiosaavn', 'youtube_music', 'jamendo', 'audius', 'youtube_video', 'scraper'] };
   },
 
   async resolveStream(trackOrId) {
     const rawId = typeof trackOrId === 'string' ? trackOrId : trackOrId?.canonicalTrackId || trackOrId?.id;
-    const rawTitle = typeof trackOrId === 'object' ? trackOrId?.title : null;
-    const rawArtist = typeof trackOrId === 'object' ? trackOrId?.artist : null;
+    let rawTitle = typeof trackOrId === 'object' ? trackOrId?.title : null;
+    let rawArtist = typeof trackOrId === 'object' ? trackOrId?.artist : null;
+
+    // If title is missing and ID is a YouTube ID, auto-resolve metadata via YouTube oEmbed
+    const rawCleanId = (rawId || '').replace(/^(ytm_|ytv_)/, '');
+    if (!rawTitle && rawCleanId && /^[a-zA-Z0-9_-]{11}$/.test(rawCleanId)) {
+      try {
+        const oembed = await axios.get(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${rawCleanId}&format=json`, { timeout: 2500 });
+        if (oembed.data?.title) {
+          rawTitle = oembed.data.title;
+          rawArtist = oembed.data.author_name;
+        }
+      } catch (_) {}
+    }
+
     const extracted = extractArtistAndTitle(rawTitle, rawArtist);
     const title = extracted.title || rawTitle;
     const artist = extracted.artist || rawArtist;
@@ -395,16 +417,18 @@ export const multiSourceProvider = {
     if (title) {
       try {
         const cleanTitle = cleanTitleString(title) || title;
+        const baseTitle = cleanTitle.includes(' - ') ? cleanTitle.split(' - ')[0].trim() : cleanTitle;
         const searchQueries = [
           ...(artist ? [`${artist} ${cleanTitle}`.trim(), `${cleanTitle} ${artist}`.trim()] : []),
           cleanTitle,
+          ...(baseTitle !== cleanTitle ? (artist ? [`${artist} ${baseTitle}`.trim(), `${baseTitle} ${artist}`.trim()] : [baseTitle]) : []),
           ...(cleanTitle !== title ? (artist ? [`${artist} ${title}`.trim(), `${title} ${artist}`.trim()] : [title]) : []),
         ].filter(Boolean);
         let match = null;
         for (const query of searchQueries) {
           const results = await jiosaavnProvider.search(query, 20).catch(() => []);
           const candidates = results
-            .filter((candidate) => matchesRequestedTrack(candidate, title, artist))
+            .filter((candidate) => matchesRequestedTrack(candidate, title, artist, rawTitle))
             .sort((left, right) => Number(Boolean(right.providerMetadata?.is320kbps)) - Number(Boolean(left.providerMetadata?.is320kbps)));
           if (candidates.length > 0) {
             match = candidates[0];
