@@ -107,17 +107,17 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
 // Web & Android Version Check — returns latest version 3.18.2 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.20.8',
-    build: '349',
-    updatedAt: '2026-09-18T00:55:00Z',
-    latestVersion: '3.20.8',
+    version: '3.20.9',
+    build: '350',
+    updatedAt: '2026-09-18T04:00:00Z',
+    latestVersion: '3.20.9',
     isUpdateAvailable: true,
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.20.8.apk',
+    apkFileName: 'mrj-music-v3.20.9.apk',
     downloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18983749,
-    title: 'MRJ Music v3.20.8 YouTube Music Device Search & Stream Fix',
+    fileSizeBytes: 18991708,
+    title: 'MRJ Music v3.20.9 Autoplay Continuity & Search Stability Fix',
     changelog: [
       '⚡ Concurrent Zero-Delay Stream Resolution (Plays in <300ms without 10-second lag)',
       '🎶 Full YouTube & Curated Playlist Support (Mood and all search playlists load and play all tracks)',
@@ -169,8 +169,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.20.8';
-  const latestVersionCode = 349;
+  const latestVersion = '3.20.9';
+  const latestVersionCode = 350;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -181,7 +181,7 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     latestVersion,
     versionCode: latestVersionCode,
     releaseDate: '2026-09-18',
-    title: 'MRJ Music v3.20.8 YouTube Music Device Search & Stream Fix',
+    title: 'MRJ Music v3.20.9 Autoplay Continuity & Search Stability Fix',
     changelog: [
       '⚡ Concurrent Zero-Delay Stream Resolution (Plays in <300ms without 10-second lag)',
       '🎶 Full YouTube & Curated Playlist Support (Mood and all search playlists load and play all tracks)',
@@ -190,10 +190,10 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
       '🎯 Smart Cross-Provider Normalization for YouTube Video Songs (Wang Da Naap, Punjabi & Hip-hop hits)'
     ],
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.20.8.apk',
+    apkFileName: 'mrj-music-v3.20.9.apk',
     fileSize: '18 MB',
-      fileSizeBytes: 18991800,
-      sha256: '69af20c9df804da72928b58dec0fd63b9524978c0fd5c2cfda34aa11a3e9e301',
+      fileSizeBytes: 18991708,
+      sha256: '4491d8790c5a91f0a4d8302f0fcfe9ba1d94adb6fb63d0cec833cb076b74e986',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
