@@ -86,7 +86,24 @@ function dedupeKey(track) {
   return `${String(track.title || '').toLowerCase().replace(/\W+/g, ' ').trim()}::${String(track.artist || '').toLowerCase().replace(/\W+/g, ' ').trim()}`;
 }
 
+function cleanTitleString(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/\s*[\(\[][^\)\]]*(feat|ft\b|official|video|audio|lyric|from|ost|album|deluxe|bonus|soundtrack|hd|4k)[^\)\]]*[\)\]]/gi, '')
+    .replace(/^(official|lyrical|audio|video|exclusive|full\s*song|hd|4k)\s*[:|-]\s*/gi, '')
+    .replace(/\s*\|\s*.*$/g, '')
+    .replace(/\s*-\s*(official|lyrical|audio|video|exclusive).*$/gi, '')
+    .trim();
+}
+
 function titleKey(value) {
+  return cleanTitleString(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function rawTitleKey(value) {
   return String(value || '')
     .normalize('NFKD')
     .toLowerCase()
@@ -101,7 +118,11 @@ function tokenSet(value) {
 function matchesRequestedTrack(candidate, title, artist) {
   const requestedTitle = titleKey(title);
   const candidateTitle = titleKey(candidate.title);
-  if (!requestedTitle || candidateTitle !== requestedTitle) return false;
+  const rawRequested = rawTitleKey(title);
+  const rawCandidate = rawTitleKey(candidate.title);
+  const titlesMatch = (requestedTitle && candidateTitle === requestedTitle)
+    || (rawRequested && rawCandidate === rawRequested);
+  if (!titlesMatch) return false;
   const requestedArtistTokens = tokenSet(artist);
   if (requestedArtistTokens.size === 0) return true;
   const candidateArtistTokens = tokenSet(candidate.artist);
@@ -223,7 +244,12 @@ export const multiSourceProvider = {
     // Fast-path: When title is present, resolve via JioSaavn studio audio immediately (sub-350ms)
     if (title) {
       try {
-        const searchQueries = artist ? [`${artist} ${title}`.trim(), `${title} ${artist}`.trim()] : [title];
+        const cleanTitle = cleanTitleString(title) || title;
+        const searchQueries = [
+          ...(artist ? [`${artist} ${cleanTitle}`.trim(), `${cleanTitle} ${artist}`.trim()] : []),
+          cleanTitle,
+          ...(cleanTitle !== title ? (artist ? [`${artist} ${title}`.trim(), `${title} ${artist}`.trim()] : [title]) : []),
+        ].filter(Boolean);
         let match = null;
         for (const query of searchQueries) {
           const results = await jiosaavnProvider.search(query, 20).catch(() => []);
@@ -280,9 +306,16 @@ export const multiSourceProvider = {
 
     // Last resort: use the existing YouTube scraper only to discover a video
     if (title) {
-      const query = `${title} ${artist || ''}`.trim();
+      const cleanTitle = cleanTitleString(title) || title;
+      const query = `${cleanTitle} ${artist || ''}`.trim();
       for (const provider of [jiosaavnProvider, jamendoProvider, audiusProvider]) {
-        const searchQueries = [query, `${artist || ''} ${title}`.trim(), title, artist].filter(Boolean);
+        const searchQueries = [
+          query,
+          `${artist || ''} ${cleanTitle}`.trim(),
+          cleanTitle,
+          ...(cleanTitle !== title ? [`${title} ${artist || ''}`.trim(), `${artist || ''} ${title}`.trim(), title] : []),
+          artist,
+        ].filter(Boolean);
         const matches = [];
         const seenProviderTracks = new Set();
         for (const searchQuery of searchQueries) {
