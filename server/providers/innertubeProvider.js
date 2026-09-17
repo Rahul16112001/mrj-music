@@ -10,7 +10,7 @@ import {
 
 const INNERTUBE_HOST = 'https://music.youtube.com';
 const DEFAULT_CLIENT_VERSION = process.env.INNERTUBE_CLIENT_VERSION || '1.20240918.01.00';
-const REQUEST_TIMEOUT_MS = Number(process.env.INNERTUBE_TIMEOUT_MS || 8000);
+const REQUEST_TIMEOUT_MS = Number(process.env.INNERTUBE_TIMEOUT_MS || 1200);
 
 const clientContext = {
   client: {

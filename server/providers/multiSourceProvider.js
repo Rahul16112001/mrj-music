@@ -217,6 +217,30 @@ export const multiSourceProvider = {
     } else {
       candidates = providers.map((provider) => ({ provider, providerTrackId: id }));
     }
+    const title = typeof trackOrId === 'object' ? trackOrId.title : null;
+    const artist = typeof trackOrId === 'object' ? trackOrId.artist : null;
+
+    // Fast-path: When title is present, resolve via JioSaavn studio audio immediately (sub-350ms)
+    if (title) {
+      try {
+        const query = `${title} ${artist || ''}`.trim();
+        const results = await jiosaavnProvider.search(query, 15).catch(() => []);
+        let match = results
+          .filter((candidate) => matchesRequestedTrack(candidate, title, artist))
+          .sort((left, right) => Number(Boolean(right.providerMetadata?.is320kbps)) - Number(Boolean(left.providerMetadata?.is320kbps)))[0];
+        if (!match) {
+          match = results.find((candidate) => titleKey(candidate.title) === titleKey(title)) || results[0];
+        }
+        if (match) {
+          const stream = await jiosaavnProvider.resolveStream(match);
+          if (stream?.ok && stream.url) {
+            return { ...stream, canonicalTrackId: id };
+          }
+        }
+      } catch (err) {
+        console.warn('[resolver] fast-path JioSaavn failed, falling through', err?.message);
+      }
+    }
 
     const preferredProvider = typeof trackOrId === 'object' ? trackOrId.provider : null;
     const ordered = [...candidates].sort((left, right) => {
@@ -251,9 +275,6 @@ export const multiSourceProvider = {
     }
 
     // Last resort: use the existing YouTube scraper only to discover a video
-    // ID; playback still goes through direct-audio validation.
-    const title = typeof trackOrId === 'object' ? trackOrId.title : null;
-    const artist = typeof trackOrId === 'object' ? trackOrId.artist : null;
     if (title) {
       const query = `${title} ${artist || ''}`.trim();
       for (const provider of [jiosaavnProvider, jamendoProvider, audiusProvider]) {

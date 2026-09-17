@@ -20,10 +20,10 @@ export const APP_RELEASE: AppReleaseInfo = {
   apkFileName: 'mrj-music-v3.20.5.apk',
   apkDownloadUrl: '/downloads/mrj-music.apk',
   fileSizeFormatted: '18 MB',
-  fileSizeBytes: 18983462,
+  fileSizeBytes: 18983656,
   minAndroidVersion: 'Android 8.0 (Oreo) or higher',
   targetAndroidVersion: 'Android 14 (API 34)',
-  sha256: '76b46320a8ddbacdf5acd7f8f0921542f1a2e922727be0aec3ad6d891a94253e',
+  sha256: 'c6c4ba649c63ecfe07fc0d1a225040aa5c593892c730721978509d40acad8944',
   isAvailable: true,
   features: [
     'Official YouTube Music High-Precision Search Engine & Instant Keystroke Suggestions',
