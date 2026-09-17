@@ -124,7 +124,15 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun onQueryChange(newQuery: String) {
         _uiState.value = _uiState.value.copy(
             query = newQuery,
-            isSuggestionSubmitted = false // Reset submission state when typing
+            isSuggestionSubmitted = false, // Reset submission state when typing
+            // While typing, keep only the fast exact/static preview visible.
+            // The authoritative provider search is started explicitly by IME/search submit.
+            songs = emptyList(),
+            artists = emptyList(),
+            albums = emptyList(),
+            playlists = emptyList(),
+            errorMessage = null,
+            isLoading = false
         )
         searchJob?.cancel()
         predictiveJob?.cancel()
@@ -164,11 +172,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             fetchPredictiveSearch(effectiveQuery)
         }
 
-        // 3. Full search debounce (350ms)
-        searchJob = viewModelScope.launch {
-            delay(350)
-            performSearch(effectiveQuery)
-        }
+        // Do not launch the full provider search while the user is typing.
+        // This preserves the old exact-match behavior and prevents late
+        // InnerTube/backend responses from replacing the visible preview.
+        // Full multi-provider search starts from onSearchSubmit/onSuggestionClick.
     }
 
     fun onSuggestionClick(suggestion: String) {

@@ -122,7 +122,15 @@ class UnifiedPlayerManager private constructor(private val context: Context) {
                         cancelSleepTimer()
                         pause()
                     } else {
-                        playNext(false)
+                        // If the resolver already prepared the next media item,
+                        // let ExoPlayer advance its own timeline. This avoids a
+                        // needless resolve/pause gap at the end of a track.
+                        if (player.hasNextMediaItem()) {
+                            player.seekToNextMediaItem()
+                            player.play()
+                        } else {
+                            playNext(false)
+                        }
                     }
                 }
                 if (playbackState == Player.STATE_BUFFERING && bufferingStartedAt == null) {
@@ -383,7 +391,9 @@ class UnifiedPlayerManager private constructor(private val context: Context) {
     private fun maybePrefetchAutoplay(track: NativeTrack) {
         if (!_playbackState.value.autoplayEnabled) return
         val remaining = queueManager.queue.value.size - queueManager.currentIndex.value - 1
-        if (remaining <= 2 && lastAutoplaySeed != (track.canonicalTrackId ?: track.id)) {
+        // Keep a larger runway so dynamic recommendations are ready before
+        // the current source queue is exhausted, without changing its order.
+        if (remaining <= 5 && lastAutoplaySeed != (track.canonicalTrackId ?: track.id)) {
             lastAutoplaySeed = track.canonicalTrackId ?: track.id
             fetchDynamicAutoplayQueue(track)
         }
