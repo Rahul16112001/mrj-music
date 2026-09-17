@@ -223,13 +223,17 @@ export const multiSourceProvider = {
     // Fast-path: When title is present, resolve via JioSaavn studio audio immediately (sub-350ms)
     if (title) {
       try {
-        const query = `${title} ${artist || ''}`.trim();
-        const results = await jiosaavnProvider.search(query, 15).catch(() => []);
-        let match = results
-          .filter((candidate) => matchesRequestedTrack(candidate, title, artist))
-          .sort((left, right) => Number(Boolean(right.providerMetadata?.is320kbps)) - Number(Boolean(left.providerMetadata?.is320kbps)))[0];
-        if (!match) {
-          match = results.find((candidate) => titleKey(candidate.title) === titleKey(title)) || results[0];
+        const searchQueries = artist ? [`${artist} ${title}`.trim(), `${title} ${artist}`.trim()] : [title];
+        let match = null;
+        for (const query of searchQueries) {
+          const results = await jiosaavnProvider.search(query, 20).catch(() => []);
+          const candidates = results
+            .filter((candidate) => matchesRequestedTrack(candidate, title, artist))
+            .sort((left, right) => Number(Boolean(right.providerMetadata?.is320kbps)) - Number(Boolean(left.providerMetadata?.is320kbps)));
+          if (candidates.length > 0) {
+            match = candidates[0];
+            break;
+          }
         }
         if (match) {
           const stream = await jiosaavnProvider.resolveStream(match);
@@ -295,7 +299,7 @@ export const multiSourceProvider = {
           .filter((candidate) => matchesRequestedTrack(candidate, title, artist))
           .sort((left, right) => Number(Boolean(right.providerMetadata?.is320kbps))
             - Number(Boolean(left.providerMetadata?.is320kbps)))[0];
-        if (!match) {
+        if (!match && !artist) {
           match = matches
             .filter((candidate) => titleKey(candidate.title) === titleKey(title))
             .sort((left, right) => Number(Boolean(right.providerMetadata?.is320kbps))
