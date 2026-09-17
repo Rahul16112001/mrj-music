@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.mrj.music.model.NativeTrack
+import com.mrj.music.player.StreamResolver
 import com.mrj.music.storage.NativeOfflineStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,6 +21,7 @@ class SmartDownloadWorker(
     private val offlineStorage = NativeOfflineStorage.getInstance(context)
     private val smartPrefs = SmartDownloadPreferences.getInstance(context)
     private val predictor = SmartDownloadPredictor.getInstance(context)
+    private val streamResolver = StreamResolver()
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -62,8 +64,8 @@ class SmartDownloadWorker(
                     break
                 }
 
-                val streamUrl = track.streamUrl ?: "https://mrj-music.vercel.app/api/music/stream/${track.id}"
-                val downloaded = downloadAndSaveTrack(track, streamUrl)
+                val resolved = runCatching { streamResolver.resolve(track) }.getOrNull()
+                val downloaded = resolved?.let { downloadAndSaveTrack(track, it.url) } ?: false
                 if (downloaded) {
                     successCount++
                     Log.d(TAG, "Successfully smart-cached ($successCount/${candidates.size}): ${track.title} by ${track.artist}")

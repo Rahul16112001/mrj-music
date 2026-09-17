@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mrj.music.data.remote.MRJApiClient
 import com.mrj.music.data.security.SecureAuthStorage
+import com.mrj.music.player.UnifiedPlayerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -243,6 +244,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (_: Exception) {}
             }
             secureStorage.clearAuth()
+            UnifiedPlayerManager.getInstance(getApplication()).clearPersistedQueue()
             _uiState.value = AuthUiState()
         }
     }

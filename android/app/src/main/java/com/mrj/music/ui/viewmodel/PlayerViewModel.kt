@@ -5,8 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mrj.music.data.remote.MRJApiClient
 import com.mrj.music.model.NativeTrack
-import com.mrj.music.player.MRJExoPlayerManager
+import com.mrj.music.player.UnifiedPlayerManager
 import com.mrj.music.player.PlayerEventListener
+import com.mrj.music.player.StreamResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +43,7 @@ data class PlayerUiState(
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application), PlayerEventListener {
 
-    val playerManager = MRJExoPlayerManager.getInstance(application)
+    val playerManager = UnifiedPlayerManager.getInstance(application)
     val favoritesRepo = com.mrj.music.data.repository.FavoritesRepository.getInstance(application)
     private val audioEffectManager = com.mrj.music.audiofx.MRJAudioEffectManager.getInstance(application)
     private val behaviorTracker = com.mrj.music.intelligence.MRJBehaviorTracker.getInstance(application)
@@ -53,6 +54,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
 
     val likedTrackIds: StateFlow<Set<String>> = favoritesRepo.likedTrackIds
     private val offlineStorage = com.mrj.music.storage.NativeOfflineStorage(application)
+    private val streamResolver = StreamResolver()
     private val _downloadedTrackIds = MutableStateFlow<Set<String>>(emptySet())
     val downloadedTrackIds: StateFlow<Set<String>> = _downloadedTrackIds.asStateFlow()
 
@@ -86,8 +88,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             }
 
             try {
-                val targetId = track.providerTrackId ?: track.canonicalTrackId ?: track.id
-                val streamUrl = "https://mrj-music.vercel.app/api/music/stream/$targetId"
+                val resolved = streamResolver.resolve(track)
+                    ?: throw IllegalStateException("No direct audio stream available")
+                val streamUrl = resolved.url
 
                 val client = okhttp3.OkHttpClient.Builder()
                     .followRedirects(true)
@@ -162,8 +165,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             }
         }
     }
-
-    fun getOrCreatePlayerEngineView(context: android.content.Context) = playerManager.getOrCreatePlayerEngineView(context)
 
     fun playTrack(track: NativeTrack, newQueue: List<NativeTrack>? = null) {
         playerManager.playTrack(track, newQueue)

@@ -4,11 +4,22 @@ import { musicProvider } from '../providers/musicProvider.js';
 import { chartService } from '../charts/chartService.js';
 import { sessionManager, personalizationEngine } from './personalizationEngine.js';
 
+function normalizeTitle(title) {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
 export const nextTrackService = {
   async getNextRecommendations(userId, options = {}) {
     const {
       currentTrack = null,
       playedTrackIds = [],
+      playedTitles = [],
       currentQueueIds = [],
       mood = null,
       sessionId = null,
@@ -20,6 +31,11 @@ export const nextTrackService = {
       ...(currentTrack ? [currentTrack.id] : []),
       ...(Array.isArray(playedTrackIds) ? playedTrackIds : []),
       ...(Array.isArray(currentQueueIds) ? currentQueueIds : []),
+    ]);
+
+    const excludedTitles = new Set([
+      ...(currentTrack ? [normalizeTitle(currentTrack.title)] : []),
+      ...((Array.isArray(playedTitles) ? playedTitles : []).map(t => normalizeTitle(t))),
     ]);
 
     // 1. Gather Large Candidate Pool (100+ tracks where possible)
@@ -59,7 +75,13 @@ export const nextTrackService = {
     // 3. Multi-Signal Scoring Engine (Music-First + Session Intent + Long-Term Taste + Tune Controls)
     const scored = candidates
       .map(raw => contentClassifier.normalizeTrack(raw))
-      .filter(t => !excludedIds.has(t.id) && !dislikedArtists.has(t.artist) && !t.isCompilation && !t.isReaction)
+      .filter(t => {
+        if (excludedIds.has(t.id) || dislikedArtists.has(t.artist) || t.isCompilation || t.isReaction) return false;
+        const norm = normalizeTitle(t.title);
+        if (norm && excludedTitles.has(norm)) return false;
+        if (norm) excludedTitles.add(norm);
+        return true;
+      })
       .map(track => {
         let score = 0;
         const trackArtistLower = track.artist.toLowerCase();

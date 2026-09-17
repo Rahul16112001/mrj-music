@@ -1,5 +1,6 @@
 package com.mrj.music.data.remote
 
+import com.google.gson.annotations.SerializedName
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -11,6 +12,13 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface MRJApiService {
+
+    @GET("api/home/feed")
+    suspend fun getHomeFeed(
+        @Query("userId") userId: String? = null,
+        @Query("region") region: String = "IN",
+        @Header("Authorization") authHeader: String? = null
+    ): Response<HomeFeedResponse>
 
     // ==================== DISCOVERY & CHARTS ====================
     @GET("api/home/dashboard")
@@ -110,6 +118,12 @@ interface MRJApiService {
         @Query("country") country: String = "IN"
     ): Response<Map<String, Any>>
 
+    @GET("api/search/multi")
+    suspend fun getMultiSearch(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 50
+    ): Response<Map<String, Any>>
+
     @GET("api/music/search")
     suspend fun search(
         @Query("q") query: String,
@@ -151,6 +165,15 @@ interface MRJApiService {
         @Query("artist") artist: String? = null,
         @Query("duration") duration: Double? = 210.0,
         @Query("format") format: String = "audio"
+    ): Response<Map<String, Any>>
+
+    @GET("api/stream/resolve")
+    suspend fun resolveStream(
+        @Query("id") id: String,
+        @Query("title") title: String? = null,
+        @Query("artist") artist: String? = null,
+        @Query("duration") duration: Double? = null,
+        @Query("provider") provider: String? = null
     ): Response<Map<String, Any>>
 
     @GET("api/music/lyrics")
@@ -239,6 +262,12 @@ interface MRJApiService {
         @Body body: Map<String, @JvmSuppressWildcards Any?>
     ): Response<Map<String, Any>>
 
+    @POST("api/events/playback")
+    suspend fun postPlaybackEvents(
+        @Header("Authorization") authHeader: String?,
+        @Body body: Map<String, @JvmSuppressWildcards Any?>
+    ): Response<Map<String, Any>>
+
     // ==================== APP SYSTEM & UPDATES ====================
     @GET("api/app/check-update")
     suspend fun checkUpdate(
@@ -282,3 +311,29 @@ interface MRJApiService {
         @Header("Authorization") authHeader: String
     ): Response<Map<String, Any>>
 }
+
+data class HomeFeedResponse(
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("ready") val ready: Boolean = true,
+    @SerializedName("generatedAt") val generatedAt: String? = null,
+    @SerializedName("region") val region: String? = null,
+    @SerializedName("sections") val sections: List<HomeFeedSectionDto> = emptyList()
+)
+
+data class HomeFeedSectionDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("tracks") val tracks: List<HomeFeedTrackDto> = emptyList()
+)
+
+data class HomeFeedTrackDto(
+    @SerializedName("canonicalTrackId") val canonicalTrackId: String,
+    @SerializedName("provider") val provider: String,
+    @SerializedName("providerTrackId") val providerTrackId: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("artist") val artist: String,
+    @SerializedName("album") val album: String? = null,
+    @SerializedName("duration") val duration: Int? = null,
+    @SerializedName("artworkUrl") val artworkUrl: String,
+    @SerializedName("sourceAvailable") val sourceAvailable: Boolean = false
+)

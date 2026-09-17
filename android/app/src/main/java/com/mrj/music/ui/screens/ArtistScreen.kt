@@ -43,6 +43,14 @@ fun ArtistScreen(
 ) {
     val uiState by artistViewModel.uiState.collectAsState()
 
+    LaunchedEffect(uiState.pendingAlbumQueue) {
+        val tracks = uiState.pendingAlbumQueue
+        if (tracks.isNotEmpty()) {
+            playerViewModel.playTrack(tracks.first(), tracks)
+            artistViewModel.consumeAlbumQueue()
+        }
+    }
+
     LaunchedEffect(artistName) {
         artistViewModel.loadArtist(artistName)
     }
@@ -284,14 +292,7 @@ fun ArtistScreen(
                                         .width(130.dp)
                                         .clip(RoundedCornerShape(12.dp))
                                         .clickable {
-                                            val albumTrack = NativeTrack(
-                                                id = album.id.ifBlank { "album_${album.title}" },
-                                                title = album.title,
-                                                artist = album.artist,
-                                                album = album.title,
-                                                thumbnail = album.thumbnail
-                                            )
-                                            playerViewModel.playTrack(albumTrack)
+                                            artistViewModel.loadAlbumTracks(album.id)
                                         }
                                 ) {
                                     AsyncImage(

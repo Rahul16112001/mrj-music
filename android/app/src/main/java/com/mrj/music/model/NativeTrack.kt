@@ -7,6 +7,19 @@ import androidx.media3.common.MediaMetadata
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 
+data class NativeMediaSource(
+    @SerializedName("sourceId") val sourceId: String? = null,
+    @SerializedName("provider") val provider: String? = null,
+    @SerializedName("providerTrackId") val providerTrackId: String? = null,
+    @SerializedName("type") val type: String = "audio",
+    @SerializedName("availability") val availability: String? = null,
+    @SerializedName("mimeType") val mimeType: String? = null,
+    @SerializedName("codec") val codec: String? = null,
+    @SerializedName("bitrate") val bitrate: String? = null,
+    @SerializedName("sampleRate") val sampleRate: String? = null,
+    @SerializedName("expiresAt") val expiresAt: Long? = null
+)
+
 data class NativeTrack(
     @SerializedName("id") val id: String,
     @SerializedName("canonicalTrackId") val canonicalTrackId: String? = null,
@@ -23,11 +36,13 @@ data class NativeTrack(
     @SerializedName("downloadCategory") var downloadCategory: String? = null,
     // Additional fields from React Track type
     @SerializedName("providerTrackId") val providerTrackId: String? = null,
+    @SerializedName("provider") val provider: String? = null,
+    @SerializedName("sources") val sources: List<NativeMediaSource> = emptyList(),
 ) {
     companion object {
         private val gson = Gson()
         private const val TAG = "MRJ_NativeTrack"
-        private const val BACKEND_BASE = "https://mrj-music.vercel.app/api"
+        private const val BACKEND_BASE = "https://mrj-music.duckdns.org/api"
 
         fun fromJson(json: String): NativeTrack? {
             return try {

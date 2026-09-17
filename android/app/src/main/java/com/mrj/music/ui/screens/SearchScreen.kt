@@ -40,6 +40,8 @@ fun SearchScreen(
     playerViewModel: PlayerViewModel,
     stationViewModel: StationViewModel? = null,
     onArtistClick: (String) -> Unit = {},
+    onAlbumClick: (String) -> Unit = {},
+    onPlaylistClick: (String) -> Unit = {},
     onStationClick: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -428,7 +430,7 @@ fun SearchScreen(
                                     )
                                 }
                                 items(uiState.albums.take(4)) { album ->
-                                    AlbumSearchCard(album = album)
+                                    AlbumSearchCard(album = album, onClick = onAlbumClick)
                                 }
                             }
 
@@ -442,7 +444,7 @@ fun SearchScreen(
                                     )
                                 }
                                 items(uiState.playlists.take(4)) { playlist ->
-                                    PlaylistSearchCard(playlist = playlist)
+                                    PlaylistSearchCard(playlist = playlist, onClick = onPlaylistClick)
                                 }
                             }
                         }
@@ -470,7 +472,7 @@ fun SearchScreen(
                         "Albums" -> {
                             if (uiState.albums.isNotEmpty()) {
                                 items(uiState.albums) { album ->
-                                    AlbumSearchCard(album = album)
+                                    AlbumSearchCard(album = album, onClick = onAlbumClick)
                                 }
                             }
                         }
@@ -478,7 +480,7 @@ fun SearchScreen(
                         "Playlists" -> {
                             if (uiState.playlists.isNotEmpty()) {
                                 items(uiState.playlists) { playlist ->
-                                    PlaylistSearchCard(playlist = playlist)
+                                    PlaylistSearchCard(playlist = playlist, onClick = onPlaylistClick)
                                 }
                             }
                         }
@@ -1022,8 +1024,10 @@ fun ArtistSearchCard(
 
 @Composable
 fun AlbumSearchCard(
-    album: Map<String, Any>
+    album: Map<String, Any>,
+    onClick: (String) -> Unit = {}
 ) {
+    val id = album["id"]?.toString() ?: album["albumId"]?.toString() ?: ""
     val title = album["title"] as? String ?: album["name"] as? String ?: "Album"
     val artist = album["artist"] as? String ?: "Various Artists"
     val thumbnail = album["thumbnail"] as? String ?: album["image"] as? String
@@ -1039,6 +1043,7 @@ fun AlbumSearchCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { onClick(id) }
                 .padding(vertical = 6.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -1077,8 +1082,10 @@ fun AlbumSearchCard(
 
 @Composable
 fun PlaylistSearchCard(
-    playlist: Map<String, Any>
+    playlist: Map<String, Any>,
+    onClick: (String) -> Unit = {}
 ) {
+    val id = playlist["id"]?.toString() ?: playlist["playlistId"]?.toString() ?: ""
     val title = playlist["title"] as? String ?: playlist["name"] as? String ?: "Playlist"
     val author = playlist["author"] as? String ?: playlist["creator"] as? String ?: "MRJ Music"
     val thumbnail = playlist["thumbnail"] as? String ?: playlist["image"] as? String
@@ -1093,6 +1100,7 @@ fun PlaylistSearchCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { onClick(id) }
                 .padding(vertical = 6.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)

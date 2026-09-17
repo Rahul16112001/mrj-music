@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.mrj.music.player.MRJExoPlayerManager
+import com.mrj.music.player.UnifiedPlayerManager
 
 private const val TAG = "MRJMediaActionReceiver"
 
@@ -13,7 +13,7 @@ class MRJMediaActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
         Log.d(TAG, "Received media action: $action")
-        val playerManager = MRJExoPlayerManager.getInstance(context)
+        val playerManager = UnifiedPlayerManager.getInstance(context)
 
         when (action) {
             MRJMediaSessionService.ACTION_PLAY_PAUSE -> playerManager.togglePlayPause()

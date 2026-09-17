@@ -53,7 +53,7 @@ class SmartDownloadPredictor(private val context: Context) {
         // 2. Source B: Personalized Home Feed Candidates (Quick Picks, Daily Mixes, Songs For You)
         try {
             val request = Request.Builder()
-                .url("https://mrj-music.vercel.app/api/music/personalized-home?region=IN")
+                .url("https://mrj-music.duckdns.org/api/music/personalized-home?region=IN")
                 .build()
             val response = httpClient.newCall(request).execute()
             if (response.isSuccessful && response.body != null) {
@@ -122,7 +122,7 @@ class SmartDownloadPredictor(private val context: Context) {
                 thumbnail = thumbnail,
                 duration = duration,
                 genre = genre,
-                streamUrl = "https://mrj-music.vercel.app/api/music/stream/$id",
+                streamUrl = "https://mrj-music.duckdns.org/api/music/stream/$id",
                 downloadType = "smart",
                 priorityScore = baseScore
             )

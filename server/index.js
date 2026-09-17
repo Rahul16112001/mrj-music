@@ -17,6 +17,9 @@ import { predictiveSearchEngine } from './recommendations/predictiveSearchEngine
 import { searchSuggestionService } from './catalog/searchSuggestionService.js';
 import { trackIdentityManager } from './catalog/trackIdentityManager.js';
 import { musicProvider } from './providers/musicProvider.js';
+import { multiSourceProvider } from './providers/multiSourceProvider.js';
+import { getVerifiedDynamicQueue } from './recommendations/verifiedDynamicQueueService.js';
+import { getHomeFeed } from './home/homeFeedService.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -49,6 +52,48 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// Verified Home catalog. Existing Home endpoints remain unchanged below.
+app.get('/api/home/feed', optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id || req.query.userId || null;
+    const region = req.query.region || req.query.country || req.headers['x-country-code'] || 'IN';
+    const feed = await getHomeFeed({ userId, region });
+    res.json(feed);
+  } catch (error) {
+    console.error('[home-feed] request failed', error);
+    res.status(503).json({ status: 'unavailable', message: 'Verified Home feed temporarily unavailable' });
+  }
+});
+
+// Unified provider boundary shared by web and Android clients.
+app.get('/api/search/multi', async (req, res) => {
+  try {
+    const result = await multiSourceProvider.searchMulti(String(req.query.q || req.query.query || ''), Number(req.query.limit || 30));
+    res.json({ status: 'success', ...result });
+  } catch (error) {
+    res.status(502).json({ status: 'unavailable', message: error.message });
+  }
+});
+
+app.all('/api/stream/resolve', async (req, res) => {
+  try {
+    const track = req.method === 'GET'
+      ? {
+        canonicalTrackId: req.query.id || req.query.trackId,
+        title: req.query.title,
+        artist: req.query.artist,
+        duration: req.query.duration ? Number(req.query.duration) : null,
+        provider: req.query.provider || null,
+      }
+      : (req.body?.track || req.body);
+    const stream = await multiSourceProvider.resolveStream(track);
+    if (!stream?.ok) return res.status(404).json({ status: 'unavailable', message: 'Direct audio stream unavailable' });
+    res.json({ status: 'success', ...stream });
+  } catch (error) {
+    res.status(502).json({ status: 'unavailable', message: error.message });
+  }
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -65,26 +110,25 @@ const strictAuthLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Web & Android Version Check — returns latest version 3.18.2 with direct APK link
+// Web & Android Version Check — returns latest version 3.18.3 with direct APK link
 app.get('/version.json', (req, res) => {
   res.json({
-    version: '3.18.2',
-    build: '332',
-    updatedAt: '2026-08-27T00:00:00Z',
-    latestVersion: '3.18.2',
+    version: '3.20.5',
+    build: '346',
+    updatedAt: '2026-09-17T23:31:00Z',
+    latestVersion: '3.20.5',
     isUpdateAvailable: true,
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
-    apkFileName: 'mrj-music-v3.18.2.apk',
-    downloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
-    title: 'MRJ Music v3.18.2 Native Unified Playback',
+    apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+    apkFileName: 'mrj-music-v3.20.5.apk',
+    downloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+    title: 'MRJ Music v3.20.5 Device Stream Resolver & Background Stability Upgrade',
     changelog: [
-      '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
-      '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
-      '🎵 320kbps High-Bitrate Studio Audio Streaming Pipeline',
-      '🧠 Dynamic ML Autoplay Queue with Skip Penalties & Circadian Moods',
-      '💾 Smart Downloads & Manual Download ID Resolution with Offline Toasts',
-      '📞 Native Phone Call Interruption & Auto-Resume Bridge',
-      '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
+      '⚡ Device-Side YouTube Music Resolver with automated carrier IP bypass',
+      '🎧 Uninterrupted Background Playback (30-second advance pre-resolution fix)',
+      '⬇️ Real Offline Downloads & Smart Downloads via unified StreamResolver',
+      '⏱️ Active Sleep Timer Countdown with end-of-track pause support',
+      '📋 Search & Public Playlist full track loading with spinner',
+      '🎵 Relaxed Fallback Pipeline ensuring songs like Amplifier stream smoothly'
     ]
   });
 });
@@ -94,17 +138,18 @@ app.get('/api/app/release', (req, res) => {
   res.json({
     status: 'success',
     web: {
-      version: '3.18.2',
+      version: '3.18.6',
       build: '332',
       updatedAt: '2026-08-27T00:00:00Z',
     },
     android: {
-      versionName: '3.18.2',
-      versionCode: 332,
-      apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
-      apkFileName: 'mrj-music-v3.18.2.apk',
+      versionName: '3.20.4',
+      versionCode: 345,
+      apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+      apkFileName: 'app-release.apk',
       fileSize: '18 MB',
-      fileSizeBytes: 18395941,
+      fileSizeBytes: 18975095,
+      sha256: '438d3b5bd0b2468a30ef629001d22353f772b29e3261db2dacc1125859bf9c81',
       minAndroidVersion: 'Android 8.0+',
       targetAndroidVersion: 'Android 14',
       engine: 'Native Kotlin + Jetpack Compose + AndroidX Media3 ExoPlayer',
@@ -129,8 +174,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.18.2';
-  const latestVersionCode = 332;
+  const latestVersion = '3.20.5';
+  const latestVersionCode = 346;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -140,22 +185,21 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     currentVersion: clientVersion,
     latestVersion,
     versionCode: latestVersionCode,
-    releaseDate: '2026-08-27',
-    title: 'MRJ Music v3.18.2 Native Unified Playback Update',
+    releaseDate: '2026-09-17',
+    title: 'MRJ Music v3.20.5 Device Stream Resolver & Background Stability Upgrade',
     changelog: [
-      '🔍 Official YouTube Music Engine: Exact search matching, Hindi/Urdu transliteration & instant typing suggestions',
-      '🖼️ Ultra HD 800x800 Studio Master Posters & 1080p Artwork across all devices',
-      '🎵 320kbps High-Bitrate Studio Audio Streaming Pipeline',
-      '🧠 Dynamic ML Autoplay Queue with Skip Penalties & Circadian Moods',
-      '💾 Smart Downloads & Manual Download ID Resolution with Offline Toasts',
-      '📞 Native Phone Call Interruption & Auto-Resume Bridge',
-      '🎛️ MediaSession Lock-Screen ±10s Seek Fix & Background WakeLock Auto-Reacquisition'
+      '⚡ Device-Side YouTube Music Resolver with automated carrier IP bypass',
+      '🎧 Uninterrupted Background Playback (30-second advance pre-resolution fix)',
+      '⬇️ Real Offline Downloads & Smart Downloads via unified StreamResolver',
+      '⏱️ Active Sleep Timer Countdown with end-of-track pause support',
+      '📋 Search & Public Playlist full track loading with spinner',
+      '🎵 Relaxed Fallback Pipeline ensuring songs like Amplifier stream smoothly'
     ],
-    apkDownloadUrl: 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/mrj-music-v3.18.2.apk',
-    apkFileName: 'mrj-music-v3.18.2.apk',
+    apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
+    apkFileName: 'mrj-music-v3.20.5.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18938926,
-    sha256: '5b53573834bf1ef500b644714eff6e4ae7812f2fbfe26e155e163cae648cfe97',
+    fileSizeBytes: 18983462,
+    sha256: '76b46320a8ddbacdf5acd7f8f0921542f1a2e922727be0aec3ad6d891a94253e',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
@@ -692,28 +736,14 @@ app.get('/api/recommendations/mood/:mood', optionalAuth, async (req, res) => {
 // 1. Real-Time Dynamic Autoplay Queue (20-30 Acoustically Harmonized Transition Tracks)
 app.post('/api/recommendations/dynamic-queue', optionalAuth, async (req, res) => {
   try {
-    const userId = req.user ? req.user.id : null;
-    const {
-      currentTrack,
-      playedTrackIds,
-      currentQueueIds,
-      countryCode,
-      localHour,
-      sessionId,
-      isEarlySkip,
-    } = req.body;
-
-    const queueData = await mlIntelligenceEngine.generateDynamicQueue(userId, {
-      currentTrack,
-      playedTrackIds,
-      currentQueueIds,
-      countryCode: countryCode || req.headers['x-country-code'] || 'IN',
-      localHour: localHour !== undefined ? Number(localHour) : null,
-      sessionId,
-      isEarlySkip: !!isEarlySkip,
+    const body = req.body || {};
+    const result = await getVerifiedDynamicQueue({
+      ...body,
+      userId: req.user?.id || body.userId || null,
+      countryCode: body.countryCode || req.headers['x-country-code'] || 'IN',
+      localHour: body.localHour !== undefined ? Number(body.localHour) : (body.localTime ? new Date(body.localTime).getHours() : null),
     });
-
-    res.json(queueData);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -926,7 +956,7 @@ app.delete('/api/user/history', requireAuth, async (req, res) => {
   res.json({ status: 'success', message: 'History cleared' });
 });
 
-app.post('/api/user/events', optionalAuth, async (req, res) => {
+app.post(['/api/user/events', '/api/events/playback'], optionalAuth, async (req, res) => {
   const { events } = req.body;
   const userId = req.user ? req.user.id : 'anon_' + (req.ip || 'client');
   if (Array.isArray(events)) {
@@ -1109,7 +1139,14 @@ app.get('/api/music/stream/:id', async (req, res) => {
     }
   }
 
-  const stream = await musicProvider.resolveAudioStream(videoId);
+  const stream = await musicProvider.resolveAudioStream({
+    canonicalTrackId: id,
+    providerTrackId: videoId,
+    title: req.query.title,
+    artist: req.query.artist,
+    duration: req.query.duration ? Number(req.query.duration) : null,
+    provider: req.query.provider || null,
+  });
 
   if (stream) {
     return res.json({

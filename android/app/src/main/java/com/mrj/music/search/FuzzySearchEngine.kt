@@ -50,10 +50,10 @@ object FuzzySearchEngine {
                 "Arijit Singh Live Acoustic"
             ),
             sampleTracks = listOf(
-                NativeTrack("apna_bana_le", "apna_bana_le", "Apna Bana Le", "Arijit Singh & Sachin-Jigar", "Bhediya", "https://c.saavncdn.com/026/Bhediya-Hindi-2022-20230203140228-500x500.jpg", 260.0, "Bollywood", "u2NAuswnTKs", "https://mrj-music.vercel.app/api/music/stream/u2NAuswnTKs"),
-                NativeTrack("kesariya", "kesariya", "Kesariya", "Arijit Singh", "Brahmastra", "https://c.saavncdn.com/807/Kesariya-From-Brahmastra-Hindi-2022-20220717092820-500x500.jpg", 268.0, "Bollywood", "BddP6PYo2gs", "https://mrj-music.vercel.app/api/music/stream/BddP6PYo2gs"),
-                NativeTrack("heeriye", "heeriye", "Heeriye", "Jasleen Royal & Arijit Singh", "Heeriye", "https://c.saavncdn.com/022/Heeriye-feat-Arijit-Singh-Hindi-2023-20230928050405-500x500.jpg", 194.0, "Bollywood", "RLzC55ai0eo", "https://mrj-music.vercel.app/api/music/stream/RLzC55ai0eo"),
-                NativeTrack("ve_kamleya", "ve_kamleya", "Ve Kamleya", "Arijit Singh & Shreya Ghoshal", "Rocky Aur Rani Kii Prem Kahaani", "https://c.saavncdn.com/932/Ve-Kamleya-From-Rocky-Aur-Rani-Kii-Prem-Kahaani-Hindi-2023-20230718131006-500x500.jpg", 247.0, "Bollywood", "s_m8yqH2k7s", "https://mrj-music.vercel.app/api/music/stream/s_m8yqH2k7s")
+                NativeTrack("apna_bana_le", "apna_bana_le", "Apna Bana Le", "Arijit Singh & Sachin-Jigar", "Bhediya", "https://c.saavncdn.com/026/Bhediya-Hindi-2022-20230203140228-500x500.jpg", 260.0, "Bollywood", "u2NAuswnTKs", "https://mrj-music.duckdns.org/api/music/stream/u2NAuswnTKs"),
+                NativeTrack("kesariya", "kesariya", "Kesariya", "Arijit Singh", "Brahmastra", "https://c.saavncdn.com/807/Kesariya-From-Brahmastra-Hindi-2022-20220717092820-500x500.jpg", 268.0, "Bollywood", "BddP6PYo2gs", "https://mrj-music.duckdns.org/api/music/stream/BddP6PYo2gs"),
+                NativeTrack("heeriye", "heeriye", "Heeriye", "Jasleen Royal & Arijit Singh", "Heeriye", "https://c.saavncdn.com/022/Heeriye-feat-Arijit-Singh-Hindi-2023-20230928050405-500x500.jpg", 194.0, "Bollywood", "RLzC55ai0eo", "https://mrj-music.duckdns.org/api/music/stream/RLzC55ai0eo"),
+                NativeTrack("ve_kamleya", "ve_kamleya", "Ve Kamleya", "Arijit Singh & Shreya Ghoshal", "Rocky Aur Rani Kii Prem Kahaani", "https://c.saavncdn.com/932/Ve-Kamleya-From-Rocky-Aur-Rani-Kii-Prem-Kahaani-Hindi-2023-20230718131006-500x500.jpg", 247.0, "Bollywood", "s_m8yqH2k7s", "https://mrj-music.duckdns.org/api/music/stream/s_m8yqH2k7s")
             )
         ),
         SearchEntity(
@@ -74,9 +74,9 @@ object FuzzySearchEngine {
                 "Karan Aujla Four Me"
             ),
             sampleTracks = listOf(
-                NativeTrack("tauba_tauba", "tauba_tauba", "Tauba Tauba", "Karan Aujla", "Bad Newz", "https://c.saavncdn.com/807/Tauba-Tauba-From-Bad-Newz-Hindi-2024-20240702111004-500x500.jpg", 210.0, "Punjabi", "krE-g9IzPqs", "https://mrj-music.vercel.app/api/music/stream/krE-g9IzPqs"),
-                NativeTrack("softly", "softly", "Softly", "Karan Aujla & Ikky", "Four Me", "https://i.ytimg.com/vi/h_k14yNonzA/hqdefault.jpg", 154.0, "Punjabi", "h_k14yNonzA", "https://mrj-music.vercel.app/api/music/stream/h_k14yNonzA"),
-                NativeTrack("winning_speech", "winning_speech", "Winning Speech", "Karan Aujla", "Street Dreams", "https://i.ytimg.com/vi/0pWsCd_tffs/hqdefault.jpg", 195.0, "Punjabi", "0pWsCd_tffs", "https://mrj-music.vercel.app/api/music/stream/0pWsCd_tffs")
+                NativeTrack("tauba_tauba", "tauba_tauba", "Tauba Tauba", "Karan Aujla", "Bad Newz", "https://c.saavncdn.com/807/Tauba-Tauba-From-Bad-Newz-Hindi-2024-20240702111004-500x500.jpg", 210.0, "Punjabi", "krE-g9IzPqs", "https://mrj-music.duckdns.org/api/music/stream/krE-g9IzPqs"),
+                NativeTrack("softly", "softly", "Softly", "Karan Aujla & Ikky", "Four Me", "https://i.ytimg.com/vi/h_k14yNonzA/hqdefault.jpg", 154.0, "Punjabi", "h_k14yNonzA", "https://mrj-music.duckdns.org/api/music/stream/h_k14yNonzA"),
+                NativeTrack("winning_speech", "winning_speech", "Winning Speech", "Karan Aujla", "Street Dreams", "https://i.ytimg.com/vi/0pWsCd_tffs/hqdefault.jpg", 195.0, "Punjabi", "0pWsCd_tffs", "https://mrj-music.duckdns.org/api/music/stream/0pWsCd_tffs")
             )
         ),
         SearchEntity(
@@ -97,8 +97,8 @@ object FuzzySearchEngine {
                 "Diljit Dosanjh G.O.A.T."
             ),
             sampleTracks = listOf(
-                NativeTrack("lover", "lover", "Lover", "Diljit Dosanjh", "MoonChild Era", "https://c.saavncdn.com/512/MoonChild-Era-Punjabi-2021-20210822051608-500x500.jpg", 185.0, "Punjabi", "mH_LFkW338c", "https://mrj-music.vercel.app/api/music/stream/mH_LFkW338c"),
-                NativeTrack("goat", "goat", "G.O.A.T.", "Diljit Dosanjh", "G.O.A.T.", "https://c.saavncdn.com/712/G-O-A-T-Punjabi-2020-20200729124408-500x500.jpg", 223.0, "Punjabi", "cl0a3i2wFcc", "https://mrj-music.vercel.app/api/music/stream/cl0a3i2wFcc")
+                NativeTrack("lover", "lover", "Lover", "Diljit Dosanjh", "MoonChild Era", "https://c.saavncdn.com/512/MoonChild-Era-Punjabi-2021-20210822051608-500x500.jpg", 185.0, "Punjabi", "mH_LFkW338c", "https://mrj-music.duckdns.org/api/music/stream/mH_LFkW338c"),
+                NativeTrack("goat", "goat", "G.O.A.T.", "Diljit Dosanjh", "G.O.A.T.", "https://c.saavncdn.com/712/G-O-A-T-Punjabi-2020-20200729124408-500x500.jpg", 223.0, "Punjabi", "cl0a3i2wFcc", "https://mrj-music.duckdns.org/api/music/stream/cl0a3i2wFcc")
             )
         ),
         SearchEntity(
@@ -232,7 +232,7 @@ object FuzzySearchEngine {
                 "Tauba Tauba Full Song"
             ),
             sampleTracks = listOf(
-                NativeTrack("tauba_tauba", "tauba_tauba", "Tauba Tauba", "Karan Aujla", "Bad Newz", "https://c.saavncdn.com/807/Tauba-Tauba-From-Bad-Newz-Hindi-2024-20240702111004-500x500.jpg", 210.0, "Punjabi", "krE-g9IzPqs", "https://mrj-music.vercel.app/api/music/stream/krE-g9IzPqs")
+                NativeTrack("tauba_tauba", "tauba_tauba", "Tauba Tauba", "Karan Aujla", "Bad Newz", "https://c.saavncdn.com/807/Tauba-Tauba-From-Bad-Newz-Hindi-2024-20240702111004-500x500.jpg", 210.0, "Punjabi", "krE-g9IzPqs", "https://mrj-music.duckdns.org/api/music/stream/krE-g9IzPqs")
             )
         ),
         SearchEntity(
@@ -250,7 +250,7 @@ object FuzzySearchEngine {
                 "Apna Bana Le Bhediya"
             ),
             sampleTracks = listOf(
-                NativeTrack("apna_bana_le", "apna_bana_le", "Apna Bana Le", "Arijit Singh & Sachin-Jigar", "Bhediya", "https://c.saavncdn.com/026/Bhediya-Hindi-2022-20230203140228-500x500.jpg", 260.0, "Bollywood", "u2NAuswnTKs", "https://mrj-music.vercel.app/api/music/stream/u2NAuswnTKs")
+                NativeTrack("apna_bana_le", "apna_bana_le", "Apna Bana Le", "Arijit Singh & Sachin-Jigar", "Bhediya", "https://c.saavncdn.com/026/Bhediya-Hindi-2022-20230203140228-500x500.jpg", 260.0, "Bollywood", "u2NAuswnTKs", "https://mrj-music.duckdns.org/api/music/stream/u2NAuswnTKs")
             )
         ),
         SearchEntity(
@@ -268,7 +268,7 @@ object FuzzySearchEngine {
                 "Kesariya Dance Mix"
             ),
             sampleTracks = listOf(
-                NativeTrack("kesariya", "kesariya", "Kesariya", "Arijit Singh", "Brahmastra", "https://c.saavncdn.com/807/Kesariya-From-Brahmastra-Hindi-2022-20220717092820-500x500.jpg", 268.0, "Bollywood", "BddP6PYo2gs", "https://mrj-music.vercel.app/api/music/stream/BddP6PYo2gs")
+                NativeTrack("kesariya", "kesariya", "Kesariya", "Arijit Singh", "Brahmastra", "https://c.saavncdn.com/807/Kesariya-From-Brahmastra-Hindi-2022-20220717092820-500x500.jpg", 268.0, "Bollywood", "BddP6PYo2gs", "https://mrj-music.duckdns.org/api/music/stream/BddP6PYo2gs")
             )
         ),
         SearchEntity(
@@ -286,7 +286,7 @@ object FuzzySearchEngine {
                 "Heeriye Lyrics"
             ),
             sampleTracks = listOf(
-                NativeTrack("heeriye", "heeriye", "Heeriye", "Jasleen Royal & Arijit Singh", "Heeriye", "https://c.saavncdn.com/022/Heeriye-feat-Arijit-Singh-Hindi-2023-20230928050405-500x500.jpg", 194.0, "Bollywood", "RLzC55ai0eo", "https://mrj-music.vercel.app/api/music/stream/RLzC55ai0eo")
+                NativeTrack("heeriye", "heeriye", "Heeriye", "Jasleen Royal & Arijit Singh", "Heeriye", "https://c.saavncdn.com/022/Heeriye-feat-Arijit-Singh-Hindi-2023-20230928050405-500x500.jpg", 194.0, "Bollywood", "RLzC55ai0eo", "https://mrj-music.duckdns.org/api/music/stream/RLzC55ai0eo")
             )
         ),
         SearchEntity(

@@ -47,8 +47,13 @@ class MainActivity : ComponentActivity() {
             // Service startup handled gracefully
         }
 
-        // Schedule Smart Downloads periodic sync (24h Wi-Fi/Charging)
-        com.mrj.music.smartdownload.SmartDownloadScheduler.schedulePeriodicSync(this)
+        // Scheduling is non-critical. A WorkManager/OS configuration problem must
+        // never take down the playback UI during startup or after connectivity changes.
+        try {
+            com.mrj.music.smartdownload.SmartDownloadScheduler.schedulePeriodicSync(this)
+        } catch (_: Throwable) {
+            // Smart downloads can be retried from Settings; playback remains available.
+        }
 
         setContent {
             MRJMusicTheme {

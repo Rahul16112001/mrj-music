@@ -7,7 +7,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object MRJApiClient {
-    private const val BASE_URL = "https://mrj-music.vercel.app/"
+    private const val BASE_URL = "https://mrj-music.duckdns.org/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BASIC

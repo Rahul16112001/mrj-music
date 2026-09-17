@@ -39,7 +39,8 @@ fun PlaylistDetailScreen(
     onArtistClick: (String) -> Unit = {}
 ) {
     val uiState by playlistViewModel.uiState.collectAsState()
-    val playlist = uiState.playlists.find { it.id == playlistId } ?: uiState.selectedPlaylist
+    val playlist = uiState.playlists.find { it.id == playlistId }
+        ?: uiState.selectedPlaylist?.takeIf { it.id == playlistId }
 
     var showMenu by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -49,7 +50,17 @@ fun PlaylistDetailScreen(
     var editDescription by remember(playlist) { mutableStateOf(playlist?.description ?: "") }
 
     LaunchedEffect(playlistId) {
-        playlistViewModel.selectPlaylist(playlistId)
+        playlistViewModel.loadPlaylistDetails(playlistId)
+    }
+
+    if (uiState.isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(DeepDarkBg),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = CrimsonRed)
+        }
+        return
     }
 
     if (playlist == null) {

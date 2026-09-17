@@ -214,7 +214,7 @@ class StationViewModel(application: Application) : AndroidViewModel(application)
             duration = duration,
             genre = genre,
             providerTrackId = providerTrackId,
-            streamUrl = "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
+            streamUrl = "https://mrj-music.duckdns.org/api/music/stream/${providerTrackId ?: id}"
         )
     }
 

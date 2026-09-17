@@ -26,6 +26,8 @@ class MRJBehaviorTracker private constructor(context: Context) {
     private var currentTrackId: String? = null
     private var currentTrackStartTime: Long = 0L
     private var hasFired50Percent = false
+    private var hasFired25Percent = false
+    private var hasFired75Percent = false
     private var hasFiredCompleted = false
 
     companion object {
@@ -46,6 +48,8 @@ class MRJBehaviorTracker private constructor(context: Context) {
         currentTrackId = track.id
         currentTrackStartTime = System.currentTimeMillis()
         hasFired50Percent = false
+        hasFired25Percent = false
+        hasFired75Percent = false
         hasFiredCompleted = false
 
         recordEvent(
@@ -62,6 +66,10 @@ class MRJBehaviorTracker private constructor(context: Context) {
         val percent = (currentMs.toDouble() / durationMs.toDouble()) * 100.0
         val listenedSec = (currentMs / 1000).toInt()
 
+        if (percent >= 25.0 && !hasFired25Percent) {
+            hasFired25Percent = true
+            recordEvent("PLAY_25", track, listenedSec, percent.toInt())
+        }
         if (percent >= 50.0 && !hasFired50Percent) {
             hasFired50Percent = true
             recordEvent(
@@ -70,6 +78,11 @@ class MRJBehaviorTracker private constructor(context: Context) {
                 listenedSeconds = listenedSec,
                 completionPercent = percent.toInt()
             )
+        }
+
+        if (percent >= 75.0 && !hasFired75Percent) {
+            hasFired75Percent = true
+            recordEvent("PLAY_75", track, listenedSec, percent.toInt())
         }
 
         if (percent >= 90.0 && !hasFiredCompleted) {
@@ -114,6 +127,20 @@ class MRJBehaviorTracker private constructor(context: Context) {
         )
     }
 
+    fun onStreamFailure(track: NativeTrack, reason: String?) {
+        recordEvent("STREAM_FAILURE", track, 0, 0)
+        Log.w(TAG, "Stream failure for '${track.title}': ${reason ?: "unknown"}")
+    }
+
+    fun onProviderUsed(track: NativeTrack, provider: String?) {
+        recordEvent("PROVIDER_USED", track, 0, 0)
+        Log.d(TAG, "Provider used for '${track.title}': ${provider ?: "unknown"}")
+    }
+
+    fun onBufferingStarted(track: NativeTrack) = recordEvent("BUFFERING_STARTED", track, 0, 0)
+
+    fun onBufferingEnded(track: NativeTrack, durationMs: Long) = recordEvent("BUFFERING_ENDED", track, (durationMs / 1000L).toInt(), 0)
+
     private fun recordEvent(
         eventType: String,
         track: NativeTrack,
@@ -125,6 +152,7 @@ class MRJBehaviorTracker private constructor(context: Context) {
             "id" to ("evt_" + UUID.randomUUID().toString()),
             "eventType" to eventType,
             "trackId" to track.id,
+            "canonicalTrackId" to (track.canonicalTrackId ?: track.id),
             "title" to track.title,
             "artist" to track.artist,
             "album" to (track.album ?: ""),
@@ -134,6 +162,7 @@ class MRJBehaviorTracker private constructor(context: Context) {
             "listenedSeconds" to listenedSeconds,
             "completionPercent" to completionPercent,
             "skipped" to skipped,
+            "provider" to (track.provider ?: "unknown"),
             "timestamp" to System.currentTimeMillis()
         )
 
@@ -159,7 +188,7 @@ class MRJBehaviorTracker private constructor(context: Context) {
                 val token = secureStorage.getAccessToken()
                 val authHeader = if (token != null) "Bearer $token" else null
                 val payload = mapOf("events" to toFlush)
-                val response = MRJApiClient.apiService.postEvents(authHeader, payload)
+                val response = MRJApiClient.apiService.postPlaybackEvents(authHeader, payload)
                 if (response.isSuccessful) {
                     Log.d(TAG, "Successfully flushed ${toFlush.size} behavioral events to server")
                 } else {

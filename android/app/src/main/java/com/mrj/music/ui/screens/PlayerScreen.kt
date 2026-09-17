@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -772,7 +773,14 @@ fun FullScreenPlayerSheet(
                                 )
                             }
                         } else {
+                            val queueListState = rememberLazyListState()
+                            LaunchedEffect(uiState.currentIndex, uiState.queue.size) {
+                                if (uiState.currentIndex in uiState.queue.indices) {
+                                    queueListState.animateScrollToItem(uiState.currentIndex)
+                                }
+                            }
                             LazyColumn(
+                                state = queueListState,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f),

@@ -30,7 +30,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.mrj.music.ui.screens.*
 import com.mrj.music.ui.theme.*
@@ -63,6 +62,7 @@ fun MRJMusicApp(
     val authState by authViewModel.uiState.collectAsState()
     val playerState by playerViewModel.uiState.collectAsState()
     val updateState by updateViewModel.uiState.collectAsState()
+    val searchState by searchViewModel.uiState.collectAsState()
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isAuthVisible by remember { mutableStateOf(false) }
@@ -95,6 +95,14 @@ fun MRJMusicApp(
         homeViewModel.loadHomeData()
         libraryViewModel.refreshLibrary()
         playlistViewModel.refreshPlaylists()
+    }
+
+    LaunchedEffect(searchState.pendingAlbumQueue) {
+        val tracks = searchState.pendingAlbumQueue
+        if (tracks.isNotEmpty()) {
+            playerViewModel.playTrack(tracks.first(), tracks)
+            searchViewModel.consumeAlbumQueue()
+        }
     }
 
     val bottomNavItems = listOf(Screen.Home, Screen.Search, Screen.Library, Screen.Settings)
@@ -159,16 +167,6 @@ fun MRJMusicApp(
                 .background(DeepDarkBg)
                 .padding(bottom = innerPadding.calculateBottomPadding())
         ) {
-            // Keep Player Engine WebView permanently attached to the active Window hierarchy
-            AndroidView(
-                factory = { ctx ->
-                    playerViewModel.getOrCreatePlayerEngineView(ctx)
-                },
-                modifier = Modifier
-                    .size(1.dp)
-                    .alpha(0.001f)
-            )
-
             NavHost(
                 navController = navController,
                 startDestination = Screen.Home.route,
@@ -188,7 +186,9 @@ fun MRJMusicApp(
                         playerViewModel = playerViewModel,
                         stationViewModel = stationViewModel,
                         onArtistClick = navigateToArtist,
-                        onStationClick = navigateToStation
+                        onStationClick = navigateToStation,
+                        onAlbumClick = { searchViewModel.loadAlbumTracks(it) },
+                        onPlaylistClick = navigateToPlaylist
                     )
                 }
                 composable(Screen.Library.route) {

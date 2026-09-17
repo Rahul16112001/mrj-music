@@ -100,6 +100,16 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
+            if (uiState.isLoading && uiState.trendingSongs.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = animatedPrimaryMood)
+                    }
+                }
+            }
             // 1. Top Header Row: 0 Extra Gap (Right Underneath Status Bar Time/Battery)
             item {
                 Row(

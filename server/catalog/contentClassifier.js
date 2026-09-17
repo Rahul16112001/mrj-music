@@ -283,11 +283,21 @@ export const contentClassifier = {
     const rawTitle = rawTrack.title || rawTrack.rawTitle || '';
     const artist = (rawTrack.artist || rawTrack.uploaderName || '').trim();
     const duration = Number(rawTrack.duration) || 210;
+    const provider = rawTrack.provider || (
+      String(rawTrack.canonicalTrackId || rawTrack.id || '').startsWith('ytm_')
+        ? 'youtube_music'
+        : 'youtube_video'
+    );
+    const providerTrackId = rawTrack.providerTrackId || rawTrack.provider_track_id || rawTrack.videoId || rawTrack.id;
+    const canonicalTrackId = rawTrack.canonicalTrackId || (
+      provider === 'youtube_music' && providerTrackId ? `ytm_${providerTrackId}` : rawTrack.id
+    );
 
     const classification = this.classifySearchResult(rawTrack);
 
     return {
-      id: rawTrack.id || rawTrack.videoId || 'trk_' + Math.random().toString(36).substring(2, 9),
+      id: canonicalTrackId || rawTrack.id || rawTrack.videoId || 'trk_' + Math.random().toString(36).substring(2, 9),
+      canonicalTrackId,
       title: classification.cleanTitle || rawTitle || 'Untitled Track',
       rawTitle,
       artist: classification.cleanArtist || artist || 'Popular Artist',
@@ -310,8 +320,8 @@ export const contentClassifier = {
       isCompilation: classification.isCompilation,
       musicEntityKey: classification.musicEntityKey,
       sourceType: rawTrack.sourceType || 'catalog',
-      provider: 'youtube',
-      providerTrackId: rawTrack.id || rawTrack.videoId || rawTrack.providerTrackId,
+      provider,
+      providerTrackId,
       playbackFormat: (classification.contentType === CONTENT_TYPES.VIDEO || classification.isMusicVideo) ? 'video' : 'audio',
     };
   },

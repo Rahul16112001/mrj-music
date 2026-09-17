@@ -23,6 +23,16 @@ export const REGIONAL_LANGUAGE_CLUSTERS = {
   LOFI_CHILL: ['lofi', 'lo-fi', 'chill', 'ambient', 'sleep', 'relax', 'study', 'focus'],
 };
 
+function normalizeTitle(title) {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
 export class MLIntelligenceEngine {
   // 1. Determine Circadian Phase & Day-of-Week Psychological Weight
   getCircadianPhase(localHour = null, dayOfWeek = null) {
@@ -158,6 +168,7 @@ export class MLIntelligenceEngine {
     const {
       currentTrack = null,
       playedTrackIds = [],
+      playedTitles = [],
       currentQueueIds = [],
       countryCode = 'IN',
       localHour = null,
@@ -180,6 +191,11 @@ export class MLIntelligenceEngine {
       ...(currentTrack ? [currentTrack.id] : []),
       ...(Array.isArray(playedTrackIds) ? playedTrackIds : []),
       ...(Array.isArray(currentQueueIds) ? currentQueueIds : []),
+    ]);
+
+    const excludedTitles = new Set([
+      ...(currentTrack ? [normalizeTitle(currentTrack.title)] : []),
+      ...((Array.isArray(playedTitles) ? playedTitles : []).map(t => normalizeTitle(t))),
     ]);
 
     // Gather Candidate Pools in parallel:
@@ -215,8 +231,11 @@ export class MLIntelligenceEngine {
       if (!raw || !raw.id || excludedIds.has(raw.id)) continue;
       const normalized = contentClassifier.normalizeTrack(raw);
       if (normalized.isCompilation || normalized.isReaction || dislikedArtists.has(normalized.artist)) continue;
+      const normTitle = normalizeTitle(normalized.title);
+      if (normTitle && excludedTitles.has(normTitle)) continue;
       if (!uniqueMap.has(normalized.id)) {
         uniqueMap.set(normalized.id, normalized);
+        if (normTitle) excludedTitles.add(normTitle);
       }
     }
 

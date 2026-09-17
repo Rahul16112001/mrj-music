@@ -40,6 +40,7 @@ data class SearchUiState(
     val activeCategory: String = "All",
     val recentSearches: List<String> = listOf("Arijit Singh", "Diljit Dosanjh", "Karan Aujla", "Tauba Tauba", "Lo-Fi Beats"),
     val errorMessage: String? = null
+    ,val pendingAlbumQueue: List<NativeTrack> = emptyList()
 )
 
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
@@ -47,6 +48,21 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val secureStorage = SecureAuthStorage.getInstance(application)
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
+
+    fun loadAlbumTracks(albumId: String) {
+        if (albumId.isBlank()) return
+        viewModelScope.launch {
+            val tracks = runCatching {
+                val body = MRJApiClient.apiService.getAlbum(albumId).body()
+                val album = body?.get("album") as? Map<*, *>
+                val raw = (album?.get("tracks") as? List<*>) ?: (body?.get("tracks") as? List<*>) ?: emptyList<Any>()
+                raw.mapNotNull { (it as? Map<*, *>)?.let { map -> parseTrack(map as Map<String, Any>) } }
+            }.getOrDefault(emptyList())
+            if (tracks.isNotEmpty()) _uiState.value = _uiState.value.copy(pendingAlbumQueue = tracks)
+        }
+    }
+
+    fun consumeAlbumQueue() { _uiState.value = _uiState.value.copy(pendingAlbumQueue = emptyList()) }
 
     private var searchJob: Job? = null
     private var predictiveJob: Job? = null
@@ -228,6 +244,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     country = country
                 )
 
+                // The categorized/ML endpoint intentionally favors canonical music
+                // entities. Merge the provider-boundary search as well so regular
+                // YouTube fallback tracks and regional-only tracks are not hidden.
+                val multiSongs = runCatching {
+                    MRJApiClient.apiService.getMultiSearch(query.trim(), 50)
+                        .body()?.get("songs") as? List<Map<String, Any>>
+                }.getOrNull().orEmpty()
+
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     val rawSongs = (body["songs"] as? List<Map<String, Any>>) ?: emptyList()
@@ -235,7 +259,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
                     val rawPlaylists = (body["playlists"] as? List<Map<String, Any>>) ?: emptyList()
 
-                    val parsedSongs = rawSongs.mapNotNull { parseTrack(it) }
+                    val parsedSongs = (rawSongs + multiSongs)
+                        .mapNotNull { parseTrack(it) }
+                        .distinctBy { it.canonicalTrackId ?: it.id }
 
                     _uiState.value = _uiState.value.copy(
                         songs = parsedSongs,
@@ -255,7 +281,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                         val rawArtists = (body["artists"] as? List<Map<String, Any>>) ?: emptyList()
                         val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
                         val rawPlaylists = (body["playlists"] as? List<Map<String, Any>>) ?: emptyList()
-                        val parsedSongs = rawSongs.mapNotNull { parseTrack(it) }
+                        val parsedSongs = (rawSongs + multiSongs)
+                            .mapNotNull { parseTrack(it) }
+                            .distinctBy { it.canonicalTrackId ?: it.id }
 
                         _uiState.value = _uiState.value.copy(
                             songs = parsedSongs,
@@ -323,8 +351,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             ?: (map["youtubeId"] as? String)
             ?: (if (!id.contains("|")) id else null)
 
+        val provider = (audioSource?.get("provider") as? String)
+            ?: (map["provider"] as? String)
+            ?: (map["sourceType"] as? String)
+
         val streamUrl = map["streamUrl"] as? String 
-            ?: "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
+            ?: "https://mrj-music.duckdns.org/api/music/stream/${providerTrackId ?: id}"
 
         return NativeTrack(
             id = id,
@@ -336,6 +368,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             duration = duration,
             genre = genre,
             providerTrackId = providerTrackId,
+            provider = provider,
             streamUrl = streamUrl
         )
     }

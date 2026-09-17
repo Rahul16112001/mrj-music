@@ -840,10 +840,19 @@ export const MusicPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             isEarlySkip,
           });
 
+          const normalizeTitle = (s: string) => (s || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/[^a-z0-9]/g, '').trim();
+          const playedTitles = new Set(playbackHistory.map(t => normalizeTitle(t.title)));
+          const queueTitles = new Set(currentQueue.map(t => normalizeTitle(t.title)));
+          const playedIds = new Set(playbackHistoryRef.current);
+          const queueIds = new Set(currentQueue.map(t => t.id));
+
           if (genId === autoplayGenerationId.current && dynamicRes.queue.length > 0) {
-            const uniqueNewTracks = dynamicRes.queue.filter(
-              nt => !currentQueue.some(cq => cq.id === nt.id)
-            );
+            const uniqueNewTracks = dynamicRes.queue.filter(nt => {
+              if (playedIds.has(nt.id) || queueIds.has(nt.id)) return false;
+              const norm = normalizeTitle(nt.title);
+              if (norm && (playedTitles.has(norm) || queueTitles.has(norm))) return false;
+              return true;
+            });
 
             if (uniqueNewTracks.length > 0) {
               setQueue(prev => [...prev, ...uniqueNewTracks]);

@@ -38,6 +38,7 @@ data class ArtistUiState(
     val topTracks: List<NativeTrack> = emptyList(),
     val albums: List<ArtistAlbum> = emptyList(),
     val relatedArtists: List<RelatedArtist> = emptyList(),
+    val pendingAlbumQueue: List<NativeTrack> = emptyList(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 )
@@ -46,6 +47,29 @@ class ArtistViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _uiState = MutableStateFlow(ArtistUiState())
     val uiState: StateFlow<ArtistUiState> = _uiState.asStateFlow()
+
+    fun loadAlbumTracks(albumId: String) {
+        if (albumId.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                val response = MRJApiClient.apiService.getAlbum(albumId)
+                val body = response.body()
+                val album = body?.get("album") as? Map<*, *>
+                val raw = (album?.get("tracks") as? List<*>)
+                    ?: (body?.get("tracks") as? List<*>)
+                    ?: emptyList<Any>()
+                raw.mapNotNull { item ->
+                    (item as? Map<*, *>)?.let { parseTrack(it as Map<String, Any>) }
+                }
+            }.getOrDefault(emptyList()).let { tracks ->
+                if (tracks.isNotEmpty()) _uiState.value = _uiState.value.copy(pendingAlbumQueue = tracks)
+            }
+        }
+    }
+
+    fun consumeAlbumQueue() {
+        _uiState.value = _uiState.value.copy(pendingAlbumQueue = emptyList())
+    }
 
     fun loadArtist(artistName: String) {
         if (artistName.isBlank()) return

@@ -14,5 +14,6 @@ android/gradle.properties
 android/*.keystore
 android/*.jks
 *.apk
-public/downloads/
+!public/downloads/mrj-music.apk
+
 dist/downloads/

@@ -28,7 +28,7 @@ export interface UpdateCheckResult {
 class UpdateService {
   private lastCheckTime = 0;
   private cachedUpdateInfo: UpdateCheckResult | null = null;
-  public readonly LATEST_APK_URL = 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.7.0/mrj-music-v3.7.0.apk';
+  public readonly LATEST_APK_URL = 'https://github.com/Rahul16112001/mrj-music/releases/download/v3.18.2/app-release.apk';
 
   async checkForUpdates(force = false): Promise<UpdateCheckResult | null> {
     if (!force && this.cachedUpdateInfo && Date.now() - this.lastCheckTime < 5 * 60 * 1000) {

@@ -157,7 +157,23 @@ fun TrackActionSheet(
                     )
                 }
 
-                // 3. Add to Playlist
+                // 3. Download using the same verified resolver as playback.
+                item {
+                    ActionSheetRow(
+                        icon = Icons.Default.Download,
+                        title = "Download Song",
+                        subtitle = "Save the verified audio for offline playback",
+                        onClick = {
+                            Toast.makeText(context, "Downloading '${track.title}'…", Toast.LENGTH_SHORT).show()
+                            playerViewModel.downloadTrack(track) { success, message ->
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }
+                            onDismiss()
+                        }
+                    )
+                }
+
+                // 4. Add to Playlist
                 item {
                     ActionSheetRow(
                         icon = Icons.Default.PlaylistAdd,
@@ -222,7 +238,7 @@ fun TrackActionSheet(
                                 putExtra(Intent.EXTRA_SUBJECT, "${track.title} - ${track.artist}")
                                 putExtra(
                                     Intent.EXTRA_TEXT,
-                                    "Listen to \"${track.title}\" by ${track.artist} on MRJ Music 🎵\nhttps://mrj-music.vercel.app"
+                                    "Listen to \"${track.title}\" by ${track.artist} on MRJ Music 🎵\nhttps://mrj-music.duckdns.org"
                                 )
                             }
                             val shareIntent = Intent.createChooser(sendIntent, "Share Track via").apply {

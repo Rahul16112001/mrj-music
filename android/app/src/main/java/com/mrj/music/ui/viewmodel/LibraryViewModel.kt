@@ -95,7 +95,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             ?: (if (!id.contains("|")) id else null)
 
         val streamUrl = map["streamUrl"] as? String 
-            ?: "https://mrj-music.vercel.app/api/music/stream/${providerTrackId ?: id}"
+            ?: "https://mrj-music.duckdns.org/api/music/stream/${providerTrackId ?: id}"
 
         return NativeTrack(
             id = id,

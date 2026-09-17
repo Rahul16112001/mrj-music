@@ -25,7 +25,7 @@ interface AudioFocusCallback {
  * Responsibilities:
  * 1. Incoming and Active Phone Calls (Pauses immediately on ring/answer, auto-resumes when hung up).
  * 2. Headphone & Bluetooth Disconnects (ACTION_AUDIO_BECOMING_NOISY).
- * 3. Coordinates smoothly with Chromium WebView's internal MediaSession engine without internal focus collisions.
+ * 3. Coordinates smoothly with the native MediaSession engine without internal focus collisions.
  */
 class MRJAudioFocusManager(
     private val context: Context,

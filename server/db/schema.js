@@ -611,4 +611,147 @@ export const db = {
     await dbClient.query('DELETE FROM search_history WHERE user_id = $1;', [userId]);
     return [];
   },
+
+  // ==================== 10. PROVIDER TRACK MAPPINGS ====================
+  async upsertProviderMapping(mapping) {
+    if (!mapping || !String(mapping.canonicalTrackId || '').trim()) {
+      throw new Error('canonicalTrackId is required');
+    }
+    if (!String(mapping.providerName || '').trim()) {
+      throw new Error('providerName is required');
+    }
+    if (!String(mapping.providerTrackId || '').trim()) {
+      throw new Error('providerTrackId is required');
+    }
+    if (!String(mapping.normalizedTitle || '').trim()) {
+      throw new Error('normalizedTitle is required');
+    }
+    if (!String(mapping.normalizedArtist || '').trim()) {
+      throw new Error('normalizedArtist is required');
+    }
+
+    const now = Date.now();
+    const mappingId = mapping.mappingId || 'ptm_' + crypto.randomUUID();
+    const providerMetadata = mapping.providerMetadata || {};
+    const result = await dbClient.query(
+      `INSERT INTO provider_track_mappings (
+        mapping_id, canonical_track_id, provider_name, provider_track_id, source_type,
+        normalized_title, normalized_artist, album, duration, artwork_url,
+        verification_status, last_verified_at, last_success_at, last_failure_at,
+        failure_reason, provider_metadata, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      ON CONFLICT (provider_name, provider_track_id) DO UPDATE SET
+        canonical_track_id = EXCLUDED.canonical_track_id,
+        source_type = EXCLUDED.source_type,
+        normalized_title = EXCLUDED.normalized_title,
+        normalized_artist = EXCLUDED.normalized_artist,
+        album = EXCLUDED.album,
+        duration = EXCLUDED.duration,
+        artwork_url = EXCLUDED.artwork_url,
+        provider_metadata = EXCLUDED.provider_metadata,
+        updated_at = EXCLUDED.updated_at
+      RETURNING *;`,
+      [
+        mappingId,
+        String(mapping.canonicalTrackId).trim(),
+        String(mapping.providerName).trim(),
+        String(mapping.providerTrackId).trim(),
+        mapping.sourceType || 'catalog',
+        String(mapping.normalizedTitle).trim(),
+        String(mapping.normalizedArtist).trim(),
+        mapping.album || null,
+        mapping.duration == null ? null : Number(mapping.duration),
+        mapping.artworkUrl || null,
+        mapping.verificationStatus || 'unverified',
+        mapping.lastVerifiedAt || null,
+        mapping.lastSuccessAt || null,
+        mapping.lastFailureAt || null,
+        mapping.failureReason || null,
+        JSON.stringify(providerMetadata),
+        mapping.createdAt || now,
+        now,
+      ]
+    );
+    return result.rows[0] || null;
+  },
+
+  async getMappingsByCanonicalId(canonicalId) {
+    if (!String(canonicalId || '').trim()) return [];
+    const result = await dbClient.query(
+      `SELECT * FROM provider_track_mappings
+       WHERE canonical_track_id = $1
+       ORDER BY CASE provider_name
+         WHEN 'youtube_music' THEN 1
+         WHEN 'jiosaavn' THEN 2
+         WHEN 'jamendo' THEN 3
+         WHEN 'audius' THEN 4
+         WHEN 'youtube_video' THEN 5
+         WHEN 'scraper' THEN 6
+         ELSE 99 END,
+         updated_at DESC;`,
+      [String(canonicalId).trim()]
+    );
+    return result.rows;
+  },
+
+  async getCanonicalIdByProvider(providerName, providerTrackId) {
+    if (!String(providerName || '').trim() || !String(providerTrackId || '').trim()) return null;
+    const result = await dbClient.query(
+      `SELECT canonical_track_id
+       FROM provider_track_mappings
+       WHERE provider_name = $1 AND provider_track_id = $2
+       LIMIT 1;`,
+      [String(providerName).trim(), String(providerTrackId).trim()]
+    );
+    return result.rows[0]?.canonical_track_id || null;
+  },
+
+  async updateVerificationState(mappingId, verificationStatus, details = {}) {
+    if (!String(mappingId || '').trim()) throw new Error('mappingId is required');
+    if (!String(verificationStatus || '').trim()) throw new Error('verificationStatus is required');
+
+    const now = Date.now();
+    const lastVerifiedAt = verificationStatus === 'verified' ? now : (details.lastVerifiedAt || null);
+    const result = await dbClient.query(
+      `UPDATE provider_track_mappings
+       SET verification_status = $1,
+           last_verified_at = COALESCE($2, last_verified_at),
+           failure_reason = $3,
+           updated_at = $4
+       WHERE mapping_id = $5
+       RETURNING *;`,
+      [verificationStatus, lastVerifiedAt, details.failureReason || null, now, mappingId]
+    );
+    return result.rows[0] || null;
+  },
+
+  async recordResolutionResult(mappingId, resolution = {}) {
+    if (!String(mappingId || '').trim()) throw new Error('mappingId is required');
+
+    const now = Date.now();
+    const succeeded = resolution.success === true;
+    const status = resolution.verificationStatus || (succeeded ? 'verified' : 'failed');
+    const result = await dbClient.query(
+      `UPDATE provider_track_mappings
+       SET verification_status = $1,
+           last_verified_at = CASE WHEN $2 THEN $3 ELSE last_verified_at END,
+           last_success_at = CASE WHEN $2 THEN $3 ELSE last_success_at END,
+           last_failure_at = CASE WHEN $2 THEN last_failure_at ELSE $3 END,
+           failure_reason = CASE WHEN $2 THEN NULL ELSE $4 END,
+           provider_metadata = CASE WHEN $5::jsonb = '{}'::jsonb
+             THEN provider_metadata ELSE provider_metadata || $5::jsonb END,
+           updated_at = $3
+       WHERE mapping_id = $6
+       RETURNING *;`,
+      [
+        status,
+        succeeded,
+        now,
+        resolution.failureReason || null,
+        JSON.stringify(resolution.providerMetadata || {}),
+        mappingId,
+      ]
+    );
+    return result.rows[0] || null;
+  },
 };

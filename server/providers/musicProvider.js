@@ -5,6 +5,7 @@ import { canonicalMusicResolver } from '../catalog/canonicalMusicResolver.js';
 import { searchRelevanceEngine } from '../catalog/searchRelevanceEngine.js';
 import { trackIdentityManager } from '../catalog/trackIdentityManager.js';
 import { searchYouTubeHighEnd, searchYouTubeMusic } from '../catalog/youtubeScraper.js';
+import { multiSourceProvider } from './multiSourceProvider.js';
 
 // Multiple resilient multi-region stream endpoints
 const PIPED_INSTANCES = [
@@ -43,6 +44,11 @@ function recordInstanceMetric(url, success, latencyMs) {
 export const musicProvider = {
   // 1. Search Music Catalog with Dedicated Search Relevance Engine
   async search(query, type = 'all', limit = 30) {
+    return multiSourceProvider.search(query, type, limit);
+
+    /* Legacy catalog search retained below until dependent callers are fully
+       migrated. Playback and search requests now use the provider boundary. */
+    /* istanbul ignore next */
     if (!query || !query.trim()) {
       return { songs: [], videos: [], artists: [], albums: [], podcasts: [], results: [] };
     }
@@ -527,6 +533,10 @@ export const musicProvider = {
 
   // 6. Multi-Region Resilient Stream Resolver
   async resolveAudioStream(videoId) {
+    return multiSourceProvider.resolveStream(videoId);
+
+    /* Legacy resolver retained below for reference during migration. */
+    /* istanbul ignore next */
     if (!videoId) return null;
     let actualId = videoId;
 
