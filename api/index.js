@@ -192,7 +192,7 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
     apkFileName: 'mrj-music-v3.20.7.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18985295,
+      fileSizeBytes: 18991796,
       sha256: '82e8bdd9a0aed0d3246d34838543c6f0072088fcc49b059ec3e2fe4b9cfc9ff6',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
