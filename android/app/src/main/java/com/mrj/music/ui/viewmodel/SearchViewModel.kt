@@ -6,12 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.mrj.music.data.remote.MRJApiClient
 import com.mrj.music.data.security.SecureAuthStorage
 import com.mrj.music.model.NativeTrack
+import com.mrj.music.search.SearchResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 
 data class TopPrediction(
     val type: String, // "artist" or "song"
@@ -66,6 +68,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private var searchJob: Job? = null
     private var predictiveJob: Job? = null
+    private val deviceSearchResolver = SearchResolver()
 
     init {
         loadSearchHistory()
@@ -226,6 +229,20 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             try {
+                // Start residential/device YouTube Music search immediately. It
+                // runs in parallel with backend search, which remains the
+                // fallback for JioSaavn and other providers.
+                val deviceSearch = async { deviceSearchResolver.search(query.trim(), 50) }
+                launch {
+                    val earlyDeviceSongs = deviceSearch.await()
+                    if (earlyDeviceSongs.isNotEmpty() && _uiState.value.query == query) {
+                        _uiState.value = _uiState.value.copy(
+                            songs = (earlyDeviceSongs + _uiState.value.songs)
+                                .distinctBy { it.canonicalTrackId ?: it.id },
+                            isLoading = false
+                        )
+                    }
+                }
                 val token = secureStorage.getAccessToken()
                 val authHeader = if (token != null) "Bearer $token" else null
                 val country = java.util.Locale.getDefault().country.ifBlank { "IN" }
@@ -254,6 +271,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 val multiArtists = (multiRes?.get("artists") as? List<Map<String, Any>>).orEmpty()
                 val multiAlbums = (multiRes?.get("albums") as? List<Map<String, Any>>).orEmpty()
                 val multiPlaylists = (multiRes?.get("playlists") as? List<Map<String, Any>>).orEmpty()
+                val deviceSongs = deviceSearch.await()
 
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
@@ -262,8 +280,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
                     val rawPlaylists = (body["playlists"] as? List<Map<String, Any>>) ?: emptyList()
 
-                    val parsedSongs = (rawSongs + multiSongs)
-                        .mapNotNull { parseTrack(it) }
+                    val parsedSongs = (deviceSongs + rawSongs.mapNotNull { parseTrack(it) } + multiSongs.mapNotNull { parseTrack(it) })
                         .distinctBy { it.canonicalTrackId ?: it.id }
 
                     _uiState.value = _uiState.value.copy(
@@ -284,8 +301,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                         val rawArtists = (body["artists"] as? List<Map<String, Any>>) ?: emptyList()
                         val rawAlbums = (body["albums"] as? List<Map<String, Any>>) ?: emptyList()
                         val rawPlaylists = (body["playlists"] as? List<Map<String, Any>>) ?: emptyList()
-                        val parsedSongs = (rawSongs + multiSongs)
-                            .mapNotNull { parseTrack(it) }
+                        val parsedSongs = (deviceSongs + rawSongs.mapNotNull { parseTrack(it) } + multiSongs.mapNotNull { parseTrack(it) })
                             .distinctBy { it.canonicalTrackId ?: it.id }
 
                         _uiState.value = _uiState.value.copy(

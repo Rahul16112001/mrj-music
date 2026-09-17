@@ -3,8 +3,8 @@ package com.mrj.music.player
 import android.util.Log
 import com.mrj.music.data.remote.MRJApiClient
 import com.mrj.music.model.NativeTrack
-import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +15,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 data class ResolvedStream(
@@ -46,10 +48,11 @@ class StreamResolver {
             return@withContext cached.stream
         }
 
-        // Concurrently race backend resolver and on-device resolver
-        // Backend resolves studio tracks / JioSaavn in <300ms.
-        // Device resolver provides fallback for unmapped mobile IP YouTube streams.
+        // Both paths start together. The first valid direct stream wins. This
+        // deliberately keeps the JioSaavn fast path intact: if its backend
+        // response arrives first it remains the selected source.
         val resolved = coroutineScope {
+            val winner = Channel<ResolvedStream>(Channel.RENDEZVOUS)
             val backendJob = async {
                 runCatching {
                     withTimeout(4_000L) {
@@ -65,7 +68,7 @@ class StreamResolver {
                             val streamUrl = (body?.get("streamUrl") as? String ?: body?.get("url") as? String)?.trim()
                                 ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
                             if (streamUrl != null && body != null) {
-                                ResolvedStream(
+                                winner.send(ResolvedStream(
                                     url = streamUrl,
                                     provider = body["provider"] as? String,
                                     providerTrackId = body["providerTrackId"] as? String ?: body["videoId"] as? String,
@@ -75,7 +78,7 @@ class StreamResolver {
                                     codec = body["codec"] as? String,
                                     bitrate = body["bitrate"]?.toString(),
                                     sampleRate = body["sampleRate"]?.toString()
-                                )
+                                ))
                             } else null
                         } else null
                     }
@@ -86,18 +89,14 @@ class StreamResolver {
                 if (isYouTubeTrack(track)) {
                     runCatching {
                         withTimeout(3_000L) { resolveYouTubeOnDevice(track) }
+                            ?.also { winner.send(it) }
                     }.getOrNull()
                 } else null
             }
-
-            // Await backend first if available within timeout, else await device
-            val backendResult = backendJob.await()
-            if (backendResult != null) {
-                deviceJob.cancel()
-                backendResult
-            } else {
-                deviceJob.await()
-            }
+            val result = kotlinx.coroutines.withTimeoutOrNull(4_000L) { winner.receive() }
+            backendJob.cancel()
+            deviceJob.cancel()
+            result
         }
 
         if (resolved != null) {
@@ -151,10 +150,14 @@ class StreamResolver {
             }
             val format = formats.asSequence()
                 .filter { it.get("mimeType")?.asString?.startsWith("audio/") == true }
-                .filter { it.get("url")?.asString?.isNotBlank() == true }
+                .filter { it.get("url")?.asString?.isNotBlank() == true ||
+                    it.get("signatureCipher")?.asString?.isNotBlank() == true ||
+                    it.get("cipher")?.asString?.isNotBlank() == true }
                 .maxByOrNull { it.get("bitrate")?.asInt ?: 0 }
                 ?: return null
-            val url = format.get("url").asString
+
+            val url = directUrlForFormat(format, root)
+                ?: return null
             if (url.contains("youtube.com/watch") || url.contains("youtube.com/embed")) return null
             val expiresAt = Regex("(?:[?&])expire=(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()?.times(1000L)
             return ResolvedStream(
@@ -168,6 +171,104 @@ class StreamResolver {
                 sampleRate = format.get("audioSampleRate")?.asString
             )
         }
+    }
+
+    /** Builds a direct CDN URL from either url or YouTube's cipher fields. */
+    private fun directUrlForFormat(format: com.google.gson.JsonObject, root: com.google.gson.JsonObject): String? {
+        format.get("url")?.asString?.trim()?.takeIf { it.startsWith("http") }?.let { return it }
+        val encodedCipher = format.get("signatureCipher")?.asString
+            ?: format.get("cipher")?.asString
+            ?: return null
+        val params = parseQuery(encodedCipher)
+        val baseUrl = params["url"]?.takeIf { it.startsWith("http") } ?: return null
+        val signature = params["sig"] ?: params["signature"] ?: params["s"]
+        if (signature.isNullOrBlank()) return baseUrl
+        val finalSignature = if (params["s"] != null) {
+            val jsUrl = root.getAsJsonObject("assets")?.get("js")?.asString
+                ?: root.getAsJsonObject("playerConfig")?.getAsJsonObject("assets")?.get("js")?.asString
+            if (jsUrl.isNullOrBlank()) return null
+            decipherSignature(signature, jsUrl) ?: return null
+        } else signature
+        val separator = if (baseUrl.contains('?')) '&' else '?'
+        val key = params["sp"]?.takeIf { it.matches(Regex("[A-Za-z]+")) } ?: "sig"
+        return "$baseUrl$separator${URLEncoder.encode(key, "UTF-8")}=${URLEncoder.encode(finalSignature, "UTF-8")}"
+    }
+
+    private fun parseQuery(value: String): Map<String, String> = value.split('&')
+        .mapNotNull { part ->
+            val pair = part.split('=', limit = 2)
+            if (pair.size != 2) null else URLDecoder.decode(pair[0], "UTF-8") to URLDecoder.decode(pair[1], "UTF-8")
+        }.toMap()
+
+    /**
+     * Handles the small, stable operation set used by YouTube's signature
+     * transform (reverse, splice and swap). Unknown transforms fail closed.
+     */
+    private fun decipherSignature(signature: String, jsUrl: String): String? {
+        val scriptRequest = Request.Builder().url(if (jsUrl.startsWith("http")) jsUrl else "https://music.youtube.com$jsUrl").build()
+        val script = youtubeClient.newCall(scriptRequest).execute().use { response ->
+            if (!response.isSuccessful) return null
+            response.body?.string().orEmpty()
+        }
+        val functionMatch = Regex("(?:function\\s+([\\$\\w]+)\\s*\\(\\w+\\)|([\\$\\w]+)\\s*=\\s*function\\s*\\(\\w+\\))\\s*\\{", RegexOption.MULTILINE).find(script)
+            ?: return null
+        val functionName = functionMatch.groupValues[1].ifBlank { functionMatch.groupValues[2] }
+        val bodyStart = functionMatch.range.last + 1
+        val bodyEnd = matchingBrace(script, bodyStart) ?: return null
+        val body = script.substring(bodyStart, bodyEnd)
+        val helperObject = Regex("(?:var|const|let)\\s+([\\$\\w]+)\\s*=\\s*\\{([^{}]+)\\}").find(script)
+        val helpers = helperObject?.groupValues?.get(2)?.let { objectBody ->
+            Regex("([\\$\\w]+)\\s*:\\s*function\\s*\\([^)]*\\)\\s*\\{([^{}]*)\\}").findAll(objectBody)
+                .associate { it.groupValues[1] to it.groupValues[2] }
+        }.orEmpty()
+        if (functionName.isBlank() || body.isBlank()) return null
+
+        val chars = signature.toMutableList()
+        if (!body.contains("split(\"\")") && !body.contains("split('')")) return null
+        body.split(';').map { it.trim() }.forEach { statement ->
+            when {
+                statement.contains(".reverse()") -> chars.reverse()
+                Regex("\\.splice\\(0\\s*,\\s*(\\d+)\\)").containsMatchIn(statement) -> {
+                    val count = Regex("\\.splice\\(0\\s*,\\s*(\\d+)\\)").find(statement)!!.groupValues[1].toInt()
+                    repeat(count.coerceAtMost(chars.size)) { chars.removeAt(0) }
+                }
+                Regex("\\.splice\\(0\\s*,\\s*(\\w+)\\)").containsMatchIn(statement) -> return null
+                Regex("([\\$\\w]+)\\.([\\$\\w]+)\\(\\w+,\\s*(\\d+)\\)").containsMatchIn(statement) -> {
+                    val call = Regex("([\\$\\w]+)\\.([\\$\\w]+)\\(\\w+,\\s*(\\d+)\\)").find(statement)!!
+                    val helper = helpers[call.groupValues[2]] ?: return null
+                    val index = call.groupValues[3].toInt()
+                    when {
+                        helper.contains("reverse") -> chars.reverse()
+                        helper.contains("splice") -> repeat(index.coerceAtMost(chars.size)) { chars.removeAt(0) }
+                        helper.contains("var c") || helper.contains("=a[0]") -> if (chars.isNotEmpty()) {
+                            val safe = index % chars.size
+                            val first = chars[0]
+                            chars[0] = chars[safe]
+                            chars[safe] = first
+                        }
+                        else -> return null
+                    }
+                }
+                statement.contains("join(\"\")") || statement.contains("join('')") || statement.startsWith("return") -> Unit
+                statement.isBlank() || statement == "a=a.split(\"\")" || statement == "a=a.split('')" -> Unit
+                else -> return null
+            }
+        }
+        return chars.joinToString("")
+    }
+
+    private fun matchingBrace(value: String, start: Int): Int? {
+        var depth = 1
+        for (index in start until value.length) {
+            when (value[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return index
+                }
+            }
+        }
+        return null
     }
 
     suspend fun invalidate(track: NativeTrack) {
