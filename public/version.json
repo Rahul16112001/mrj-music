@@ -1,25 +1,26 @@
 {
-  "version": "3.20.5",
-  "versionCode": 346,
-  "build": "346",
-  "updatedAt": "2026-09-17T23:31:00Z",
-  "latestVersion": "3.20.5",
+  "version": "3.20.6",
+  "versionCode": 347,
+  "build": "347",
+  "updatedAt": "2026-09-18T00:27:00Z",
+  "latestVersion": "3.20.6",
   "minRequiredVersion": "3.0.0",
   "isUpdateAvailable": true,
   "apkUrl": "https://mrj-music.vercel.app/downloads/mrj-music.apk",
   "apkDownloadUrl": "https://mrj-music.vercel.app/downloads/mrj-music.apk",
-  "apkFileName": "mrj-music-v3.20.5.apk",
+  "apkFileName": "mrj-music-v3.20.6.apk",
   "downloadUrl": "https://mrj-music.vercel.app/downloads/mrj-music.apk",
   "fileSize": "18 MB",
-  "fileSizeBytes": 18983736,
-  "sha256": "04c6238882c5347d6066f1b12378c9faf4a0c4f5ca5ec7a3ff112be7525778e8",
-  "title": "MRJ Music v3.20.5 Device Stream Resolver & Background Stability Upgrade",
+  "fileSizeBytes": 18983749,
+  "sha256": "043ca4342044c3ffce7a05af3c6514e6a1d841880bebd72a3cbfe09a69ceb1f8",
+  "title": "MRJ Music v3.20.6 YouTube Device Resolver & Playback Reliability Upgrade",
   "changelog": [
-    "⚡ Device-Side YouTube Music Resolver with automated carrier IP bypass",
+    "⚡ Restored Android On-Device YouTube Music Resolver with Native Android Client",
     "🎧 Uninterrupted Background Playback (30-second advance pre-resolution fix)",
+    "🎯 Exact Cross-Provider Title Normalization (Wang Da Naap & Punjabi track fixes)",
     "⬇️ Real Offline Downloads & Smart Downloads via unified StreamResolver",
     "⏱️ Active Sleep Timer Countdown with end-of-track pause support",
     "📋 Search & Public Playlist full track loading with spinner",
-    "🎵 Relaxed Fallback Pipeline ensuring songs like Amplifier stream smoothly"
-  ]
+    "🎵 Relaxed Fallback Pipeline ensuring all catalog tracks stream smoothly"
+  ],
 }

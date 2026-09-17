@@ -107,25 +107,26 @@ const authRateLimiter = (maxReqs = 20, windowMs = 15 * 60 * 1000) => (req, res, 
 // Web & Android Version Check — returns latest version 3.18.2 with direct APK link
 app.get(['/version.json', '/api/version.json'], (req, res) => {
   res.json({
-    version: '3.20.5',
-    build: '346',
-    updatedAt: '2026-09-17T23:31:00Z',
-    latestVersion: '3.20.5',
+    version: '3.20.6',
+    build: '347',
+    updatedAt: '2026-09-18T00:27:00Z',
+    latestVersion: '3.20.6',
     isUpdateAvailable: true,
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.20.5.apk',
+    apkFileName: 'mrj-music-v3.20.6.apk',
     downloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18983462,
-    sha256: '76b46320a8ddbacdf5acd7f8f0921542f1a2e922727be0aec3ad6d891a94253e',
-    title: 'MRJ Music v3.20.5 Device Stream Resolver & Background Stability Upgrade',
+    fileSizeBytes: 18983749,
+    sha256: '043ca4342044c3ffce7a05af3c6514e6a1d841880bebd72a3cbfe09a69ceb1f8',
+    title: 'MRJ Music v3.20.6 YouTube Device Resolver & Playback Reliability Upgrade',
     changelog: [
-      '⚡ Device-Side YouTube Music Resolver with automated carrier IP bypass',
+      '⚡ Restored Android On-Device YouTube Music Resolver with Native Android Client',
       '🎧 Uninterrupted Background Playback (30-second advance pre-resolution fix)',
+      '🎯 Exact Cross-Provider Title Normalization (Wang Da Naap & Punjabi track fixes)',
       '⬇️ Real Offline Downloads & Smart Downloads via unified StreamResolver',
       '⏱️ Active Sleep Timer Countdown with end-of-track pause support',
       '📋 Search & Public Playlist full track loading with spinner',
-      '🎵 Relaxed Fallback Pipeline ensuring songs like Amplifier stream smoothly'
+      '🎵 Relaxed Fallback Pipeline ensuring all catalog tracks stream smoothly'
     ]
   });
 });
@@ -171,8 +172,8 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   const platform = (req.headers['x-mrj-platform'] || req.query.platform || '').toString().toLowerCase();
   const clientVersion = (req.query.version || '1.0.0').toString().trim();
-  const latestVersion = '3.20.5';
-  const latestVersionCode = 346;
+  const latestVersion = '3.20.6';
+  const latestVersionCode = 347;
   const isUpdateAvailable = clientVersion !== latestVersion;
 
   res.json({
@@ -182,21 +183,22 @@ app.get(['/api/app/check-update', '/app/check-update'], (req, res) => {
     currentVersion: clientVersion,
     latestVersion,
     versionCode: latestVersionCode,
-    releaseDate: '2026-09-17',
-    title: 'MRJ Music v3.20.5 Device Stream Resolver & Background Stability Upgrade',
+    releaseDate: '2026-09-18',
+    title: 'MRJ Music v3.20.6 YouTube Device Resolver & Playback Reliability Upgrade',
     changelog: [
-      '⚡ Device-Side YouTube Music Resolver with automated carrier IP bypass',
+      '⚡ Restored Android On-Device YouTube Music Resolver with Native Android Client',
       '🎧 Uninterrupted Background Playback (30-second advance pre-resolution fix)',
+      '🎯 Exact Cross-Provider Title Normalization (Wang Da Naap & Punjabi track fixes)',
       '⬇️ Real Offline Downloads & Smart Downloads via unified StreamResolver',
       '⏱️ Active Sleep Timer Countdown with end-of-track pause support',
       '📋 Search & Public Playlist full track loading with spinner',
-      '🎵 Relaxed Fallback Pipeline ensuring songs like Amplifier stream smoothly'
+      '🎵 Relaxed Fallback Pipeline ensuring all catalog tracks stream smoothly'
     ],
     apkDownloadUrl: 'https://mrj-music.vercel.app/downloads/mrj-music.apk',
-    apkFileName: 'mrj-music-v3.20.5.apk',
+    apkFileName: 'mrj-music-v3.20.6.apk',
     fileSize: '18 MB',
-    fileSizeBytes: 18983656,
-    sha256: 'c6c4ba649c63ecfe07fc0d1a225040aa5c593892c730721978509d40acad8944',
+    fileSizeBytes: 18983749,
+    sha256: '043ca4342044c3ffce7a05af3c6514e6a1d841880bebd72a3cbfe09a69ceb1f8',
     isMandatory: false,
     minAndroidVersion: 'Android 8.0+'
   });
