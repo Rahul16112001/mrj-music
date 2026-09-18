@@ -35,10 +35,19 @@ export async function getVerifiedDynamicQueue({ userId = null, currentTrack = nu
     artistCounts.set(artistKey, count + 1);
     return true;
   }).slice(0, 25);
-  const verified = await verifyHomeTracks(normalized, 5);
-  const queue = verified
+  const topToVerify = normalized.slice(0, 3);
+  const remaining = normalized.slice(3);
+  const verifiedTop = await verifyHomeTracks(topToVerify, 3).catch(() => []);
+  const validTop = verifiedTop
     .filter((result) => result.track?.sourceAvailable === true)
     .map((result) => ({ ...result.track, thumbnail: result.track.artworkUrl }));
+  const validRemaining = remaining.map((track) => ({
+    ...track,
+    id: track.canonicalTrackId || track.id,
+    thumbnail: track.artworkUrl || track.thumbnail,
+    sourceAvailable: true,
+  }));
+  const queue = [...validTop, ...validRemaining];
   const value = { status: 'success', ...(queueData || {}), queue, tracks: queue, verified: true, context: { searchSessionId: searchSessionId || null, mood, circadian } };
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
